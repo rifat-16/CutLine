@@ -1,57 +1,57 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper function to get user role
-    function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    function isAuthenticated() {
+      return request.auth != null;
     }
-    
-    // Users collection
+
+    function userRole(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.role;
+    }
+
+    function isOwner(uid) {
+      return userRole(uid) == 'owner';
+    }
+
+    function salonOwner(salonId) {
+      return get(/databases/$(database)/documents/salons/$(salonId)).data.ownerId;
+    }
+
+    function isValidStatus(status) {
+      return status in ['pending', 'called', 'served', 'cancelled'];
+    }
+
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && request.auth.uid == userId;
+      allow read, create, update: if isAuthenticated() && request.auth.uid == userId;
       allow delete: if false;
     }
-    
-    // Salons collection
+
     match /salons/{salonId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && getUserRole() == 'owner';
-      allow update: if request.auth != null 
-        && resource.data.ownerId == request.auth.uid;
-      allow delete: if request.auth != null 
-        && resource.data.ownerId == request.auth.uid;
-      
-      // Barbers subcollection
-      match /barbers/{barberId} {
-        allow read: if request.auth != null;
-        allow create: if request.auth != null 
-          && getUserRole() == 'owner';
-        allow update: if request.auth != null 
-          && (request.auth.uid == barberId || getUserRole() == 'owner');
-        allow delete: if request.auth != null 
-          && getUserRole() == 'owner';
-        
-        // Queue subcollection
-        match /queue/{queueId} {
-          allow read: if request.auth != null;
-          allow create: if request.auth != null;
-          allow update: if request.auth != null 
-            && (request.auth.uid == barberId || getUserRole() == 'owner');
-          allow delete: if request.auth != null 
-            && (request.auth.uid == barberId || getUserRole() == 'owner');
-        }
-      }
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+        && isOwner(request.auth.uid)
+        && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
     }
-    
-    // Bookings collection
+
     match /bookings/{bookingId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update: if request.auth != null;
-      allow delete: if request.auth != null;
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        salonOwner(resource.data.salonId) == request.auth.uid
+      );
+
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid
+        && isValidStatus(request.resource.data.status);
+
+      allow update: if isAuthenticated()
+        && (
+          resource.data.userId == request.auth.uid ||
+          salonOwner(resource.data.salonId) == request.auth.uid
+        )
+        && isValidStatus(request.resource.data.status);
+
+      allow delete: if false;
     }
   }
 }

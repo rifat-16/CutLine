@@ -1,51 +1,34 @@
+import 'package:cutline/ui/screens/login_screen.dart';
+import 'package:cutline/ui/screens/signup_screen.dart';
+import 'package:cutline/ui/screens/splash_screen.dart';
+import 'package:cutline/ui/screens/role_selection_screen.dart';
+import 'package:cutline/ui/screens/user/salon_details_screen.dart';
+import 'package:cutline/ui/screens/user/salon_gallery_screen.dart';
+import 'package:cutline/ui/screens/user/user_home_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:firebase_core/firebase_core.dart';
 
-import 'firebase_options.dart';
-import 'routes/app_routes.dart';
-import 'theme/app_theme.dart';
-import 'providers/auth_provider.dart';
-import 'providers/salon_provider.dart';
-import 'providers/barber_provider.dart';
-import 'providers/queue_provider.dart';
-import 'providers/notification_provider.dart';
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  // Initialize notifications
-  final notificationProvider = NotificationProvider();
-  await notificationProvider.initialize();
-
-  runApp(const MyApp());
+void main() {
+  runApp(const CutLineApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class CutLineApp extends StatelessWidget {
+  const CutLineApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => SalonProvider()),
-        ChangeNotifierProvider(create: (_) => BarberProvider()),
-        ChangeNotifierProvider(create: (_) => QueueProvider()),
-        ChangeNotifierProvider(create: (_) => NotificationProvider()),
-      ],
-      child: MaterialApp(
-        title: 'Cutline',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        initialRoute: AppRoutes.splash,
-        routes: AppRoutes.getRoutes(),
-      ),
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'CutLine',
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const SplashScreen(),
+        '/welcome': (context) => const RoleSelectionScreen(),
+        '/login': (context) => const LoginScreen(),
+        '/signup': (context) => const SignupScreen(),
+        '/user-home': (context) => const UserHomeScreen(),
+        '/salon-details': (context) =>  SalonDetailsScreen(salonName: ModalRoute.of(context)?.settings.arguments as String? ?? ''),
+
+      },
     );
   }
 }
