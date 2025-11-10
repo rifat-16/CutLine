@@ -3,6 +3,8 @@ import 'package:cutline/ui/screens/user/view_all_salon_services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import 'booking_screen.dart';
+
 class SalonDetailsScreen extends StatelessWidget {
   final String salonName;
 
@@ -877,6 +879,12 @@ class SalonDetailsScreen extends StatelessWidget {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           // TODO: Navigate to booking screen
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const BookingScreen(),
+            ),
+          );
         },
         label: const Text(
           "Book Now",

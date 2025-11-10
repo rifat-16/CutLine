@@ -1,0 +1,42 @@
+name: bookingNotificationFunction
+code: |
+  const functions = require('firebase-functions/v2/firestore');
+  const admin = require('firebase-admin');
+  admin.initializeApp();
+
+  exports.notifyBookingStatusChange = functions.onDocumentUpdated('bookings/{bookingId}', async (event) => {
+    const before = event.data?.before?.data();
+    const after = event.data?.after?.data();
+    if (!before || !after) {
+      return null;
+    }
+
+    if (before.status === after.status) {
+      return null;
+    }
+
+    if (after.status !== 'called') {
+      return null;
+    }
+
+    const userId = after.userId;
+    const userSnap = await admin.firestore().doc(`users/${userId}`).get();
+    const token = userSnap.get('deviceToken');
+    if (!token) {
+      return null;
+    }
+
+    await admin.messaging().send({
+      token,
+      notification: {
+        title: 'CutLine update',
+        body: 'Your turn is next!',
+      },
+      data: {
+        bookingId: event.params.bookingId,
+        status: after.status,
+      },
+    });
+
+    return null;
+  });

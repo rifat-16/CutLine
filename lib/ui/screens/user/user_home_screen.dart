@@ -1,5 +1,9 @@
+import 'package:cutline/ui/screens/user/chats_screen.dart';
+import 'package:cutline/ui/screens/user/favorite_salon_screen.dart';
+import 'package:cutline/ui/screens/user/user_profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'salon_details_screen.dart';
+import 'my_booking_screen.dart';
 
 class UserHomeScreen extends StatefulWidget {
   const UserHomeScreen({Key? key}) : super(key: key);
@@ -395,12 +399,39 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
+        currentIndex: 0,
         selectedItemColor: Colors.blueAccent,
         unselectedItemColor: Colors.blueAccent.shade200,
         showUnselectedLabels: true,
         type: BottomNavigationBarType.fixed,
         elevation: 8,
         backgroundColor: Colors.white,
+        onTap: (index) {
+          if (index == 1) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => MyBookingScreen()),
+            );
+          }
+          if (index == 2) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => FavoriteSalonScreen()),
+            );
+          }
+          if (index == 3) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => ChatsScreen()),
+            );
+          }
+          if (index == 4) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => UserProfileScreen()),
+            );
+          }
+        },
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home_outlined),
@@ -410,7 +441,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.queue_outlined),
             activeIcon: Icon(Icons.queue),
-            label: 'Queue',
+            label: 'My Booking',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.favorite_border),
+            activeIcon: Icon(Icons.favorite),
+            label: 'Favorite',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.chat_bubble_outline),
