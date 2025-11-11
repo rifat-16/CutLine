@@ -13,7 +13,15 @@ class UserProfileScreen extends StatelessWidget {
         ),
         ),
         centerTitle: true,
-        backgroundColor: Colors.blueAccent,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF1E88E5), Color(0xFF1565C0)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
         elevation: 0,
       ),
       backgroundColor: Colors.grey[100],
@@ -129,17 +137,6 @@ class UserProfileScreen extends StatelessWidget {
             _buildFlatTile(Icons.calendar_today_outlined, "My Bookings", onTap: () {}),
             _buildFlatTile(Icons.favorite_border_outlined, "Saved Salons", onTap: () {}),
             _buildFlatTile(Icons.notifications_none_outlined, "Notifications", onTap: () {}),
-            _buildFlatTile(
-              Icons.dark_mode_outlined,
-              "Dark Mode",
-              trailing: Switch(
-                value: false,
-                onChanged: (v) {},
-                activeColor: const Color(0xFF1E88E5),
-                inactiveTrackColor: Colors.grey[300],
-                thumbColor: MaterialStateProperty.all(Colors.white),
-              ),
-            ),
 
             const SizedBox(height: 24),
 

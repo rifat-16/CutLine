@@ -1,948 +1,973 @@
 import 'package:cutline/ui/screens/user/salon_gallery_screen.dart';
 import 'package:cutline/ui/screens/user/view_all_salon_services.dart';
+import 'package:cutline/ui/screens/user/waiting_customer_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import 'booking_screen.dart';
 
+// Root screen wiring together all sections.
 class SalonDetailsScreen extends StatelessWidget {
   final String salonName;
 
   const SalonDetailsScreen({super.key, required this.salonName});
 
+  static const SizedBox _smallGap = SizedBox(height: 12);
+  static const SizedBox _mediumGap = SizedBox(height: 16);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          salonName,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.blueAccent,
-        elevation: 0.5,
-        actions: [
-          IconButton(
-            onPressed: () {
-              // TODO: Implement favorite toggle functionality
-            },
-            icon: const Icon(Icons.favorite_border_rounded, color: Colors.blueAccent),
-            tooltip: "Add to Favorites",
-          ),
-        ],
-      ),
+      backgroundColor: _SalonTheme.background,
+      appBar: SalonDetailsAppBar(titleText: salonName),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Cover image section
-            Container(
-              height: 220,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-              ),
-              child: const Center(
-                child: Text(
-                  'Salon Cover Photo',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-            ),
-
-            // Info section
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.blue.shade50,
-                    Colors.white,
-                  ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          "Urban Cuts",
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blueAccent,
-                          ),
-                        ),
-                        Row(
-                          children: const [
-                            Icon(Icons.star, color: Colors.orangeAccent, size: 20),
-                            SizedBox(width: 4),
-                            Text(
-                              "4.6 (120 reviews)",
-                              style: TextStyle(
-                                color: Colors.black87,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on, size: 18, color: Colors.blueAccent),
-                        const SizedBox(width: 4),
-                        const Text(
-                          "Banani, Dhaka • 0.8 km away",
-                          style: TextStyle(
-                            color: Colors.black87,
-                            fontSize: 15,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        TextButton(
-                          onPressed: () {
-                            // TODO: Implement map opening function
-                          },
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            minimumSize: const Size(40, 20),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          child: const Text(
-                            "See Map",
-                            style: TextStyle(
-                              color: Colors.blueAccent,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    // Exact Address
-                    Row(
-                      children: const [
-                        Icon(Icons.home_outlined, size: 18, color: Colors.blueAccent),
-                        SizedBox(width: 6),
-                        Text(
-                          "House #12, Road #5, Banani, Dhaka",
-                          style: TextStyle(color: Colors.black87, fontSize: 14),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    // Phone Number
-                    Row(
-                      children: [
-                        const Icon(Icons.phone, size: 18, color: Colors.blueAccent),
-                        const SizedBox(width: 6),
-                        GestureDetector(
-                          onTap: () {
-                            // TODO: Implement phone call
-                          },
-                          child: const Text(
-                            "+880 1700 123456",
-                            style: TextStyle(
-                              color: Colors.blueAccent,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    // Email
-                    Row(
-                      children: const [
-                        Icon(Icons.email_outlined, size: 18, color: Colors.blueAccent),
-                        SizedBox(width: 6),
-                        Text(
-                          "urbancuts@gmail.com",
-                          style: TextStyle(color: Colors.black87, fontSize: 14),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    // Popular Services Preview
-                    Row(
-                      children: const [
-                        Icon(Icons.star_outline, size: 18, color: Colors.blueAccent),
-                        SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            "Top Services: Haircut ✂️ • Beard Trim 🧔 • Hair Spa 💆‍♂️",
-                            style: TextStyle(color: Colors.black87, fontSize: 14),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                ),
-              ),
-            ),
-
-            // Working Hours (Modern UI)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.white, Colors.blue.shade50],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black12.withOpacity(0.06),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: const [
-                        Icon(Icons.schedule_rounded, color: Colors.blueAccent, size: 22),
-                        SizedBox(width: 8),
-                        Text(
-                          "Working Hours",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                            color: Colors.black87,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 18, thickness: 0.6),
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text("Monday – Friday", style: TextStyle(fontSize: 15, color: Colors.black87)),
-                        Text("9:00 AM – 9:00 PM", style: TextStyle(color: Colors.black54, fontSize: 15)),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text("Saturday – Sunday", style: TextStyle(fontSize: 15, color: Colors.black87)),
-                        Text("10:00 AM – 8:00 PM", style: TextStyle(color: Colors.black54, fontSize: 15)),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(Icons.check_circle, color: Colors.green, size: 18),
-                          SizedBox(width: 6),
-                          Text(
-                            "Open Now • Closes at 9:00 PM",
-                            style: TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Barber cards
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Our Barbers",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: List.generate(3, (index) {
-                        return Container(
-                          width: 160,
-                          margin: const EdgeInsets.only(right: 12, bottom: 8),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [Colors.white, Colors.blue.shade50],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black12.withOpacity(0.1),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12.0),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                CircleAvatar(
-                                  radius: 32,
-                                  backgroundImage: AssetImage("assets/images/barber_${index + 1}.jpg"),
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  "Barber ${index + 1}",
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                const Text(
-                                  "Fade • Trim • Beard",
-                                  style: TextStyle(fontSize: 12, color: Colors.black54),
-                                ),
-                                const SizedBox(height: 6),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: const [
-                                    Icon(Icons.star, color: Colors.orangeAccent, size: 16),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      "4.8",
-                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Column(
-                                  children: [
-                                    Text(
-                                      index % 2 == 0 ? "Available" : "Unavailable",
-                                      style: TextStyle(
-                                        color: index % 2 == 0 ? Colors.green : Colors.redAccent,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    if (index % 2 == 0) ...[
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          const Icon(Icons.people_alt_rounded, color: Colors.blueAccent, size: 14),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            "${2 + index} waiting",
-                                            style: const TextStyle(
-                                              color: Colors.black54,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Salon Gallery Section (Grid Style - 3 per row + See all)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Salon Gallery",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => SalonGalleryScreen(salonName: salonName),
-                            ),
-                          );
-                        },
-                        child: const Text(
-                          "See all",
-                          style: TextStyle(
-                            color: Colors.blueAccent,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: 3,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
-                    ),
-                    itemBuilder: (context, index) {
-                      return ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.asset(
-                          "assets/images/salon_${(index % 4) + 1}.jpg",
-                          fit: BoxFit.cover,
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Offers / Promotions Section
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
-              child:   Container(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Colors.orangeAccent, Colors.deepOrange],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.orangeAccent.withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            "💎 Full Grooming Combo",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                          SizedBox(height: 6),
-                          Text(
-                            "Haircut + Beard + Facial",
-                            style: TextStyle(color: Colors.white70, fontSize: 14),
-                          ),
-                          SizedBox(height: 6),
-                          Text(
-                            "Save 20% Today!",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Text(
-                              "৳850",
-                              style: TextStyle(
-                                color: Colors.deepOrange,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          ElevatedButton(
-                            onPressed: () {
-                              // TODO: Add booking functionality
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: Colors.deepOrange,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            ),
-                            child: const Text(
-                              "Book Now",
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Services Section
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Services",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  InkWell(
-                    onTap: () {
-                      // TODO: Navigate to full services page
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ViewAllSalonServices(salonName: salonName),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.white,
-                            Colors.blue.shade50,
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black12.withOpacity(0.08),
-                            blurRadius: 6,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: const [
-                              Icon(Icons.cut, color: Colors.blueAccent, size: 26),
-                              SizedBox(width: 10),
-                              Text(
-                                "View All Salon Services",
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.blueAccent.withOpacity(0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Icon(Icons.arrow_forward_ios,
-                                  size: 16, color: Colors.blueAccent),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Live Queue Section
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Live Queue",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Row(
-                        children: const [
-                          Icon(Icons.refresh, size: 16, color: Colors.blueAccent),
-                          SizedBox(width: 4),
-                          Text(
-                            "Updating live...",
-                            style: TextStyle(color: Colors.grey, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Now Serving Card with animation
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.blueAccent.shade100,
-                          Colors.blueAccent.shade400,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.blueAccent.withOpacity(0.25),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          "Now Serving",
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          "Hasan Ali",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: 6),
-                        Text(
-                          "Barber: Rafi • Haircut & Beard Trim",
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                        SizedBox(height: 8),
-                        LinearProgressIndicator(
-                          value: 0.65,
-                          backgroundColor: Colors.white24,
-                          color: Colors.white,
-                          minHeight: 6,
-                        ),
-                        SizedBox(height: 4),
-                        Align(
-                          alignment: Alignment.bottomRight,
-                          child: Text(
-                            "≈ 10 mins left",
-                            style: TextStyle(color: Colors.white70, fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                      .animate()
-                      .slideY(begin: 0.3, end: 0, duration: 600.ms)
-                      .fadeIn(duration: 700.ms),
-
-                  const SizedBox(height: 16),
-
-                  // Queue List
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Waiting for Service",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          // TODO: Navigate to full waiting list page
-                        },
-                        child: const Text(
-                          "See all",
-                          style: TextStyle(
-                            color: Colors.blueAccent,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: List.generate(4, (index) {
-                        final colors = [
-                          Colors.orangeAccent,
-                          Colors.blueAccent,
-                          Colors.green,
-                          Colors.redAccent
-                        ];
-                        final names = [
-                          "Tanvir Ahmed",
-                          "Nafis Rahman",
-                          "Arafat Hossain",
-                          "Mehedi Hasan"
-                        ];
-                        final barbers = ["Hasan", "Rafi", "Sajid", "Rafi"];
-                        final statuses = ["Waiting", "Waiting", "Next", "Done"];
-                        final times = ["≈ 15 mins", "≈ 25 mins", "≈ 35 mins", "Completed"];
-
-                        return Container(
-                          width: 190,
-                          margin: const EdgeInsets.only(right: 12),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black12.withOpacity(0.05),
-                                blurRadius: 6,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 18,
-                                    backgroundColor: colors[index].withOpacity(0.15),
-                                    child: Icon(Icons.person,
-                                        color: colors[index], size: 20),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      names[index],
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                "Barber: ${barbers[index]}",
-                                style:
-                                    const TextStyle(color: Colors.black54, fontSize: 13),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                "Service: Haircut",
-                                style:
-                                    const TextStyle(color: Colors.black54, fontSize: 13),
-                              ),
-                              const SizedBox(height: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: colors[index].withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  statuses[index],
-                                  style: TextStyle(
-                                    color: colors[index],
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                times[index],
-                                style: const TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                            .animate()
-                            .fadeIn(duration: 400.ms, delay: (index * 100).ms)
-                            .slideX(begin: 0.3, end: 0);
-                      }),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            const CoverPhotoSection(),
+            SalonInfoSection(salonName: salonName),
+            _smallGap,
+            const WorkingHoursCard(),
+            _mediumGap,
+            const BarberListSection(),
+            _mediumGap,
+            SalonGallerySection(salonName: salonName),
+            _mediumGap,
+            const ComboOfferCard(),
+            _mediumGap,
+            ServicesSection(salonName: salonName),
+            _mediumGap,
+            const LiveQueueSection(),
             const SizedBox(height: 30),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // TODO: Navigate to booking screen
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const BookingScreen(),
-            ),
-          );
-        },
-        label: const Text(
-          "Book Now",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-            color: Colors.white,
-          ),
+      floatingActionButton: const BookNowFab(),
+    );
+  }
+}
+
+// App bar extracted for readability.
+class SalonDetailsAppBar extends StatelessWidget implements PreferredSizeWidget {
+  final String titleText;
+
+  const SalonDetailsAppBar({super.key, required this.titleText});
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+
+  @override
+  Widget build(BuildContext context) {
+    return AppBar(
+      title: Text(titleText, style: _SalonTextStyles.appBarTitle),
+      backgroundColor: _SalonTheme.background,
+      foregroundColor: _SalonTheme.primary,
+      elevation: 0.5,
+      actions: [
+        IconButton(
+          onPressed: () {
+            // TODO: Implement favorite toggle functionality.
+          },
+          icon: const Icon(Icons.favorite_border_rounded),
+          tooltip: 'Add to Favorites',
         ),
-        icon: const Icon(
-          Icons.calendar_month_rounded,
-          color: Colors.white,
+      ],
+    );
+  }
+}
+
+// Cover photo placeholder.
+class CoverPhotoSection extends StatelessWidget {
+  const CoverPhotoSection({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 220,
+      width: double.infinity,
+      color: Colors.grey[300],
+      child: const Center(
+        child: Text(
+          'Salon Cover Photo',
+          style: TextStyle(color: Colors.grey),
         ),
-        backgroundColor: Colors.blueAccent,
       ),
     );
   }
 }
 
-void _showJoinQueueModal(BuildContext context) {
-  showGeneralDialog(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: '',
-    pageBuilder: (context, _, __) => const SizedBox.shrink(),
-    transitionBuilder: (context, animation, secondaryAnimation, child) {
-      return ScaleTransition(
-        scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text(
-            "🎉 You're in the Queue!",
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Text(
-                "Position: #4\nEstimated Wait: 25 mins ⏳",
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.black87),
+// Info & contact details.
+class SalonInfoSection extends StatelessWidget {
+  final String salonName;
+
+  const SalonInfoSection({super.key, required this.salonName});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            _SalonTheme.primary.withValues(alpha: 0.05),
+            _SalonTheme.background,
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  salonName,
+                  style: _SalonTextStyles.heroTitle,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              SizedBox(height: 16),
-              Icon(Icons.check_circle_rounded, color: Colors.green, size: 48),
+              Row(
+                children: const [
+                  Icon(Icons.star, color: _SalonTheme.accent, size: 20),
+                  SizedBox(width: 4),
+                  Text('4.6 (120 reviews)', style: _SalonTextStyles.subtitleBold),
+                ],
+              ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Icon(Icons.location_on, size: 18, color: _SalonTheme.primary),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'Banani, Dhaka • 0.8 km away',
+                  style: _SalonTextStyles.body,
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  // TODO: Implement map opening function.
+                },
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(40, 20),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('See Map', style: _SalonTextStyles.link),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const _IconTextRow(
+            icon: Icons.home_outlined,
+            label: 'House #12, Road #5, Banani, Dhaka',
+          ),
+          const SizedBox(height: 6),
+          _IconTextRow(
+            icon: Icons.phone,
+            labelWidget: GestureDetector(
+              onTap: () {
+                // TODO: Implement phone call.
+              },
               child: const Text(
-                "OK",
-                style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.w600),
+                '+880 1700 123456',
+                style: TextStyle(
+                  color: _SalonTheme.primary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const _IconTextRow(
+            icon: Icons.email_outlined,
+            label: 'urbancuts@gmail.com',
+          ),
+          const SizedBox(height: 6),
+          const _IconTextRow(
+            icon: Icons.star_outline,
+            label: 'Top Services: Haircut ✂️ • Beard Trim 🧔 • Hair Spa 💆‍♂️',
+            wrap: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Working hours detail card.
+class WorkingHoursCard extends StatelessWidget {
+  const WorkingHoursCard({super.key});
+
+  static const List<_WorkingHour> _hours = [
+    _WorkingHour(label: 'Monday – Friday', timeRange: '9:00 AM – 9:00 PM'),
+    _WorkingHour(label: 'Saturday – Sunday', timeRange: '10:00 AM – 8:00 PM'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: _SalonTheme.sectionPadding,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: _SalonDecorations.elevated(
+          colors: [_SalonTheme.background, _SalonTheme.primary.withValues(alpha: 0.06)],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: const [
+                Icon(Icons.schedule_rounded, color: _SalonTheme.primary, size: 22),
+                SizedBox(width: 8),
+                Text('Working Hours', style: _SalonTextStyles.sectionTitle),
+              ],
+            ),
+            const Divider(height: 18, thickness: 0.6),
+            ..._hours.map(
+              (hour) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(hour.label, style: _SalonTextStyles.body.copyWith(fontSize: 15)),
+                    Text(hour.timeRange, style: _SalonTextStyles.caption.copyWith(fontSize: 15)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.check_circle, color: Colors.green, size: 18),
+                  SizedBox(width: 6),
+                  Text(
+                    'Open Now • Closes at 9:00 PM',
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
-      );
-    },
-    transitionDuration: const Duration(milliseconds: 400),
+      ),
+    );
+  }
+}
+
+// Horizontal barber list.
+class BarberListSection extends StatelessWidget {
+  const BarberListSection({super.key});
+
+  static const List<_BarberInfo> _barbers = [
+    _BarberInfo(
+      name: 'Barber 1',
+      skills: 'Fade • Trim • Beard',
+      rating: 4.8,
+      isAvailable: true,
+      waitingClients: 2,
+      imagePath: 'assets/images/barber_1.jpg',
+    ),
+    _BarberInfo(
+      name: 'Barber 2',
+      skills: 'Fade • Trim • Beard',
+      rating: 4.8,
+      isAvailable: false,
+      waitingClients: 0,
+      imagePath: 'assets/images/barber_2.jpg',
+    ),
+    _BarberInfo(
+      name: 'Barber 3',
+      skills: 'Fade • Trim • Beard',
+      rating: 4.8,
+      isAvailable: true,
+      waitingClients: 4,
+      imagePath: 'assets/images/barber_3.jpg',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: _SalonTheme.sectionPadding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Our Barbers', style: _SalonTextStyles.sectionTitle),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _barbers
+                  .map(
+                    (barber) => _BarberCard(barber: barber),
+                  )
+                  .toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BarberCard extends StatelessWidget {
+  final _BarberInfo barber;
+
+  const _BarberCard({required this.barber});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 170,
+      margin: const EdgeInsets.only(right: 12, bottom: 8),
+      decoration: _SalonDecorations.elevated(
+        colors: [_SalonTheme.background, _SalonTheme.primary.withValues(alpha: 0.04)],
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircleAvatar(radius: 32, backgroundImage: AssetImage(barber.imagePath)),
+          const SizedBox(height: 10),
+          Text(
+            barber.name,
+            style: _SalonTextStyles.subtitleBold.copyWith(fontSize: 15),
+          ),
+          const SizedBox(height: 4),
+          Text(barber.skills, style: _SalonTextStyles.caption),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.star, color: _SalonTheme.accent, size: 16),
+              const SizedBox(width: 4),
+              Text('${barber.rating}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            barber.isAvailable ? 'Available' : 'Unavailable',
+            style: TextStyle(
+              color: barber.isAvailable ? Colors.green : Colors.redAccent,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+          if (barber.isAvailable) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.people_alt_rounded, color: _SalonTheme.primary, size: 14),
+                const SizedBox(width: 4),
+                Text('${barber.waitingClients} waiting', style: _SalonTextStyles.caption),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// Gallery preview grid.
+class SalonGallerySection extends StatelessWidget {
+  final String salonName;
+
+  const SalonGallerySection({super.key, required this.salonName});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: _SalonTheme.sectionPadding.copyWith(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Salon Gallery', style: _SalonTextStyles.sectionTitle),
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => SalonGalleryScreen(salonName: salonName),
+                    ),
+                  );
+                },
+                child: const Text('See all', style: _SalonTextStyles.link),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: 3,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemBuilder: (context, index) {
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.asset('assets/images/salon_${(index % 4) + 1}.jpg', fit: BoxFit.cover),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Combo offer highlight.
+class ComboOfferCard extends StatelessWidget {
+  const ComboOfferCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: _SalonTheme.sectionPadding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Combo Offers', style: _SalonTextStyles.sectionTitle),
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ViewAllSalonServices(salonName: ''),
+                    ),
+                  );
+                },
+                child: const Text('See all', style: _SalonTextStyles.link),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Colors.orangeAccent, Colors.deepOrange],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(_SalonTheme.cardRadius),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.orangeAccent.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      '💎 Full Grooming Combo',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                    SizedBox(height: 6),
+                    Text('Haircut + Beard + Facial', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                    SizedBox(height: 6),
+                    Text(
+                      'Save 20% Today!',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Text(
+                        '৳850',
+                        style: TextStyle(
+                          color: Colors.deepOrange,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        // TODO: Add booking functionality.
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.deepOrange,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      ),
+                      child: const Text('Book Now', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Services quick entry point.
+class ServicesSection extends StatelessWidget {
+  final String salonName;
+
+  const ServicesSection({super.key, required this.salonName});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: _SalonTheme.sectionPadding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Services', style: _SalonTextStyles.sectionTitle),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ViewAllSalonServices(salonName: salonName),
+                ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+              decoration: _SalonDecorations.elevated(
+                colors: [_SalonTheme.background, _SalonTheme.primary.withValues(alpha: 0.04)],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: const [
+                      Icon(Icons.cut, color: _SalonTheme.primary, size: 26),
+                      SizedBox(width: 10),
+                      Text(
+                        'View All Salon Services',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: _SalonTheme.primary.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    padding: const EdgeInsets.all(8),
+                    child: const Icon(Icons.arrow_forward_ios, size: 16, color: _SalonTheme.primary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Live queue + animated cards.
+class LiveQueueSection extends StatelessWidget {
+  const LiveQueueSection({super.key});
+
+  static const List<_QueueEntry> _queueEntries = [
+    _QueueEntry(
+      customerName: 'Tanvir Ahmed',
+      barber: 'Hasan',
+      status: 'Waiting',
+      eta: '≈ 15 mins',
+      color: Colors.orangeAccent,
+    ),
+    _QueueEntry(
+      customerName: 'Nafis Rahman',
+      barber: 'Rafi',
+      status: 'Waiting',
+      eta: '≈ 25 mins',
+      color: Colors.blueAccent,
+    ),
+    _QueueEntry(
+      customerName: 'Arafat Hossain',
+      barber: 'Sajid',
+      status: 'Next',
+      eta: '≈ 35 mins',
+      color: Colors.green,
+    ),
+    _QueueEntry(
+      customerName: 'Mehedi Hasan',
+      barber: 'Rafi',
+      status: 'Done',
+      eta: 'Completed',
+      color: Colors.redAccent,
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: _SalonTheme.sectionPadding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Live Queue', style: _SalonTextStyles.sectionTitle),
+              Row(
+                children: const [
+                  Icon(Icons.refresh, size: 16, color: _SalonTheme.primary),
+                  SizedBox(width: 4),
+                  Text('Updating live...', style: _SalonTextStyles.caption),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  _SalonTheme.primary.withValues(alpha: 0.7),
+                  _SalonTheme.primary,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(_SalonTheme.cardRadius),
+              boxShadow: [
+                BoxShadow(
+                  color: _SalonTheme.primary.withValues(alpha: 0.25),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text('Now Serving', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                SizedBox(height: 4),
+                Text(
+                  'Hasan Ali',
+                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 6),
+                Text('Barber: Rafi • Haircut & Beard Trim', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                SizedBox(height: 8),
+                LinearProgressIndicator(
+                  value: 0.65,
+                  backgroundColor: Colors.white24,
+                  color: Colors.white,
+                  minHeight: 6,
+                ),
+                SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.bottomRight,
+                  child: Text('≈ 10 mins left', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                ),
+              ],
+            ),
+          )
+              .animate()
+              .slideY(begin: 0.3, end: 0, duration: 600.ms)
+              .fadeIn(duration: 700.ms),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Waiting for Service', style: _SalonTextStyles.subtitleBold),
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const WaitingListScreen()),
+                  );
+                },
+                child: const Text('See all', style: _SalonTextStyles.link),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: List.generate(_queueEntries.length, (index) {
+                final entry = _queueEntries[index];
+                return _QueueCard(entry: entry)
+                    .animate()
+                    .fadeIn(duration: 400.ms, delay: (index * 100).ms)
+                    .slideX(begin: 0.3, end: 0);
+              }),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QueueCard extends StatelessWidget {
+  final _QueueEntry entry;
+
+  const _QueueCard({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 190,
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: _SalonDecorations.elevated(solidColor: Colors.white),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: entry.color.withValues(alpha: 0.15),
+                child: Icon(Icons.person, color: entry.color, size: 20),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  entry.customerName,
+                  style: _SalonTextStyles.subtitleBold.copyWith(fontSize: 14),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text('Barber: ${entry.barber}', style: _SalonTextStyles.caption),
+          const SizedBox(height: 4),
+          const Text('Service: Haircut', style: _SalonTextStyles.caption),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: entry.color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              entry.status,
+              style: TextStyle(
+                color: entry.color,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(entry.eta, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+// Booking floating action button.
+class BookNowFab extends StatelessWidget {
+  const BookNowFab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingActionButton.extended(
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const BookingScreen()),
+        );
+      },
+      label: const Text(
+        'Book Now',
+        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+      ),
+      icon: const Icon(Icons.calendar_month_rounded, color: Colors.white),
+      backgroundColor: _SalonTheme.primary,
+    );
+  }
+}
+
+// Helper widgets & models ----------------------------------------------------
+class _IconTextRow extends StatelessWidget {
+  final IconData icon;
+  final String? label;
+  final Widget? labelWidget;
+  final bool wrap;
+
+  const _IconTextRow({
+    required this.icon,
+    this.label,
+    this.labelWidget,
+    this.wrap = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textWidget = labelWidget ?? Text(label ?? '', style: _SalonTextStyles.body);
+
+    return Row(
+      crossAxisAlignment: wrap ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+      children: [
+        Icon(icon, size: 18, color: _SalonTheme.primary),
+        const SizedBox(width: 6),
+        wrap ? Expanded(child: textWidget) : textWidget,
+      ],
+    );
+  }
+}
+
+class _BarberInfo {
+  final String name;
+  final String skills;
+  final double rating;
+  final bool isAvailable;
+  final int waitingClients;
+  final String imagePath;
+
+  const _BarberInfo({
+    required this.name,
+    required this.skills,
+    required this.rating,
+    required this.isAvailable,
+    required this.waitingClients,
+    required this.imagePath,
+  });
+}
+
+class _QueueEntry {
+  final String customerName;
+  final String barber;
+  final String status;
+  final String eta;
+  final Color color;
+
+  const _QueueEntry({
+    required this.customerName,
+    required this.barber,
+    required this.status,
+    required this.eta,
+    required this.color,
+  });
+}
+
+class _WorkingHour {
+  final String label;
+  final String timeRange;
+
+  const _WorkingHour({required this.label, required this.timeRange});
+}
+
+class _SalonTheme {
+  static const Color primary = Colors.blueAccent;
+  static const Color accent = Colors.orangeAccent;
+  static const Color background = Colors.white;
+  static const EdgeInsets sectionPadding = EdgeInsets.symmetric(horizontal: 16.0);
+  static const double cardRadius = 16.0;
+}
+
+class _SalonTextStyles {
+  static const TextStyle appBarTitle = TextStyle(fontWeight: FontWeight.bold);
+  static const TextStyle heroTitle = TextStyle(
+    fontSize: 22,
+    fontWeight: FontWeight.bold,
+    color: _SalonTheme.primary,
   );
+  static const TextStyle sectionTitle = TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+    color: Colors.black87,
+  );
+  static const TextStyle subtitleBold = TextStyle(
+    color: Colors.black87,
+    fontWeight: FontWeight.w600,
+  );
+  static const TextStyle body = TextStyle(color: Colors.black87, fontSize: 14);
+  static const TextStyle caption = TextStyle(color: Colors.black54, fontSize: 13);
+  static const TextStyle link = TextStyle(
+    color: _SalonTheme.primary,
+    fontWeight: FontWeight.w600,
+    fontSize: 14,
+  );
+}
+
+class _SalonDecorations {
+  static BoxDecoration elevated({
+    List<Color>? colors,
+    Alignment begin = Alignment.topLeft,
+    Alignment end = Alignment.bottomRight,
+    Color? solidColor,
+  }) {
+    return BoxDecoration(
+      color: solidColor,
+      gradient: colors != null ? LinearGradient(colors: colors, begin: begin, end: end) : null,
+      borderRadius: BorderRadius.circular(_SalonTheme.cardRadius),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black12.withValues(alpha: 0.08),
+          blurRadius: 8,
+          offset: const Offset(0, 3),
+        ),
+      ],
+    );
+  }
 }

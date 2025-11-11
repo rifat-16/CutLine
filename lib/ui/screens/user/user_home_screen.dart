@@ -1,5 +1,6 @@
 import 'package:cutline/ui/screens/user/chats_screen.dart';
 import 'package:cutline/ui/screens/user/favorite_salon_screen.dart';
+import 'package:cutline/ui/screens/user/notification_screen.dart';
 import 'package:cutline/ui/screens/user/user_profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'salon_details_screen.dart';
@@ -84,7 +85,11 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           IconButton(
             icon:
                 const Icon(Icons.notifications_none, color: Colors.blueAccent),
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(context,
+                MaterialPageRoute(builder: (context) => const NotificationScreen()),
+              );
+            },
             tooltip: 'Notifications',
           ),
           const SizedBox(width: 8),
@@ -94,7 +99,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -113,7 +118,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 6),
                 // Animated Auto-Sliding Promotional Banners
                 ClipRRect(
                   borderRadius: BorderRadius.circular(20),
@@ -197,7 +202,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                     );
                   }),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 12),
 
                 // "Nearby Salons" section label
                 Text(
@@ -215,7 +220,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
 
                   // Nearby Salons Vertical List
                   ListView.separated(
