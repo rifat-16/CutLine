@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'package:cutline/ui/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
 
 class WaitingListScreen extends StatefulWidget {
@@ -12,41 +14,43 @@ class _WaitingListScreenState extends State<WaitingListScreen> {
   bool sortAscending = true;
   late Timer _timer;
 
-  final List<Map<String, dynamic>> waitingList = [
-    {
-      "profile": "https://i.pravatar.cc/150?img=3",
-      "name": "Rafi Ahmed",
-      "barber": "Kamal",
-      "service": "Haircut + Beard",
-      "timeLeft": 12,
-      "status": "In Queue",
-    },
-    {
-      "profile": "https://i.pravatar.cc/150?img=4",
-      "name": "Jihan Rahman",
-      "barber": "Imran",
-      "service": "Facial + Beard Trim",
-      "timeLeft": 3,
-      "status": "Serving Soon",
-    },
-    {
-      "profile": "https://i.pravatar.cc/150?img=5",
-      "name": "Tania Akter",
-      "barber": "Sajjad",
-      "service": "Hair Color",
-      "timeLeft": 20,
-      "status": "In Queue",
-    },
+  final List<_WaitingCustomer> waitingList = [
+    const _WaitingCustomer(
+      profile: 'https://i.pravatar.cc/150?img=3',
+      name: 'Rafi Ahmed',
+      barber: 'Kamal',
+      service: 'Haircut + Beard',
+      timeLeft: 12,
+      status: 'In Queue',
+    ),
+    const _WaitingCustomer(
+      profile: 'https://i.pravatar.cc/150?img=4',
+      name: 'Jihan Rahman',
+      barber: 'Imran',
+      service: 'Facial + Beard Trim',
+      timeLeft: 3,
+      status: 'Serving Soon',
+    ),
+    const _WaitingCustomer(
+      profile: 'https://i.pravatar.cc/150?img=5',
+      name: 'Tania Akter',
+      barber: 'Sajjad',
+      service: 'Hair Color',
+      timeLeft: 20,
+      status: 'In Queue',
+    ),
   ];
 
   @override
   void initState() {
     super.initState();
-    // Live countdown timer
-    _timer = Timer.periodic(const Duration(minutes: 1), (timer) {
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
       setState(() {
-        for (var customer in waitingList) {
-          if (customer["timeLeft"] > 0) customer["timeLeft"]--;
+        for (var i = 0; i < waitingList.length; i++) {
+          final entry = waitingList[i];
+          if (entry.timeLeft > 0) {
+            waitingList[i] = entry.copyWith(timeLeft: entry.timeLeft - 1);
+          }
         }
       });
     });
@@ -58,155 +62,125 @@ class _WaitingListScreenState extends State<WaitingListScreen> {
     super.dispose();
   }
 
-  Color _getStatusColor(String status) {
+  @override
+  Widget build(BuildContext context) {
+    final sorted = [...waitingList]
+      ..sort((a, b) => sortAscending ? a.timeLeft.compareTo(b.timeLeft) : b.timeLeft.compareTo(a.timeLeft));
+
+    return Scaffold(
+      backgroundColor: CutlineColors.secondaryBackground,
+      appBar: CutlineAppBar(
+        title: 'Waiting for Service',
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.sort),
+            tooltip: 'Sort by time',
+            onPressed: () => setState(() => sortAscending = !sortAscending),
+          ),
+        ],
+      ),
+      body: ListView.builder(
+        padding: CutlineSpacing.section.copyWith(top: 16, bottom: 16),
+        itemCount: sorted.length,
+        itemBuilder: (context, index) {
+          final item = sorted[index];
+          return CutlineAnimations.staggeredList(
+            index: index,
+            child: Container(
+              margin: const EdgeInsets.only(bottom: CutlineSpacing.sm),
+              padding: CutlineSpacing.card,
+              decoration: CutlineDecorations.card(solidColor: CutlineColors.background),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(backgroundImage: NetworkImage(item.profile), radius: 28),
+                  const SizedBox(width: CutlineSpacing.md),
+                  Expanded(child: _WaitingDetails(item: item)),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WaitingDetails extends StatelessWidget {
+  final _WaitingCustomer item;
+
+  const _WaitingDetails({required this.item});
+
+  Color _statusColor(String status) {
     switch (status) {
-      case "Serving Soon":
+      case 'Serving Soon':
         return Colors.green;
-      case "Cancelled":
+      case 'Cancelled':
         return Colors.red;
       default:
-        return Colors.orangeAccent;
+        return CutlineColors.accent;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final sortedList = List<Map<String, dynamic>>.from(waitingList);
-    sortedList.sort((a, b) => sortAscending
-        ? a["timeLeft"].compareTo(b["timeLeft"])
-        : b["timeLeft"].compareTo(a["timeLeft"]));
-
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text(
-          "Waiting for Service",
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+    final statusColor = _statusColor(item.status);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(item.name, style: CutlineTextStyles.subtitleBold.copyWith(fontSize: 16)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+              child: Text(item.status, style: TextStyle(color: statusColor, fontWeight: FontWeight.w600, fontSize: 12)),
+            ),
+          ],
         ),
-        centerTitle: true,
-        elevation: 0,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF1E88E5), Color(0xFF1565C0)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
+        const SizedBox(height: 6),
+        Text('Barber: ${item.barber}', style: CutlineTextStyles.caption.copyWith(fontSize: 13)),
+        Text('Service: ${item.service}', style: CutlineTextStyles.caption.copyWith(fontSize: 13)),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            const Icon(Icons.access_time, size: 16, color: CutlineColors.primary),
+            const SizedBox(width: 4),
+            Text('${item.timeLeft} min left', style: CutlineTextStyles.subtitleBold.copyWith(color: CutlineColors.primary)),
+          ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.sort, color: Colors.white),
-            tooltip: "Sort by time",
-            onPressed: () {
-              setState(() {
-                sortAscending = !sortAscending;
-              });
-            },
-          ),
-        ],
-      ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: sortedList.length,
-        itemBuilder: (context, index) {
-          final item = sortedList[index];
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12.withOpacity(0.05),
-                  blurRadius: 5,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Profile photo
-                CircleAvatar(
-                  backgroundImage: NetworkImage(item["profile"]),
-                  radius: 28,
-                ),
-                const SizedBox(width: 12),
+      ],
+    );
+  }
+}
 
-                // Info section
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Name + status
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            item["name"],
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: _getStatusColor(item["status"])
-                                  .withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              item["status"],
-                              style: TextStyle(
-                                color: _getStatusColor(item["status"]),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        "Barber: ${item["barber"]}",
-                        style:
-                        const TextStyle(color: Colors.black54, fontSize: 13),
-                      ),
-                      Text(
-                        "Service: ${item["service"]}",
-                        style:
-                        const TextStyle(color: Colors.black54, fontSize: 13),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(Icons.access_time,
-                              size: 16, color: Colors.blueAccent),
-                          const SizedBox(width: 4),
-                          Text(
-                            "${item["timeLeft"]} min left",
-                            style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.blueAccent),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+class _WaitingCustomer {
+  final String profile;
+  final String name;
+  final String barber;
+  final String service;
+  final int timeLeft;
+  final String status;
+
+  const _WaitingCustomer({
+    required this.profile,
+    required this.name,
+    required this.barber,
+    required this.service,
+    required this.timeLeft,
+    required this.status,
+  });
+
+  _WaitingCustomer copyWith({int? timeLeft}) {
+    return _WaitingCustomer(
+      profile: profile,
+      name: name,
+      barber: barber,
+      service: service,
+      timeLeft: timeLeft ?? this.timeLeft,
+      status: status,
     );
   }
 }

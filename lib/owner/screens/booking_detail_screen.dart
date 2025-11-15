@@ -88,9 +88,9 @@ class _ReceiptCard extends StatelessWidget {
             'Stylist: ${salonDetails.stylist}',
             'Date: ${salonDetails.appointment}',
           ].map((line) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(line, style: CutlineTextStyles.body),
-              )),
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(line, style: CutlineTextStyles.body),
+          )),
           const Divider(height: 32),
           const Text('Customer Information', style: CutlineTextStyles.title),
           const SizedBox(height: CutlineSpacing.sm),

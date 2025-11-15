@@ -1,5 +1,9 @@
+import 'package:cutline/owner/screens/owner_home_screen.dart';
+import 'package:cutline/owner/screens/salon_setup_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import '../../barber/screens/barber_home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -89,7 +93,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: ElevatedButton(
                     onPressed: () {
                       // Handle login logic here
-                      Navigator.pushNamed(context, '/user-home');
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => const BarberHomeScreen()),
+                      );
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blueAccent,

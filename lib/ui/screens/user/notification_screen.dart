@@ -1,126 +1,103 @@
+import 'package:cutline/ui/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
 
 class NotificationScreen extends StatelessWidget {
   const NotificationScreen({super.key});
 
+  static final List<_NotificationItem> _todayNotifications = [
+    const _NotificationItem(
+      icon: Icons.check_circle_outline,
+      title: 'Booking Confirmed',
+      message: 'Your booking at Hair Studio is confirmed.',
+      time: '5m ago',
+    ),
+    const _NotificationItem(
+      icon: Icons.alarm,
+      title: 'Almost Your Turn!',
+      message: 'Your turn is in 10 minutes. Please be ready.',
+      time: '30m ago',
+    ),
+  ];
+
+  static final List<_NotificationItem> _earlierNotifications = [
+    const _NotificationItem(
+      icon: Icons.local_offer_outlined,
+      title: 'Special Offer 🎉',
+      message: 'Get 20% off on your next haircut!',
+      time: 'Yesterday',
+    ),
+    const _NotificationItem(
+      icon: Icons.update,
+      title: 'App Update',
+      message: 'We added new features and bug fixes!',
+      time: '2d ago',
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "Notifications",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        centerTitle: true,
-        elevation: 0,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF1E88E5), Color(0xFF1565C0)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-      ),
-      backgroundColor: Colors.white,
+      appBar: const CutlineAppBar(title: 'Notifications', centerTitle: true),
+      backgroundColor: CutlineColors.secondaryBackground,
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: CutlineSpacing.section.copyWith(top: 20, bottom: 32),
         children: [
-          const Text(
-            "Today",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey,
+          const Text('Today', style: CutlineTextStyles.title),
+          const SizedBox(height: CutlineSpacing.sm),
+          ..._todayNotifications.asMap().entries.map(
+            (entry) => CutlineAnimations.staggeredList(
+              index: entry.key,
+              child: _NotificationTile(item: entry.value),
             ),
           ),
-          const SizedBox(height: 10),
-          _buildNotificationTile(
-            icon: Icons.check_circle_outline,
-            title: "Booking Confirmed",
-            message: "Your booking at Hair Studio is confirmed.",
-            time: "5m ago",
-          ),
-          _buildNotificationTile(
-            icon: Icons.alarm,
-            title: "Almost Your Turn!",
-            message: "Your turn is in 10 minutes. Please be ready.",
-            time: "30m ago",
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            "Earlier",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey,
+          const SizedBox(height: CutlineSpacing.lg),
+          const Text('Earlier', style: CutlineTextStyles.title),
+          const SizedBox(height: CutlineSpacing.sm),
+          ..._earlierNotifications.asMap().entries.map(
+            (entry) => CutlineAnimations.staggeredList(
+              index: entry.key,
+              child: _NotificationTile(item: entry.value),
             ),
-          ),
-          const SizedBox(height: 10),
-          _buildNotificationTile(
-            icon: Icons.local_offer_outlined,
-            title: "Special Offer 🎉",
-            message: "Get 20% off on your next haircut!",
-            time: "Yesterday",
-          ),
-          _buildNotificationTile(
-            icon: Icons.update,
-            title: "App Update",
-            message: "We added new features and bug fixes!",
-            time: "2d ago",
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildNotificationTile({
-    required IconData icon,
-    required String title,
-    required String message,
-    required String time,
-  }) {
+class _NotificationTile extends StatelessWidget {
+  final _NotificationItem item;
+
+  const _NotificationTile({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.15),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+      margin: const EdgeInsets.only(bottom: CutlineSpacing.sm),
+      decoration: CutlineDecorations.card(solidColor: CutlineColors.background),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: const Color(0xFFE3F2FD),
-          child: Icon(icon, color: const Color(0xFF1E88E5)),
+          backgroundColor: CutlineColors.primary.withValues(alpha: 0.1),
+          child: Icon(item.icon, color: CutlineColors.primary),
         ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
-          ),
-        ),
-        subtitle: Text(
-          message,
-          style: const TextStyle(
-            fontSize: 13,
-            color: Colors.black54,
-          ),
-        ),
-        trailing: Text(
-          time,
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
-        ),
+        title: Text(item.title, style: CutlineTextStyles.subtitleBold),
+        subtitle: Text(item.message, style: CutlineTextStyles.caption.copyWith(fontSize: 13)),
+        trailing: Text(item.time, style: CutlineTextStyles.caption),
       ),
     );
   }
+}
+
+class _NotificationItem {
+  final IconData icon;
+  final String title;
+  final String message;
+  final String time;
+
+  const _NotificationItem({
+    required this.icon,
+    required this.title,
+    required this.message,
+    required this.time,
+  });
 }

@@ -1,6 +1,7 @@
 import 'package:cutline/ui/screens/user/salon_gallery_screen.dart';
 import 'package:cutline/ui/screens/user/view_all_salon_services.dart';
 import 'package:cutline/ui/screens/user/waiting_customer_screen.dart';
+import 'package:cutline/ui/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -18,7 +19,7 @@ class SalonDetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _SalonTheme.background,
+      backgroundColor: CutlineColors.background,
       appBar: SalonDetailsAppBar(titleText: salonName),
       body: SingleChildScrollView(
         child: Column(
@@ -59,9 +60,9 @@ class SalonDetailsAppBar extends StatelessWidget implements PreferredSizeWidget 
   @override
   Widget build(BuildContext context) {
     return AppBar(
-      title: Text(titleText, style: _SalonTextStyles.appBarTitle),
-      backgroundColor: _SalonTheme.background,
-      foregroundColor: _SalonTheme.primary,
+      title: Text(titleText, style: CutlineTextStyles.appBarTitle),
+      backgroundColor: CutlineColors.background,
+      foregroundColor: CutlineColors.primary,
       elevation: 0.5,
       actions: [
         IconButton(
@@ -109,8 +110,8 @@ class SalonInfoSection extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            _SalonTheme.primary.withValues(alpha: 0.05),
-            _SalonTheme.background,
+            CutlineColors.primary.withValues(alpha: 0.05),
+            CutlineColors.background,
           ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
@@ -126,15 +127,18 @@ class SalonInfoSection extends StatelessWidget {
               Expanded(
                 child: Text(
                   salonName,
-                  style: _SalonTextStyles.heroTitle,
+                  style: CutlineTextStyles.title.copyWith(
+                    fontSize: 22,
+                    color: CutlineColors.primary,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               Row(
                 children: const [
-                  Icon(Icons.star, color: _SalonTheme.accent, size: 20),
+                  Icon(Icons.star, color: CutlineColors.accent, size: 20),
                   SizedBox(width: 4),
-                  Text('4.6 (120 reviews)', style: _SalonTextStyles.subtitleBold),
+                  Text('4.6 (120 reviews)', style: CutlineTextStyles.subtitleBold),
                 ],
               ),
             ],
@@ -142,12 +146,12 @@ class SalonInfoSection extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
-              const Icon(Icons.location_on, size: 18, color: _SalonTheme.primary),
+              const Icon(Icons.location_on, size: 18, color: CutlineColors.primary),
               const SizedBox(width: 6),
               const Expanded(
                 child: Text(
                   'Banani, Dhaka • 0.8 km away',
-                  style: _SalonTextStyles.body,
+                  style: CutlineTextStyles.body,
                 ),
               ),
               TextButton(
@@ -159,7 +163,7 @@ class SalonInfoSection extends StatelessWidget {
                   minimumSize: const Size(40, 20),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                child: const Text('See Map', style: _SalonTextStyles.link),
+                child: const Text('See Map', style: CutlineTextStyles.link),
               ),
             ],
           ),
@@ -178,7 +182,7 @@ class SalonInfoSection extends StatelessWidget {
               child: const Text(
                 '+880 1700 123456',
                 style: TextStyle(
-                  color: _SalonTheme.primary,
+                  color: CutlineColors.primary,
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                 ),
@@ -214,21 +218,21 @@ class WorkingHoursCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: _SalonTheme.sectionPadding,
+      padding: CutlineSpacing.section,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
-        decoration: _SalonDecorations.elevated(
-          colors: [_SalonTheme.background, _SalonTheme.primary.withValues(alpha: 0.06)],
+        decoration: CutlineDecorations.card(
+          colors: [CutlineColors.background, CutlineColors.primary.withValues(alpha: 0.06)],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: const [
-                Icon(Icons.schedule_rounded, color: _SalonTheme.primary, size: 22),
+                Icon(Icons.schedule_rounded, color: CutlineColors.primary, size: 22),
                 SizedBox(width: 8),
-                Text('Working Hours', style: _SalonTextStyles.sectionTitle),
+                Text('Working Hours', style: CutlineTextStyles.title),
               ],
             ),
             const Divider(height: 18, thickness: 0.6),
@@ -238,8 +242,8 @@ class WorkingHoursCard extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(hour.label, style: _SalonTextStyles.body.copyWith(fontSize: 15)),
-                    Text(hour.timeRange, style: _SalonTextStyles.caption.copyWith(fontSize: 15)),
+                    Text(hour.label, style: CutlineTextStyles.body.copyWith(fontSize: 15)),
+                    Text(hour.timeRange, style: CutlineTextStyles.caption.copyWith(fontSize: 15)),
                   ],
                 ),
               ),
@@ -308,11 +312,11 @@ class BarberListSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: _SalonTheme.sectionPadding,
+      padding: CutlineSpacing.section,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Our Barbers', style: _SalonTextStyles.sectionTitle),
+          const Text('Our Barbers', style: CutlineTextStyles.title),
           const SizedBox(height: 12),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -340,8 +344,8 @@ class _BarberCard extends StatelessWidget {
     return Container(
       width: 170,
       margin: const EdgeInsets.only(right: 12, bottom: 8),
-      decoration: _SalonDecorations.elevated(
-        colors: [_SalonTheme.background, _SalonTheme.primary.withValues(alpha: 0.04)],
+      decoration: CutlineDecorations.card(
+        colors: [CutlineColors.background, CutlineColors.primary.withValues(alpha: 0.04)],
       ),
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -351,15 +355,15 @@ class _BarberCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             barber.name,
-            style: _SalonTextStyles.subtitleBold.copyWith(fontSize: 15),
+            style: CutlineTextStyles.subtitleBold.copyWith(fontSize: 15),
           ),
           const SizedBox(height: 4),
-          Text(barber.skills, style: _SalonTextStyles.caption),
+          Text(barber.skills, style: CutlineTextStyles.caption),
           const SizedBox(height: 6),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.star, color: _SalonTheme.accent, size: 16),
+              const Icon(Icons.star, color: CutlineColors.accent, size: 16),
               const SizedBox(width: 4),
               Text('${barber.rating}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
             ],
@@ -378,9 +382,9 @@ class _BarberCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.people_alt_rounded, color: _SalonTheme.primary, size: 14),
+                const Icon(Icons.people_alt_rounded, color: CutlineColors.primary, size: 14),
                 const SizedBox(width: 4),
-                Text('${barber.waitingClients} waiting', style: _SalonTextStyles.caption),
+                Text('${barber.waitingClients} waiting', style: CutlineTextStyles.caption),
               ],
             ),
           ],
@@ -399,14 +403,14 @@ class SalonGallerySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: _SalonTheme.sectionPadding.copyWith(bottom: 8),
+      padding: CutlineSpacing.section.copyWith(bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Salon Gallery', style: _SalonTextStyles.sectionTitle),
+              const Text('Salon Gallery', style: CutlineTextStyles.title),
               TextButton(
                 onPressed: () {
                   Navigator.push(
@@ -416,7 +420,7 @@ class SalonGallerySection extends StatelessWidget {
                     ),
                   );
                 },
-                child: const Text('See all', style: _SalonTextStyles.link),
+                child: const Text('See all', style: CutlineTextStyles.link),
               ),
             ],
           ),
@@ -450,14 +454,14 @@ class ComboOfferCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: _SalonTheme.sectionPadding,
+      padding: CutlineSpacing.section,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Combo Offers', style: _SalonTextStyles.sectionTitle),
+              const Text('Combo Offers', style: CutlineTextStyles.title),
               TextButton(
                 onPressed: () {
                   Navigator.push(
@@ -467,7 +471,7 @@ class ComboOfferCard extends StatelessWidget {
                     ),
                   );
                 },
-                child: const Text('See all', style: _SalonTextStyles.link),
+                child: const Text('See all', style: CutlineTextStyles.link),
               ),
             ],
           ),
@@ -479,7 +483,7 @@ class ComboOfferCard extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(_SalonTheme.cardRadius),
+              borderRadius: BorderRadius.circular(CutlineDecorations.radius),
               boxShadow: [
                 BoxShadow(
                   color: Colors.orangeAccent.withValues(alpha: 0.3),
@@ -568,11 +572,11 @@ class ServicesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: _SalonTheme.sectionPadding,
+      padding: CutlineSpacing.section,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Services', style: _SalonTextStyles.sectionTitle),
+          const Text('Services', style: CutlineTextStyles.title),
           const SizedBox(height: 12),
           InkWell(
             onTap: () {
@@ -585,15 +589,15 @@ class ServicesSection extends StatelessWidget {
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
-              decoration: _SalonDecorations.elevated(
-                colors: [_SalonTheme.background, _SalonTheme.primary.withValues(alpha: 0.04)],
+              decoration: CutlineDecorations.card(
+                colors: [CutlineColors.background, CutlineColors.primary.withValues(alpha: 0.04)],
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
                     children: const [
-                      Icon(Icons.cut, color: _SalonTheme.primary, size: 26),
+                      Icon(Icons.cut, color: CutlineColors.primary, size: 26),
                       SizedBox(width: 10),
                       Text(
                         'View All Salon Services',
@@ -607,11 +611,11 @@ class ServicesSection extends StatelessWidget {
                   ),
                   Container(
                     decoration: BoxDecoration(
-                      color: _SalonTheme.primary.withValues(alpha: 0.1),
+                      color: CutlineColors.primary.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     padding: const EdgeInsets.all(8),
-                    child: const Icon(Icons.arrow_forward_ios, size: 16, color: _SalonTheme.primary),
+                    child: const Icon(Icons.arrow_forward_ios, size: 16, color: CutlineColors.primary),
                   ),
                 ],
               ),
@@ -661,19 +665,19 @@ class LiveQueueSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: _SalonTheme.sectionPadding,
+      padding: CutlineSpacing.section,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Live Queue', style: _SalonTextStyles.sectionTitle),
+              const Text('Live Queue', style: CutlineTextStyles.title),
               Row(
                 children: const [
-                  Icon(Icons.refresh, size: 16, color: _SalonTheme.primary),
+                  Icon(Icons.refresh, size: 16, color: CutlineColors.primary),
                   SizedBox(width: 4),
-                  Text('Updating live...', style: _SalonTextStyles.caption),
+                  Text('Updating live...', style: CutlineTextStyles.caption),
                 ],
               ),
             ],
@@ -685,16 +689,16 @@ class LiveQueueSection extends StatelessWidget {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  _SalonTheme.primary.withValues(alpha: 0.7),
-                  _SalonTheme.primary,
+                  CutlineColors.primary.withValues(alpha: 0.7),
+                  CutlineColors.primary,
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(_SalonTheme.cardRadius),
+              borderRadius: BorderRadius.circular(CutlineDecorations.radius),
               boxShadow: [
                 BoxShadow(
-                  color: _SalonTheme.primary.withValues(alpha: 0.25),
+                  color: CutlineColors.primary.withValues(alpha: 0.25),
                   blurRadius: 8,
                   offset: const Offset(0, 3),
                 ),
@@ -733,7 +737,7 @@ class LiveQueueSection extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Waiting for Service', style: _SalonTextStyles.subtitleBold),
+              const Text('Waiting for Service', style: CutlineTextStyles.subtitleBold),
               TextButton(
                 onPressed: () {
                   Navigator.push(
@@ -741,7 +745,7 @@ class LiveQueueSection extends StatelessWidget {
                     MaterialPageRoute(builder: (context) => const WaitingListScreen()),
                   );
                 },
-                child: const Text('See all', style: _SalonTextStyles.link),
+                child: const Text('See all', style: CutlineTextStyles.link),
               ),
             ],
           ),
@@ -775,7 +779,7 @@ class _QueueCard extends StatelessWidget {
       width: 190,
       margin: const EdgeInsets.only(right: 12),
       padding: const EdgeInsets.all(12),
-      decoration: _SalonDecorations.elevated(solidColor: Colors.white),
+      decoration: CutlineDecorations.card(solidColor: Colors.white),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -790,16 +794,16 @@ class _QueueCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   entry.customerName,
-                  style: _SalonTextStyles.subtitleBold.copyWith(fontSize: 14),
+                  style: CutlineTextStyles.subtitleBold.copyWith(fontSize: 14),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 6),
-          Text('Barber: ${entry.barber}', style: _SalonTextStyles.caption),
+          Text('Barber: ${entry.barber}', style: CutlineTextStyles.caption),
           const SizedBox(height: 4),
-          const Text('Service: Haircut', style: _SalonTextStyles.caption),
+          const Text('Service: Haircut', style: CutlineTextStyles.caption),
           const SizedBox(height: 4),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -842,7 +846,7 @@ class BookNowFab extends StatelessWidget {
         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
       ),
       icon: const Icon(Icons.calendar_month_rounded, color: Colors.white),
-      backgroundColor: _SalonTheme.primary,
+      backgroundColor: CutlineColors.primary,
     );
   }
 }
@@ -863,12 +867,12 @@ class _IconTextRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textWidget = labelWidget ?? Text(label ?? '', style: _SalonTextStyles.body);
+    final textWidget = labelWidget ?? Text(label ?? '', style: CutlineTextStyles.body);
 
     return Row(
       crossAxisAlignment: wrap ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
-        Icon(icon, size: 18, color: _SalonTheme.primary),
+        Icon(icon, size: 18, color: CutlineColors.primary),
         const SizedBox(width: 6),
         wrap ? Expanded(child: textWidget) : textWidget,
       ],
@@ -915,59 +919,4 @@ class _WorkingHour {
   final String timeRange;
 
   const _WorkingHour({required this.label, required this.timeRange});
-}
-
-class _SalonTheme {
-  static const Color primary = Colors.blueAccent;
-  static const Color accent = Colors.orangeAccent;
-  static const Color background = Colors.white;
-  static const EdgeInsets sectionPadding = EdgeInsets.symmetric(horizontal: 16.0);
-  static const double cardRadius = 16.0;
-}
-
-class _SalonTextStyles {
-  static const TextStyle appBarTitle = TextStyle(fontWeight: FontWeight.bold);
-  static const TextStyle heroTitle = TextStyle(
-    fontSize: 22,
-    fontWeight: FontWeight.bold,
-    color: _SalonTheme.primary,
-  );
-  static const TextStyle sectionTitle = TextStyle(
-    fontSize: 18,
-    fontWeight: FontWeight.bold,
-    color: Colors.black87,
-  );
-  static const TextStyle subtitleBold = TextStyle(
-    color: Colors.black87,
-    fontWeight: FontWeight.w600,
-  );
-  static const TextStyle body = TextStyle(color: Colors.black87, fontSize: 14);
-  static const TextStyle caption = TextStyle(color: Colors.black54, fontSize: 13);
-  static const TextStyle link = TextStyle(
-    color: _SalonTheme.primary,
-    fontWeight: FontWeight.w600,
-    fontSize: 14,
-  );
-}
-
-class _SalonDecorations {
-  static BoxDecoration elevated({
-    List<Color>? colors,
-    Alignment begin = Alignment.topLeft,
-    Alignment end = Alignment.bottomRight,
-    Color? solidColor,
-  }) {
-    return BoxDecoration(
-      color: solidColor,
-      gradient: colors != null ? LinearGradient(colors: colors, begin: begin, end: end) : null,
-      borderRadius: BorderRadius.circular(_SalonTheme.cardRadius),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black12.withValues(alpha: 0.08),
-          blurRadius: 8,
-          offset: const Offset(0, 3),
-        ),
-      ],
-    );
-  }
 }

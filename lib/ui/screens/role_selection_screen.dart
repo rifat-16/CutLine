@@ -40,7 +40,6 @@ class RoleSelectionScreen extends StatelessWidget {
                 description: 'Find salons nearby & book your spot easily.',
                 color: Colors.blueAccent,
                 onTap: () {
-                  // Navigate to customer flow
                   Navigator.pushNamed(context, '/login');
                 },
               ),
@@ -51,9 +50,16 @@ class RoleSelectionScreen extends StatelessWidget {
                 title: 'I’m a Salon Owner',
                 description: 'Manage queues & serve customers faster.',
                 color: Colors.orangeAccent,
-                onTap: () {
-                  // Navigate to owner flow
-                },
+                onTap: () => Navigator.pushNamed(context, '/owner-home'),
+              ),
+              const SizedBox(height: 20),
+              _buildRoleCard(
+                context,
+                icon: Icons.content_cut,
+                title: 'I’m a Barber',
+                description: 'See the queue, start cuts & update wait time.',
+                color: Colors.indigoAccent,
+                onTap: () => Navigator.pushNamed(context, '/barber-home'),
               ),
               const Spacer(),
             ],
@@ -92,7 +98,7 @@ class RoleSelectionScreen extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 26,
-                backgroundColor: color.withOpacity(0.15),
+                backgroundColor: color.withValues(alpha: 0.15),
                 child: Icon(icon, color: color, size: 28),
               ),
               const SizedBox(width: 20),

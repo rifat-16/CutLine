@@ -1,3 +1,4 @@
+import 'package:cutline/ui/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
 
 class ChatsScreen extends StatelessWidget {
@@ -6,26 +7,20 @@ class ChatsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chats'),
-        centerTitle: true,
-      ),
+      appBar: const CutlineAppBar(title: 'Chats', centerTitle: true),
+      backgroundColor: CutlineColors.secondaryBackground,
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.chat_bubble_outline, size: 80, color: Colors.grey),
-            SizedBox(height: 20),
-            Text(
-              'Coming Soon',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Chat feature is on the way!',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ],
+        child: CutlineAnimations.entrance(
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.chat_bubble_outline, size: 80, color: Colors.grey),
+              SizedBox(height: CutlineSpacing.sm),
+              Text('Coming Soon', style: CutlineTextStyles.title),
+              SizedBox(height: CutlineSpacing.xs),
+              Text('Chat feature is on the way!', style: CutlineTextStyles.subtitle),
+            ],
+          ),
         ),
       ),
     );
