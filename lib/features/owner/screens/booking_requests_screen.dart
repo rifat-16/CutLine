@@ -1,59 +1,81 @@
+import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/owner/providers/booking_requests_provider.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
+import 'package:cutline/features/owner/widgets/customer_detail_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
-class BookingRequestsScreen extends StatefulWidget {
+class BookingRequestsScreen extends StatelessWidget {
   const BookingRequestsScreen({super.key});
 
   @override
-  State<BookingRequestsScreen> createState() => _BookingRequestsScreenState();
-}
-
-class _BookingRequestsScreenState extends State<BookingRequestsScreen> {
-  late List<OwnerBookingRequest> _requests;
-  final _formatter = DateFormat('EEE, d MMM • hh:mm a');
-
-  @override
-  void initState() {
-    super.initState();
-    _requests = List.of(kOwnerBookingRequests);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FB),
-      appBar: AppBar(
-        title: const Text('Booking requests'),
-        backgroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
-        itemCount: _requests.length,
-        itemBuilder: (_, index) {
-          final request = _requests[index];
-          return _BookingRequestCard(
-            request: request,
-            formatter: _formatter,
-            onDecision: (status) => _updateRequest(request.id, status),
-          );
-        },
-      ),
+    return ChangeNotifierProvider(
+      create: (context) {
+        final auth = context.read<AuthProvider>();
+        final provider = BookingRequestsProvider(authProvider: auth);
+        provider.load();
+        return provider;
+      },
+      builder: (context, _) {
+        final provider = context.watch<BookingRequestsProvider>();
+        return Scaffold(
+          backgroundColor: const Color(0xFFF4F6FB),
+          appBar: AppBar(
+            title: const Text('Booking requests'),
+            backgroundColor: Colors.white,
+            elevation: 0,
+          ),
+          body: RefreshIndicator(
+            onRefresh: () => provider.load(),
+            child: provider.isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : provider.requests.isEmpty
+                    ? const Center(
+                        child: Text('No booking requests right now.'),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+                        itemCount: provider.requests.length,
+                        itemBuilder: (_, index) {
+                          final request = provider.requests[index];
+                          return _BookingRequestCard(
+                            request: request,
+                            formatter:
+                                DateFormat('EEE, d MMM • hh:mm a'),
+                            onDecision: (status) => provider.updateStatus(
+                              request.id,
+                              status,
+                            ),
+                            onOpenDetail: () =>
+                                _openCustomerDetails(context, request),
+                          );
+                        },
+                      ),
+          ),
+        );
+      },
     );
   }
 
-  void _updateRequest(String id, OwnerBookingRequestStatus status) {
-    setState(() {
-      _requests = _requests
-          .map((request) =>
-              request.id == id ? request.copyWith(status: status) : request)
-          .toList();
-    });
-    final label = status == OwnerBookingRequestStatus.accepted
-        ? 'Booking accepted'
-        : 'Booking rejected';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(label)));
+  void _openCustomerDetails(
+      BuildContext context, OwnerBookingRequest request) {
+    showCustomerDetailSheet(
+      context: context,
+      item: OwnerQueueItem(
+        id: request.id,
+        customerName: request.customerName,
+        service: request.services.join(', '),
+        barberName: request.barberName,
+        price: request.totalPrice,
+        status: OwnerQueueStatus.waiting,
+        waitMinutes: request.durationMinutes,
+        slotLabel: request.id,
+        customerPhone: request.customerPhone,
+      ),
+      onStatusChange: (_) {},
+    );
   }
 }
 
@@ -61,11 +83,13 @@ class _BookingRequestCard extends StatelessWidget {
   final OwnerBookingRequest request;
   final DateFormat formatter;
   final ValueChanged<OwnerBookingRequestStatus> onDecision;
+  final VoidCallback onOpenDetail;
 
   const _BookingRequestCard({
     required this.request,
     required this.formatter,
     required this.onDecision,
+    required this.onOpenDetail,
   });
 
   @override
@@ -91,19 +115,22 @@ class _BookingRequestCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor:
-                    hasAvatar ? const Color(0xFFE8ECF6) : const Color(0xFF2563EB),
-                backgroundImage:
-                    hasAvatar ? NetworkImage(request.customerAvatar) : null,
-                child: hasAvatar
-                    ? null
-                    : Text(
-                        _initials(request.customerName),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, color: Colors.white),
-                      ),
+              GestureDetector(
+                onTap: onOpenDetail,
+                child: CircleAvatar(
+                  radius: 28,
+                  backgroundColor:
+                      hasAvatar ? const Color(0xFFE8ECF6) : const Color(0xFF2563EB),
+                  backgroundImage:
+                      hasAvatar ? NetworkImage(request.customerAvatar) : null,
+                  child: hasAvatar
+                      ? null
+                      : Text(
+                          _initials(request.customerName),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -181,8 +208,7 @@ class _BookingRequestCard extends StatelessWidget {
                 Expanded(
                   child: _DecisionButton(
                     label: 'Accept',
-                    onTap: () =>
-                        onDecision(OwnerBookingRequestStatus.accepted),
+                    onTap: () => onDecision(OwnerBookingRequestStatus.accepted),
                     isPrimary: true,
                   ),
                 ),
@@ -190,8 +216,7 @@ class _BookingRequestCard extends StatelessWidget {
                 Expanded(
                   child: _DecisionButton(
                     label: 'Reject',
-                    onTap: () =>
-                        onDecision(OwnerBookingRequestStatus.rejected),
+                    onTap: () => onDecision(OwnerBookingRequestStatus.rejected),
                     isPrimary: false,
                   ),
                 ),

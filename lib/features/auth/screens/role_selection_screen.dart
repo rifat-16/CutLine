@@ -1,3 +1,5 @@
+import 'package:cutline/features/auth/models/user_role.dart';
+import 'package:cutline/routes/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -40,7 +42,11 @@ class RoleSelectionScreen extends StatelessWidget {
                 description: 'Find salons nearby & book your spot easily.',
                 color: Colors.blueAccent,
                 onTap: () {
-                  Navigator.pushNamed(context, '/login');
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.login,
+                    arguments: UserRole.customer,
+                  );
                 },
               ),
               const SizedBox(height: 20),
@@ -50,7 +56,7 @@ class RoleSelectionScreen extends StatelessWidget {
                 title: 'I’m a Salon Owner',
                 description: 'Manage queues & serve customers faster.',
                 color: Colors.orangeAccent,
-                onTap: () => Navigator.pushNamed(context, '/owner-home'),
+                onTap: () => Navigator.pushNamed(context, AppRoutes.ownerLogin),
               ),
               const SizedBox(height: 20),
               _buildRoleCard(
@@ -59,7 +65,10 @@ class RoleSelectionScreen extends StatelessWidget {
                 title: 'I’m a Barber',
                 description: 'See the queue, start cuts & update wait time.',
                 color: Colors.indigoAccent,
-                onTap: () => Navigator.pushNamed(context, '/barber-home'),
+                onTap: () => Navigator.pushNamed(
+                  context,
+                  AppRoutes.barberLogin,
+                ),
               ),
               const Spacer(),
             ],
@@ -70,13 +79,13 @@ class RoleSelectionScreen extends StatelessWidget {
   }
 
   Widget _buildRoleCard(
-      BuildContext context, {
-        required IconData icon,
-        required String title,
-        required String description,
-        required Color color,
-        required VoidCallback onTap,
-      }) {
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String description,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),

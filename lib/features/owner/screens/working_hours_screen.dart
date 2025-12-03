@@ -1,5 +1,8 @@
+import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/owner/providers/working_hours_provider.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class WorkingHoursScreen extends StatefulWidget {
   const WorkingHoursScreen({super.key});
@@ -9,72 +12,103 @@ class WorkingHoursScreen extends StatefulWidget {
 }
 
 class _WorkingHoursScreenState extends State<WorkingHoursScreen> {
-  late List<OwnerWorkingDay> _days;
-
-  @override
-  void initState() {
-    super.initState();
-    _days = List.of(kOwnerDefaultWorkingDays);
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FB),
-      appBar: AppBar(
-        title: const Text('Working hours'),
-        backgroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
-        children: [
-          const Text(
-            'Toggle the days you are open and fine tune the opening & closing slots.',
-            style: TextStyle(color: Colors.black54),
+    return ChangeNotifierProvider(
+      create: (context) {
+        final auth = context.read<AuthProvider>();
+        final provider = WorkingHoursProvider(authProvider: auth);
+        provider.load();
+        return provider;
+      },
+      builder: (context, _) {
+        final provider = context.watch<WorkingHoursProvider>();
+        return Scaffold(
+          backgroundColor: const Color(0xFFF4F6FB),
+          appBar: AppBar(
+            title: const Text('Working hours'),
+            backgroundColor: Colors.white,
+            elevation: 0,
           ),
-          const SizedBox(height: 16),
-          ..._days.asMap().entries.map((entry) {
-            final index = entry.key;
-            final day = entry.value;
-            return _WorkingDayRow(
-              day: day,
-              onToggle: (value) => _toggleDay(index, value),
-              onPickTime: (isOpen) => _pickTime(index, isOpen),
-            );
-          }),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: () {},
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18)),
-            ),
-            child: const Text('Save schedule'),
-          ),
-        ],
-      ),
+          body: provider.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+                  children: [
+                    const Text(
+                      'Toggle the days you are open and fine tune the opening & closing slots.',
+                      style: TextStyle(color: Colors.black54),
+                    ),
+                    const SizedBox(height: 16),
+                    if (provider.error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          provider.error!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    ...provider.days.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final day = entry.value;
+                      return _WorkingDayRow(
+                        day: day,
+                        onToggle: (value) => provider.updateDay(
+                            index, day.copyWith(isOpen: value)),
+                        onPickTime: (isOpen) =>
+                            _pickTime(provider, index, isOpen),
+                      );
+                    }),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: provider.isLoading || !provider.hasChanges
+                          ? null
+                          : () async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              await provider.save();
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                    content: Text('Schedule saved'),
+                                    backgroundColor: Colors.green),
+                              );
+                            },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18)),
+                        backgroundColor: provider.hasChanges
+                            ? const Color(0xFF2563EB)
+                            : Colors.grey.shade200,
+                        foregroundColor:
+                            provider.hasChanges ? Colors.white : Colors.black54,
+                      ),
+                      child: Text(
+                        provider.isLoading
+                            ? 'Saving...'
+                            : provider.hasChanges
+                                ? 'Save schedule'
+                                : 'No changes',
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
     );
   }
 
-  void _toggleDay(int index, bool isOpen) {
-    setState(() {
-      _days[index] = _days[index].copyWith(isOpen: isOpen);
-    });
-  }
-
-  Future<void> _pickTime(int index, bool isOpenTime) async {
-    final current = _days[index];
+  Future<void> _pickTime(
+      WorkingHoursProvider provider, int index, bool isOpenTime) async {
+    final current = provider.days[index];
     final initial = isOpenTime ? current.openTime : current.closeTime;
     final picked = await showTimePicker(context: context, initialTime: initial);
     if (picked != null) {
-      setState(() {
-        _days[index] = _days[index].copyWith(
-          openTime: isOpenTime ? picked : current.openTime,
-          closeTime: isOpenTime ? current.closeTime : picked,
-        );
-      });
+      final updated = current.copyWith(
+        openTime: isOpenTime ? picked : current.openTime,
+        closeTime: isOpenTime ? current.closeTime : picked,
+      );
+      provider.updateDay(index, updated);
     }
   }
 }

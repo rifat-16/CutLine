@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:cutline/features/owner/providers/salon_setup_provider.dart';
 
 class AddBarberForm extends StatefulWidget {
-  const AddBarberForm({super.key});
+  const AddBarberForm({super.key, this.onChanged});
+
+  final ValueChanged<List<BarberInput>>? onChanged;
 
   @override
   State<AddBarberForm> createState() => _AddBarberFormState();
@@ -14,6 +17,8 @@ class _AddBarberFormState extends State<AddBarberForm> {
   void initState() {
     super.initState();
     _addBarber();
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => widget.onChanged?.call(_collect()));
   }
 
   @override
@@ -29,10 +34,18 @@ class _AddBarberFormState extends State<AddBarberForm> {
       labelText: label,
       prefixIcon: Icon(icon),
       filled: true,
-      fillColor: Colors.grey.shade100,
+      fillColor: Colors.white,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: BorderSide.none,
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: Colors.blueAccent, width: 1.5),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
     );
@@ -72,6 +85,10 @@ class _AddBarberFormState extends State<AddBarberForm> {
               data: data,
               decorationBuilder: _inputDecoration,
               onRemove: _barbers.length > 1 ? () => _removeBarber(index) : null,
+              onChanged: () =>
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                widget.onChanged?.call(_collect());
+              }),
             ),
           );
         }),
@@ -89,6 +106,8 @@ class _AddBarberFormState extends State<AddBarberForm> {
 
   void _addBarber() {
     setState(() => _barbers.add(_BarberFieldData()));
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => widget.onChanged?.call(_collect()));
   }
 
   void _removeBarber(int index) {
@@ -96,6 +115,24 @@ class _AddBarberFormState extends State<AddBarberForm> {
       final removed = _barbers.removeAt(index);
       removed.dispose();
     });
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => widget.onChanged?.call(_collect()));
+  }
+
+  List<BarberInput> _collect() {
+    return _barbers
+        .map((b) => BarberInput(
+              name: b.nameController.text,
+              specialization: b.specializationController.text,
+              email: b.emailController.text,
+              phone: b.phoneController.text,
+              password: b.passwordController.text,
+            ))
+        .where((b) =>
+            b.email.trim().isNotEmpty &&
+            b.password.trim().isNotEmpty &&
+            b.name.trim().isNotEmpty)
+        .toList();
   }
 }
 
@@ -103,11 +140,13 @@ class _BarberCard extends StatefulWidget {
   final _BarberFieldData data;
   final InputDecoration Function(String label, IconData icon) decorationBuilder;
   final VoidCallback? onRemove;
+  final VoidCallback? onChanged;
 
   const _BarberCard({
     required this.data,
     required this.decorationBuilder,
     this.onRemove,
+    this.onChanged,
   });
 
   @override
@@ -116,6 +155,21 @@ class _BarberCard extends StatefulWidget {
 
 class _BarberCardState extends State<_BarberCard> {
   bool _showPassword = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.data.nameController.addListener(_emit);
+    widget.data.specializationController.addListener(_emit);
+    widget.data.emailController.addListener(_emit);
+    widget.data.phoneController.addListener(_emit);
+    widget.data.passwordController.addListener(_emit);
+  }
+
+  void _emit() {
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => widget.onChanged?.call());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -138,7 +192,8 @@ class _BarberCardState extends State<_BarberCard> {
               if (widget.onRemove != null)
                 IconButton(
                   onPressed: widget.onRemove,
-                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                  icon:
+                      const Icon(Icons.delete_outline, color: Colors.redAccent),
                 ),
             ],
           ),
@@ -147,6 +202,12 @@ class _BarberCardState extends State<_BarberCard> {
             controller: widget.data.nameController,
             decoration:
                 widget.decorationBuilder('Full name', Icons.person_outline),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: widget.data.specializationController,
+            decoration:
+                widget.decorationBuilder('Specialist', Icons.cut_outlined),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -187,12 +248,15 @@ class _BarberCardState extends State<_BarberCard> {
 
 class _BarberFieldData {
   final TextEditingController nameController = TextEditingController();
+  final TextEditingController specializationController =
+      TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
 
   void dispose() {
     nameController.dispose();
+    specializationController.dispose();
     emailController.dispose();
     phoneController.dispose();
     passwordController.dispose();

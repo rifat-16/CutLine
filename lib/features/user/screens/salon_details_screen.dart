@@ -1,11 +1,7 @@
-import 'package:cutline/features/user/screens/salon_gallery_screen.dart';
-import 'package:cutline/features/user/screens/view_all_salon_services.dart';
-import 'package:cutline/features/user/screens/waiting_customer_screen.dart';
+import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-
-import 'booking_screen.dart';
 
 // Root screen wiring together all sections.
 class SalonDetailsScreen extends StatelessWidget {
@@ -34,7 +30,7 @@ class SalonDetailsScreen extends StatelessWidget {
             _mediumGap,
             SalonGallerySection(salonName: salonName),
             _mediumGap,
-            const ComboOfferCard(),
+            ComboOfferCard(salonName: salonName),
             _mediumGap,
             ServicesSection(salonName: salonName),
             _mediumGap,
@@ -413,11 +409,10 @@ class SalonGallerySection extends StatelessWidget {
               const Text('Salon Gallery', style: CutlineTextStyles.title),
               TextButton(
                 onPressed: () {
-                  Navigator.push(
+                  Navigator.pushNamed(
                     context,
-                    MaterialPageRoute(
-                      builder: (context) => SalonGalleryScreen(salonName: salonName),
-                    ),
+                    AppRoutes.salonGallery,
+                    arguments: SalonGalleryArgs(salonName: salonName),
                   );
                 },
                 child: const Text('See all', style: CutlineTextStyles.link),
@@ -449,7 +444,9 @@ class SalonGallerySection extends StatelessWidget {
 
 // Combo offer highlight.
 class ComboOfferCard extends StatelessWidget {
-  const ComboOfferCard({super.key});
+  final String salonName;
+
+  const ComboOfferCard({super.key, required this.salonName});
 
   @override
   Widget build(BuildContext context) {
@@ -464,11 +461,10 @@ class ComboOfferCard extends StatelessWidget {
               const Text('Combo Offers', style: CutlineTextStyles.title),
               TextButton(
                 onPressed: () {
-                  Navigator.push(
+                  Navigator.pushNamed(
                     context,
-                    MaterialPageRoute(
-                      builder: (context) => const ViewAllSalonServices(salonName: ''),
-                    ),
+                    AppRoutes.viewAllServices,
+                    arguments: ViewAllServicesArgs(salonName: salonName),
                   );
                 },
                 child: const Text('See all', style: CutlineTextStyles.link),
@@ -580,11 +576,10 @@ class ServicesSection extends StatelessWidget {
           const SizedBox(height: 12),
           InkWell(
             onTap: () {
-              Navigator.push(
+              Navigator.pushNamed(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => ViewAllSalonServices(salonName: salonName),
-                ),
+                AppRoutes.viewAllServices,
+                arguments: ViewAllServicesArgs(salonName: salonName),
               );
             },
             child: Container(
@@ -740,10 +735,7 @@ class LiveQueueSection extends StatelessWidget {
               const Text('Waiting for Service', style: CutlineTextStyles.subtitleBold),
               TextButton(
                 onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const WaitingListScreen()),
-                  );
+                  Navigator.pushNamed(context, AppRoutes.waitingCustomers);
                 },
                 child: const Text('See all', style: CutlineTextStyles.link),
               ),
@@ -836,10 +828,7 @@ class BookNowFab extends StatelessWidget {
   Widget build(BuildContext context) {
     return FloatingActionButton.extended(
       onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const BookingScreen()),
-        );
+        Navigator.pushNamed(context, AppRoutes.booking);
       },
       label: const Text(
         'Book Now',

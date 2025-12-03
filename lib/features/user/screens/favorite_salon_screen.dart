@@ -1,4 +1,4 @@
-import 'package:cutline/features/user/screens/salon_details_screen.dart';
+import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
 
@@ -41,11 +41,10 @@ class FavoriteSalonScreen extends StatelessWidget {
           final salon = _salons[index];
           final card = _FavoriteSalonCard(
             salon: salon,
-            onTap: () => Navigator.push(
+            onTap: () => Navigator.pushNamed(
               context,
-              MaterialPageRoute(
-                builder: (_) => SalonDetailsScreen(salonName: salon.name),
-              ),
+              AppRoutes.salonDetails,
+              arguments: SalonDetailsArgs(salonName: salon.name),
             ),
           );
           return CutlineAnimations.staggeredList(child: card, index: index);

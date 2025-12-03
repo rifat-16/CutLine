@@ -1,25 +1,34 @@
+import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 class BookingReceiptScreen extends StatelessWidget {
-  const BookingReceiptScreen({super.key});
+  const BookingReceiptScreen({super.key, this.booking});
+
+  final OwnerBooking? booking;
 
   @override
   Widget build(BuildContext context) {
-    const salonDetails = _SalonDetails(
-      name: 'Salon Luxe',
-      address: '123 Main Street, Dhaka',
-      phone: '+880 1712 345678',
-      email: 'salonluxe@example.com',
-      stylist: 'Rafi Uddin',
-      appointment: '12 Nov 2025, 3:00 PM',
-    );
+    final ownerName = context.read<AuthProvider>().currentUser?.displayName;
+    final fmt = DateFormat('EEE, d MMM yyyy • hh:mm a');
 
-    const customer = _CustomerInfo(name: 'Boss', phone: '+880 1999 556677', email: 'boss@email.com');
+    final data = booking;
+    if (data == null) {
+      return Scaffold(
+        appBar:
+            const CutlineAppBar(title: 'Booking Receipt', centerTitle: true),
+        body: const Center(child: Text('No booking data')),
+      );
+    }
 
-    const services = [
-      _ServiceLine(title: 'Haircut', price: '৳250', icon: Icons.content_cut),
-      _ServiceLine(title: 'Beard Trim', price: '৳150', icon: Icons.face_6_outlined),
+    final services = [
+      _ServiceLine(
+          title: data.service,
+          price: '৳${data.price}',
+          icon: Icons.content_cut),
     ];
 
     return Scaffold(
@@ -31,10 +40,27 @@ class BookingReceiptScreen extends StatelessWidget {
           children: [
             CutlineAnimations.entrance(
               _ReceiptCard(
-                salonDetails: salonDetails,
-                customer: customer,
+                salonDetails: _SalonDetails(
+                  name: data.salonName,
+                  address: '—',
+                  phone: '',
+                  email: '',
+                  stylist: ownerName ?? 'Stylist',
+                  appointment: fmt.format(data.dateTime),
+                ),
+                customer: _CustomerInfo(
+                  name: data.customerName,
+                  phone: '',
+                  email: '',
+                ),
                 services: services,
-                totals: const _PriceSummary(subtotal: '৳400', serviceCharge: '৳40', total: '৳440'),
+                totals: _PriceSummary(
+                  subtotal: '৳${data.price}',
+                  serviceCharge: '৳0',
+                  total: '৳${data.price}',
+                ),
+                paymentMethod: data.paymentMethod,
+                status: data.status,
               ),
             ),
             const SizedBox(height: CutlineSpacing.lg),
@@ -43,9 +69,12 @@ class BookingReceiptScreen extends StatelessWidget {
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  style: CutlineButtons.primary(padding: const EdgeInsets.symmetric(vertical: 14)),
+                  style: CutlineButtons.primary(
+                      padding: const EdgeInsets.symmetric(vertical: 14)),
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Back to My Bookings', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: const Text('Back to Bookings',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
               ),
             ),
@@ -61,12 +90,16 @@ class _ReceiptCard extends StatelessWidget {
   final _CustomerInfo customer;
   final List<_ServiceLine> services;
   final _PriceSummary totals;
+  final String paymentMethod;
+  final OwnerBookingStatus status;
 
   const _ReceiptCard({
     required this.salonDetails,
     required this.customer,
     required this.services,
     required this.totals,
+    required this.paymentMethod,
+    required this.status,
   });
 
   @override
@@ -83,20 +116,22 @@ class _ReceiptCard extends StatelessWidget {
           const SizedBox(height: CutlineSpacing.xs),
           ...[
             salonDetails.address,
-            'Phone: ${salonDetails.phone}',
-            'Email: ${salonDetails.email}',
+            if (salonDetails.phone.isNotEmpty) 'Phone: ${salonDetails.phone}',
+            if (salonDetails.email.isNotEmpty) 'Email: ${salonDetails.email}',
             'Stylist: ${salonDetails.stylist}',
             'Date: ${salonDetails.appointment}',
           ].map((line) => Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(line, style: CutlineTextStyles.body),
-          )),
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(line, style: CutlineTextStyles.body),
+              )),
           const Divider(height: 32),
           const Text('Customer Information', style: CutlineTextStyles.title),
           const SizedBox(height: CutlineSpacing.sm),
           _InfoRow(label: 'Name', value: customer.name),
-          _InfoRow(label: 'Phone', value: customer.phone),
-          _InfoRow(label: 'Email', value: customer.email),
+          if (customer.phone.isNotEmpty)
+            _InfoRow(label: 'Phone', value: customer.phone),
+          if (customer.email.isNotEmpty)
+            _InfoRow(label: 'Email', value: customer.email),
           const Divider(height: 32),
           const Text('Service Details', style: CutlineTextStyles.title),
           const SizedBox(height: CutlineSpacing.sm),
@@ -107,12 +142,13 @@ class _ReceiptCard extends StatelessWidget {
           const Divider(height: 32),
           _PriceRow(label: 'Total', value: totals.total, emphasize: true),
           const SizedBox(height: CutlineSpacing.md),
-          const _PaymentStatusCard(),
+          _PaymentStatusCard(paymentMethod: paymentMethod, status: status),
           const SizedBox(height: CutlineSpacing.lg),
           const Center(
             child: Column(
               children: [
-                Text('Thank you for choosing CutLine 💈', style: CutlineTextStyles.subtitle),
+                Text('Thank you for choosing CutLine 💈',
+                    style: CutlineTextStyles.subtitle),
                 SizedBox(height: 4),
                 Text('Powered by CutLine', style: CutlineTextStyles.caption),
               ],
@@ -150,7 +186,8 @@ class _ServiceLine extends StatelessWidget {
   final String price;
   final IconData icon;
 
-  const _ServiceLine({required this.title, required this.price, required this.icon});
+  const _ServiceLine(
+      {required this.title, required this.price, required this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -178,11 +215,13 @@ class _PriceRow extends StatelessWidget {
   final String value;
   final bool emphasize;
 
-  const _PriceRow({required this.label, required this.value, this.emphasize = false});
+  const _PriceRow(
+      {required this.label, required this.value, this.emphasize = false});
 
   @override
   Widget build(BuildContext context) {
-    final style = emphasize ? CutlineTextStyles.title : CutlineTextStyles.subtitleBold;
+    final style =
+        emphasize ? CutlineTextStyles.title : CutlineTextStyles.subtitleBold;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -197,10 +236,17 @@ class _PriceRow extends StatelessWidget {
 }
 
 class _PaymentStatusCard extends StatelessWidget {
-  const _PaymentStatusCard();
+  final String paymentMethod;
+  final OwnerBookingStatus status;
+
+  const _PaymentStatusCard({
+    required this.paymentMethod,
+    required this.status,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final statusLabel = _statusLabel(status);
     return Container(
       width: double.infinity,
       padding: CutlineSpacing.card,
@@ -209,13 +255,24 @@ class _PaymentStatusCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(CutlineDecorations.radius),
       ),
       child: Column(
-        children: const [
-          _InfoRow(label: '💳 Payment Method', value: 'Pay at salon'),
-          SizedBox(height: 8),
-          _InfoRow(label: '✅ Booking Status', value: 'Completed'),
+        children: [
+          _InfoRow(label: '💳 Payment Method', value: paymentMethod),
+          const SizedBox(height: 8),
+          _InfoRow(label: '✅ Booking Status', value: statusLabel),
         ],
       ),
     );
+  }
+
+  String _statusLabel(OwnerBookingStatus status) {
+    switch (status) {
+      case OwnerBookingStatus.upcoming:
+        return 'Upcoming';
+      case OwnerBookingStatus.completed:
+        return 'Completed';
+      case OwnerBookingStatus.cancelled:
+        return 'Cancelled';
+    }
   }
 }
 
@@ -229,9 +286,9 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, color: CutlineColors.primary),
+        Icon(icon, color: CutlineColors.accent),
         const SizedBox(width: 8),
-        Text(title, style: CutlineTextStyles.title.copyWith(fontSize: 20)),
+        Text(title, style: CutlineTextStyles.title),
       ],
     );
   }
@@ -260,7 +317,11 @@ class _CustomerInfo {
   final String phone;
   final String email;
 
-  const _CustomerInfo({required this.name, required this.phone, required this.email});
+  const _CustomerInfo({
+    required this.name,
+    required this.phone,
+    required this.email,
+  });
 }
 
 class _PriceSummary {
@@ -268,5 +329,9 @@ class _PriceSummary {
   final String serviceCharge;
   final String total;
 
-  const _PriceSummary({required this.subtotal, required this.serviceCharge, required this.total});
+  const _PriceSummary({
+    required this.subtotal,
+    required this.serviceCharge,
+    required this.total,
+  });
 }

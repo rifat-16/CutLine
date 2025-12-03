@@ -1,3 +1,5 @@
+import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/owner/providers/owner_home_provider.dart';
 import 'package:cutline/features/owner/screens/barbers_screen.dart';
 import 'package:cutline/features/owner/screens/booking_requests_screen.dart';
 import 'package:cutline/features/owner/screens/bookings_screen.dart';
@@ -5,7 +7,8 @@ import 'package:cutline/features/owner/screens/dashboard_screen.dart';
 import 'package:cutline/features/owner/screens/manage_queue_screen.dart';
 import 'package:cutline/features/owner/screens/manage_services_screen.dart';
 import 'package:cutline/features/owner/screens/notifications_screen.dart';
-import 'package:cutline/features/owner/screens/profile_screen.dart';
+import 'package:cutline/features/owner/screens/owner_chats_screen.dart';
+import 'package:cutline/features/owner/screens/owner_profile_screen.dart';
 import 'package:cutline/features/owner/screens/settings_screen.dart';
 import 'package:cutline/features/owner/screens/working_hours_screen.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
@@ -14,6 +17,7 @@ import 'package:cutline/features/owner/widgets/mini_stats_row.dart';
 import 'package:cutline/features/owner/widgets/quick_action_grid.dart';
 import 'package:cutline/features/owner/widgets/queue_list_section.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class OwnerHomeScreen extends StatefulWidget {
   const OwnerHomeScreen({super.key});
@@ -23,144 +27,174 @@ class OwnerHomeScreen extends StatefulWidget {
 }
 
 class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
-  final List<OwnerQueueItem> _queueItems = List.of(kOwnerQueueItems);
   int _selectedIndex = 0;
   String _queueFilter = '';
 
-  static const List<String> _queueFilters = [
-    'Waiting',
-    'Serving',
-    'Completed'
-  ];
+  static const List<String> _queueFilters = ['Waiting', 'Serving', 'Completed'];
 
   @override
   Widget build(BuildContext context) {
-    final waiting = _statusCount(OwnerQueueStatus.waiting);
-    final serving = _statusCount(OwnerQueueStatus.serving);
-    final completed = _statusCount(OwnerQueueStatus.done);
-    final filteredQueue = _filteredQueue();
-    final pendingRequests = kOwnerBookingRequests
-        .where((request) => request.status == OwnerBookingRequestStatus.pending)
-        .length;
+    return ChangeNotifierProvider(
+      create: (context) {
+        final auth = context.read<AuthProvider>();
+        final provider = OwnerHomeProvider(authProvider: auth);
+        provider.fetchAll();
+        return provider;
+      },
+      builder: (context, _) {
+        final provider = context.watch<OwnerHomeProvider>();
+        final queue = provider.queueItems;
+        final waiting = _statusCount(queue, OwnerQueueStatus.waiting);
+        final serving = _statusCount(queue, OwnerQueueStatus.serving);
+        final completed = _statusCount(queue, OwnerQueueStatus.done);
+        final filteredQueue = _filteredQueue(queue);
+        final pendingRequests = provider.pendingRequests;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FB),
-      appBar: _buildAppBar(context),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 140),
-        physics: const BouncingScrollPhysics(),
-        children: [
-          OwnerMiniStatsRow(
-            stats: [
-              OwnerMiniStatData(
-                label: 'Waiting',
-                value: waiting.toString(),
-                caption: 'clients',
-                color: const Color(0xFFFFB74D),
-              ),
-              OwnerMiniStatData(
-                label: 'Serving',
-                value: serving.toString(),
-                caption: 'in chairs',
-                color: const Color(0xFF2563EB),
-              ),
-              OwnerMiniStatData(
-                label: 'Completed',
-                value: completed.toString(),
-                caption: 'today',
-                color: const Color(0xFF22C55E),
-              ),
-            ],
+        return Scaffold(
+          backgroundColor: const Color(0xFFF4F6FB),
+          appBar: _buildAppBar(context, provider),
+          body: RefreshIndicator(
+            onRefresh: () => provider.fetchAll(),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 140),
+              physics: const BouncingScrollPhysics(),
+              children: [
+                OwnerMiniStatsRow(
+                  stats: [
+                    OwnerMiniStatData(
+                      label: 'Waiting',
+                      value: waiting.toString(),
+                      caption: 'clients',
+                      color: const Color(0xFFFFB74D),
+                    ),
+                    OwnerMiniStatData(
+                      label: 'Serving',
+                      value: serving.toString(),
+                      caption: 'in chairs',
+                      color: const Color(0xFF2563EB),
+                    ),
+                    OwnerMiniStatData(
+                      label: 'Completed',
+                      value: completed.toString(),
+                      caption: 'today',
+                      color: const Color(0xFF22C55E),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                OwnerQuickActionGrid(
+                  actions: [
+                    OwnerQuickAction(
+                      label: 'Booking requests',
+                      icon: Icons.fact_check_outlined,
+                      color: const Color(0xFF6366F1),
+                      badgeCount: pendingRequests,
+                      onTap: () => _openScreen(const BookingRequestsScreen()),
+                    ),
+                    OwnerQuickAction(
+                      label: 'Queue board',
+                      icon: Icons.queue_play_next_outlined,
+                      color: const Color(0xFF0EA5E9),
+                      onTap: () => _openScreen(const ManageQueueScreen()),
+                    ),
+                    OwnerQuickAction(
+                      label: 'Manage services',
+                      icon: Icons.design_services_outlined,
+                      color: const Color(0xFF10B981),
+                      onTap: () => _openScreen(const ManageServicesScreen()),
+                    ),
+                    OwnerQuickAction(
+                      label: 'Working hours',
+                      icon: Icons.schedule_outlined,
+                      color: const Color(0xFFF97316),
+                      onTap: () => _openScreen(const WorkingHoursScreen()),
+                    ),
+                    OwnerQuickAction(
+                      label: 'Barbers',
+                      icon: Icons.people_outline,
+                      color: const Color(0xFF2563EB),
+                      onTap: () => _openScreen(const OwnerBarbersScreen()),
+                    ),
+                    OwnerQuickAction(
+                      label: 'Dashboard',
+                      icon: Icons.dashboard_customize_outlined,
+                      color: const Color(0xFF2563EB),
+                      onTap: () => _openScreen(const OwnerDashboardScreen()),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 28),
+                if (provider.error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      provider.error!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                OwnerQueueListSection(
+                  queue: filteredQueue,
+                  selectedFilter: _queueFilter,
+                  filters: _queueFilters,
+                  onFilterChange: (value) {
+                    setState(() => _queueFilter = value);
+                  },
+                  onStatusChange: (id, status) =>
+                      _handleStatusChange(context, id, status),
+                  onViewAll: () => _openScreen(const ManageQueueScreen()),
+                  onOpenCustomer: (item) => _openCustomerDetails(context, item),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 24),
-          OwnerQuickActionGrid(
-            actions: [
-              OwnerQuickAction(
-                label: 'Booking requests',
-                icon: Icons.fact_check_outlined,
-                color: const Color(0xFF6366F1),
-                badgeCount: pendingRequests,
-                onTap: () => _openScreen(const BookingRequestsScreen()),
-              ),
-              OwnerQuickAction(
-                label: 'Queue board',
-                icon: Icons.queue_play_next_outlined,
-                color: const Color(0xFF0EA5E9),
-                onTap: () => _openScreen(const ManageQueueScreen()),
-              ),
-              OwnerQuickAction(
-                label: 'Manage services',
-                icon: Icons.design_services_outlined,
-                color: const Color(0xFF10B981),
-                onTap: () => _openScreen(const ManageServicesScreen()),
-              ),
-              OwnerQuickAction(
-                label: 'Working hours',
-                icon: Icons.schedule_outlined,
-                color: const Color(0xFFF97316),
-                onTap: () => _openScreen(const WorkingHoursScreen()),
-              ),
-            ],
-          ),
-          const SizedBox(height: 28),
-          OwnerQueueListSection(
-            queue: filteredQueue,
-            selectedFilter: _queueFilter,
-            filters: _queueFilters,
-            onFilterChange: (value) {
-              setState(() => _queueFilter = value);
-            },
-            onStatusChange: _handleStatusChange,
-            onViewAll: () => _openScreen(const ManageQueueScreen()),
-            onOpenCustomer: _openCustomerDetails,
-          ),
-        ],
-      ),
-      bottomNavigationBar: _buildBottomNavigation(),
+          bottomNavigationBar: _buildBottomNavigation(),
+        );
+      },
     );
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
+  PreferredSizeWidget _buildAppBar(
+      BuildContext context, OwnerHomeProvider provider) {
     return AppBar(
       elevation: 0,
       backgroundColor: Colors.white,
-      titleSpacing: 20,
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Edge & Fade Studio',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontSize: 20)),
-          const SizedBox(height: 2),
-          Text('Owner dashboard',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Colors.blueGrey)),
-        ],
+      titleSpacing: 6,
+      leadingWidth: 68,
+      leading: Padding(
+        padding: const EdgeInsets.only(left: 16, right: 6),
+        child: GestureDetector(
+          onTap: () => _openScreen(const OwnerProfileScreen()),
+          child: CircleAvatar(
+            radius: 18,
+            backgroundColor: const Color(0xFF2563EB),
+            child: const Icon(Icons.person, color: Colors.white, size: 28),
+          ),
+        ),
+      ),
+      title: Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(provider.salonName ?? 'Salon name',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontSize: 26)),
+            Text('Owner dashboard',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Colors.blueGrey)),
+          ],
+        ),
       ),
       actions: [
         IconButton(
           onPressed: () => _openScreen(const OwnerNotificationsScreen()),
           icon: const Icon(Icons.notifications_none_rounded),
         ),
-        Padding(
-          padding: const EdgeInsets.only(right: 16),
-          child: GestureDetector(
-            onTap: () => _openScreen(const OwnerProfileScreen()),
-            child: CircleAvatar(
-              radius: 20,
-              backgroundColor: const Color(0xFF2563EB),
-              child: Text(
-                _salonInitials(),
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
-        ),
+        const SizedBox(width: 8),
       ],
     );
   }
@@ -177,20 +211,18 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
         BottomNavigationBarItem(
             icon: Icon(Icons.queue_music_outlined), label: 'Queue'),
         BottomNavigationBarItem(
-            icon: Icon(Icons.people_outline), label: 'Barbers'),
-        BottomNavigationBarItem(
             icon: Icon(Icons.event_note_outlined), label: 'Bookings'),
         BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_customize_outlined), label: 'Dashboard'),
+            icon: Icon(Icons.chat_bubble_outline), label: 'Chats'),
         BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined), label: 'Settings'),
       ],
     );
   }
 
-  List<OwnerQueueItem> _filteredQueue() {
+  List<OwnerQueueItem> _filteredQueue(List<OwnerQueueItem> queue) {
     final OwnerQueueStatus? status = _statusFromFilter(_queueFilter);
-    final List<OwnerQueueItem> sorted = List.of(_queueItems)
+    final List<OwnerQueueItem> sorted = List.of(queue)
       ..sort((a, b) => a.status.index.compareTo(b.status.index));
     if (status == null) {
       return sorted;
@@ -211,8 +243,8 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
     }
   }
 
-  int _statusCount(OwnerQueueStatus status) {
-    return _queueItems.where((element) => element.status == status).length;
+  int _statusCount(List<OwnerQueueItem> queue, OwnerQueueStatus status) {
+    return queue.where((element) => element.status == status).length;
   }
 
   void _handleNavTap(int index) {
@@ -222,15 +254,12 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
         _openScreen(const ManageQueueScreen());
         break;
       case 2:
-        _openScreen(const OwnerBarbersScreen());
-        break;
-      case 3:
         _openScreen(const BookingsScreen());
         break;
-      case 4:
-        _openScreen(const OwnerDashboardScreen());
+      case 3:
+        _openScreen(const OwnerChatsScreen());
         break;
-      case 5:
+      case 4:
         _openScreen(const OwnerSettingsScreen());
         break;
       default:
@@ -238,34 +267,21 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
     }
   }
 
-  void _handleStatusChange(String id, OwnerQueueStatus status) {
-    setState(() {
-      final index = _queueItems.indexWhere((item) => item.id == id);
-      if (index != -1) {
-        _queueItems[index] = _queueItems[index].copyWith(status: status);
-      }
-    });
+  Future<void> _handleStatusChange(
+      BuildContext context, String id, OwnerQueueStatus status) async {
+    final provider = context.read<OwnerHomeProvider>();
+    await provider.updateQueueStatus(id, status);
   }
 
   void _openScreen(Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
-  String _salonInitials() {
-    final parts = kOwnerSalonName
-        .split(' ')
-        .where((part) => part.trim().isNotEmpty)
-        .toList();
-    if (parts.isEmpty) return 'EF';
-    return parts.map((e) => e[0]).take(2).join().toUpperCase();
-  }
-
-  void _openCustomerDetails(OwnerQueueItem item) {
+  void _openCustomerDetails(BuildContext ctx, OwnerQueueItem item) {
     showCustomerDetailSheet(
-      context: context,
+      context: ctx,
       item: item,
-      onStatusChange: (status) => _handleStatusChange(item.id, status),
+      onStatusChange: (status) => _handleStatusChange(ctx, item.id, status),
     );
   }
 }
-

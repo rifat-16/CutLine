@@ -1,4 +1,4 @@
-import 'package:cutline/features/user/screens/booking_receipt_screen.dart';
+import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
 
@@ -290,10 +290,7 @@ class _BookingCard extends StatelessWidget {
                 Expanded(
                   child: ElevatedButton(
                     style: CutlineButtons.primary(padding: const EdgeInsets.symmetric(vertical: 12)),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const BookingReceiptScreen()),
-                    ),
+                    onPressed: () => Navigator.pushNamed(context, AppRoutes.bookingReceipt),
                     child: const Text('View Receipt', style: TextStyle(fontWeight: FontWeight.w600)),
                   ),
                 ),

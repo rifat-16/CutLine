@@ -1,69 +1,95 @@
-import 'package:cutline/features/owner/screens/add_barber_screen.dart';
+import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/owner/providers/add_barber_provider.dart';
+import 'package:cutline/features/owner/providers/barbers_provider.dart';
+import 'package:cutline/features/owner/providers/salon_setup_provider.dart';
+import 'package:cutline/features/owner/services/barber_service.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
+import 'package:cutline/features/owner/screens/add_barber_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-class OwnerBarbersScreen extends StatefulWidget {
+class OwnerBarbersScreen extends StatelessWidget {
   const OwnerBarbersScreen({super.key});
 
   @override
-  State<OwnerBarbersScreen> createState() => _OwnerBarbersScreenState();
-}
-
-class _OwnerBarbersScreenState extends State<OwnerBarbersScreen> {
-  final List<OwnerBarber> _barbers = List.of(kOwnerBarbers);
-
-  @override
   Widget build(BuildContext context) {
-    final filtered = _filteredBarbers();
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FB),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text('Barbers'),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAddBarber,
-        icon: const Icon(Icons.person_add_alt_1),
-        label: const Text('Add barber'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
-        children: [
-          if (filtered.isEmpty)
-            _EmptyState(
-                message:
-                    'No barbers in this state right now. Try another filter.')
-          else
-            ...filtered.map(
-              (barber) => _BarberCard(
-                barber: barber,
-                onMoreInfo: () => _showBarberDetails(barber),
-              ),
-            ),
-        ],
-      ),
+    return ChangeNotifierProvider(
+      create: (context) {
+        final auth = context.read<AuthProvider>();
+        final provider = BarbersProvider(authProvider: auth);
+        provider.load();
+        return provider;
+      },
+      builder: (context, _) {
+        final provider = context.watch<BarbersProvider>();
+        final barbers = provider.barbers;
+        return Scaffold(
+          backgroundColor: const Color(0xFFF4F6FB),
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            title: const Text('Barbers'),
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _openAddBarber(context, provider),
+            icon: const Icon(Icons.person_add_alt_1),
+            label: const Text('Add barber'),
+          ),
+          body: provider.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+                  children: [
+                    if (provider.error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          provider.error!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    if (barbers.isEmpty)
+                      const _EmptyState(
+                          message:
+                              'No barbers added yet. Tap "Add barber" to invite.')
+                    else
+                      ...barbers.map(
+                        (barber) => _BarberCard(
+                          barber: barber,
+                          onMoreInfo: () => _showBarberDetails(context, barber),
+                        ),
+                      ),
+                  ],
+                ),
+        );
+      },
     );
   }
 
-  List<OwnerBarber> _filteredBarbers() => _barbers;
-
-  Future<void> _openAddBarber() async {
-    final result = await Navigator.push<OwnerBarber>(
+  Future<void> _openAddBarber(
+      BuildContext context, BarbersProvider provider) async {
+    final result = await Navigator.push<BarberInput>(
       context,
-      MaterialPageRoute(builder: (_) => const AddBarberScreen()),
+      MaterialPageRoute(
+        builder: (_) => ChangeNotifierProvider(
+          create: (context) => AddBarberProvider(
+            authProvider: context.read<AuthProvider>(),
+            barberService: BarberService(),
+          ),
+          child: const AddBarberScreen(),
+        ),
+      ),
     );
     if (result != null) {
-      setState(() => _barbers.add(result));
-      if (!mounted) return;
+      await provider.addBarber(result);
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${result.name} added to team')),
       );
     }
   }
 
-  void _showBarberDetails(OwnerBarber barber) {
+  void _showBarberDetails(BuildContext context, OwnerBarber barber) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -264,11 +290,6 @@ class _BarberDetailSheet extends StatelessWidget {
                 icon: Icons.phone_outlined,
                 label: 'Phone',
                 value: barber.phone),
-            const SizedBox(height: 12),
-            _DetailInfoRow(
-                icon: Icons.lock_outline,
-                label: 'Password',
-                value: barber.password),
             const SizedBox(height: 12),
             _DetailInfoRow(
                 icon: Icons.flag_outlined,

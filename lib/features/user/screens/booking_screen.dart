@@ -1,4 +1,4 @@
-import 'package:cutline/features/user/screens/booking_summary_screen.dart';
+import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -122,10 +122,7 @@ class _BookingScreenState extends State<BookingScreen> {
               totalAmount: total,
               canProceed: selectedServiceList.isNotEmpty && selectedBarber != null && selectedTime != null,
               onConfirm: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const BookingSummaryScreen()),
-                );
+                Navigator.pushNamed(context, AppRoutes.bookingSummary);
               },
             ),
           ],

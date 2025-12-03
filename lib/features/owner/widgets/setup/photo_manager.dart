@@ -23,17 +23,7 @@ class _GalleryHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Text('Gallery', style: TextStyle(fontWeight: FontWeight.bold)),
-        TextButton.icon(
-          onPressed: () {},
-          icon: const Icon(Icons.photo_library_outlined),
-          label: const Text('Manage library'),
-        ),
-      ],
-    );
+    return const Text('Gallery', style: TextStyle(fontWeight: FontWeight.bold));
   }
 }
 
@@ -68,7 +58,8 @@ class _CoverUploadCard extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Icon(Icons.image_outlined, color: Colors.white, size: 36),
+            child:
+                const Icon(Icons.image_outlined, color: Colors.white, size: 36),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -90,7 +81,7 @@ class _CoverUploadCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
-                  onPressed: () {},
+                  onPressed: () => _showComingSoon(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.blueAccent,
@@ -116,15 +107,14 @@ class _GalleryUploadField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () {},
+      onTap: () => _showComingSoon(context),
       borderRadius: BorderRadius.circular(22),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(22),
-          border:
-              Border.all(color: Colors.blueAccent.withValues(alpha: 0.4)),
+          border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.4)),
           color: Colors.blueAccent.withValues(alpha: 0.04),
         ),
         child: Column(
@@ -146,7 +136,7 @@ class _GalleryUploadField extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             OutlinedButton.icon(
-              onPressed: () {},
+              onPressed: () => _showComingSoon(context),
               icon: const Icon(Icons.add_photo_alternate_outlined),
               label: const Text('Upload gallery'),
             ),
@@ -155,4 +145,22 @@ class _GalleryUploadField extends StatelessWidget {
       ),
     );
   }
+}
+
+void _showComingSoon(BuildContext context) {
+  showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Photos coming soon'),
+      content: const Text(
+        'Photo uploads will be available in a future update. Please skip for now.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
 }

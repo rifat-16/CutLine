@@ -3,8 +3,13 @@ import 'package:flutter/material.dart';
 
 class ServiceInputFieldList extends StatefulWidget {
   final List<OwnerServiceInfo> initialServices;
+  final ValueChanged<List<OwnerServiceInfo>>? onChanged;
 
-  const ServiceInputFieldList({super.key, required this.initialServices});
+  const ServiceInputFieldList({
+    super.key,
+    required this.initialServices,
+    this.onChanged,
+  });
 
   @override
   State<ServiceInputFieldList> createState() => _ServiceInputFieldListState();
@@ -16,15 +21,28 @@ class _ServiceInputFieldListState extends State<ServiceInputFieldList> {
   @override
   void initState() {
     super.initState();
-    _services = widget.initialServices
-        .map((service) => _ServiceFieldData(
-              nameController: TextEditingController(text: service.name),
-              priceController:
-                  TextEditingController(text: service.price.toString()),
-              durationController: TextEditingController(
-                  text: service.durationMinutes.toString()),
-            ))
-        .toList();
+    _services = widget.initialServices.isNotEmpty
+        ? widget.initialServices
+            .map((service) => _ServiceFieldData(
+                  nameController: TextEditingController(text: service.name),
+                  priceController:
+                      TextEditingController(text: service.price.toString()),
+                  durationController: TextEditingController(
+                      text: service.durationMinutes.toString()),
+                ))
+            .toList()
+        : [
+            _ServiceFieldData(
+              nameController: TextEditingController(),
+              priceController: TextEditingController(),
+              durationController: TextEditingController(),
+            )
+          ];
+    for (final field in _services) {
+      _attachListeners(field);
+    }
+    // Delay emission to avoid notifying listeners during build.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _emitServices());
   }
 
   @override
@@ -63,14 +81,15 @@ class _ServiceInputFieldListState extends State<ServiceInputFieldList> {
 
   void _addService() {
     setState(() {
-      _services.add(
-        _ServiceFieldData(
-          nameController: TextEditingController(),
-          priceController: TextEditingController(),
-          durationController: TextEditingController(),
-        ),
+      final field = _ServiceFieldData(
+        nameController: TextEditingController(),
+        priceController: TextEditingController(),
+        durationController: TextEditingController(),
       );
+      _attachListeners(field);
+      _services.add(field);
     });
+    _emitServices();
   }
 
   void _removeService(int index) {
@@ -78,6 +97,36 @@ class _ServiceInputFieldListState extends State<ServiceInputFieldList> {
       final field = _services.removeAt(index);
       field.dispose();
     });
+    _emitServices();
+  }
+
+  void _attachListeners(_ServiceFieldData field) {
+    field.nameController.addListener(_emitServices);
+    field.priceController.addListener(_emitServices);
+    field.durationController.addListener(_emitServices);
+  }
+
+  void _emitServices() {
+    if (widget.onChanged == null) return;
+    widget.onChanged!.call(_collectServices());
+  }
+
+  List<OwnerServiceInfo> _collectServices() {
+    return _services
+        .map((field) {
+          final name = field.nameController.text.trim();
+          if (name.isEmpty) return null;
+          final price = int.tryParse(field.priceController.text.trim()) ?? 0;
+          final duration =
+              int.tryParse(field.durationController.text.trim()) ?? 0;
+          return OwnerServiceInfo(
+            name: name,
+            price: price,
+            durationMinutes: duration,
+          );
+        })
+        .whereType<OwnerServiceInfo>()
+        .toList();
   }
 }
 

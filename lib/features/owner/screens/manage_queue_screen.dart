@@ -1,7 +1,10 @@
+import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/owner/providers/manage_queue_provider.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:cutline/features/owner/widgets/customer_detail_sheet.dart';
 import 'package:cutline/features/owner/widgets/queue_card.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class ManageQueueScreen extends StatefulWidget {
   const ManageQueueScreen({super.key});
@@ -12,78 +15,92 @@ class ManageQueueScreen extends StatefulWidget {
 
 class _ManageQueueScreenState extends State<ManageQueueScreen>
     with SingleTickerProviderStateMixin {
-  late List<OwnerQueueItem> _queue;
   String? _barberFilter;
 
   @override
-  void initState() {
-    super.initState();
-    _queue = List.of(kOwnerQueueItems);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final statuses = OwnerQueueStatus.values;
-    return DefaultTabController(
-      length: statuses.length,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF4F6FB),
-        appBar: AppBar(
-          title: const Text('Queue control center'),
-          backgroundColor: Colors.white,
-          elevation: 0,
-          bottom: TabBar(
-            isScrollable: true,
-            tabs: statuses
-                .map((status) => Tab(text: _statusLabel(status)))
-                .toList(),
-          ),
-        ),
-        body: Column(
-          children: [
-            _QueueToolbar(
-              barberFilter: _barberFilter,
-              barbers: _availableBarbers,
-              onBarberChanged: (value) =>
-                  setState(() => _barberFilter = value == 'All' ? null : value),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: TabBarView(
-                children: statuses.map((status) {
-                  final filtered = _filteredQueue(status);
-                  if (filtered.isEmpty) {
-                    return Center(
-                      child: Text(
-                        'No ${_statusLabel(status).toLowerCase()} customers.',
-                        style: const TextStyle(color: Colors.black54),
-                      ),
-                    );
-                  }
-                  return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 80),
-                    itemCount: filtered.length,
-                    itemBuilder: (_, index) {
-                      final item = filtered[index];
-                      return OwnerQueueCard(
-                        item: item,
-                        onStatusChange: (next) => _updateStatus(item.id, next),
-                        onTap: () => _openCustomerDetail(item),
-                      );
-                    },
-                  );
-                }).toList(),
+    return ChangeNotifierProvider(
+      create: (context) {
+        final auth = context.read<AuthProvider>();
+        final provider = ManageQueueProvider(authProvider: auth);
+        provider.load();
+        return provider;
+      },
+      builder: (context, _) {
+        final provider = context.watch<ManageQueueProvider>();
+        final statuses = OwnerQueueStatus.values;
+        return DefaultTabController(
+          length: statuses.length,
+          child: Scaffold(
+            backgroundColor: const Color(0xFFF4F6FB),
+            appBar: AppBar(
+              title: const Text('Queue control center'),
+              backgroundColor: Colors.white,
+              elevation: 0,
+              bottom: TabBar(
+                isScrollable: true,
+                tabs: statuses
+                    .map((status) => Tab(text: _statusLabel(status)))
+                    .toList(),
               ),
             ),
-          ],
-        ),
-      ),
+            body: Column(
+              children: [
+                _QueueToolbar(
+                  barberFilter: _barberFilter,
+                  barbers: _availableBarbers(provider.queue),
+                  onBarberChanged: (value) => setState(
+                      () => _barberFilter = value == 'All' ? null : value),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: provider.isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : TabBarView(
+                          children: statuses.map((status) {
+                            final filtered =
+                                _filteredQueue(provider.queue, status);
+                            if (filtered.isEmpty) {
+                              return Center(
+                                child: Text(
+                                  'No ${_statusLabel(status).toLowerCase()} customers.',
+                                  style: const TextStyle(color: Colors.black54),
+                                ),
+                              );
+                            }
+                            return RefreshIndicator(
+                              onRefresh: () => provider.load(),
+                              child: ListView.builder(
+                                padding:
+                                    const EdgeInsets.fromLTRB(20, 12, 20, 80),
+                                itemCount: filtered.length,
+                                itemBuilder: (_, index) {
+                                  final item = filtered[index];
+                                  return OwnerQueueCard(
+                                    item: item,
+                                    onStatusChange: (next) =>
+                                        provider.updateStatus(item.id, next),
+                                    onTap: () =>
+                                        _openCustomerDetail(context, item),
+                                  );
+                                },
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
-  List<OwnerQueueItem> _filteredQueue(OwnerQueueStatus status) {
+  List<OwnerQueueItem> _filteredQueue(
+      List<OwnerQueueItem> queue, OwnerQueueStatus status) {
     Iterable<OwnerQueueItem> filtered =
-        _queue.where((item) => item.status == status);
+        queue.where((item) => item.status == status);
     if (_barberFilter != null) {
       filtered = filtered.where((item) => item.barberName == _barberFilter);
     }
@@ -92,25 +109,19 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
     return sorted;
   }
 
-  List<String> get _availableBarbers {
-    final barbers = _queue.map((item) => item.barberName).toSet().toList()
+  List<String> _availableBarbers(List<OwnerQueueItem> queue) {
+    final barbers = queue.map((item) => item.barberName).toSet().toList()
       ..sort();
     return ['All', ...barbers];
   }
 
-  void _updateStatus(String id, OwnerQueueStatus status) {
-    setState(() {
-      _queue = _queue
-          .map((item) => item.id == id ? item.copyWith(status: status) : item)
-          .toList();
-    });
-  }
-
-  void _openCustomerDetail(OwnerQueueItem item) {
+  void _openCustomerDetail(BuildContext context, OwnerQueueItem item) {
     showCustomerDetailSheet(
       context: context,
       item: item,
-      onStatusChange: (status) => _updateStatus(item.id, status),
+      onStatusChange: (status) {
+        context.read<ManageQueueProvider>().updateStatus(item.id, status);
+      },
     );
   }
 

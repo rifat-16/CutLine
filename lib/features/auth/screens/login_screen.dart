@@ -1,21 +1,51 @@
-import 'package:cutline/features/barber/screens/barber_home_screen.dart';
+import 'package:cutline/features/auth/models/user_role.dart';
+import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/routes/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({
+    super.key,
+    this.successRoute = AppRoutes.userHome,
+    this.signupRoute = AppRoutes.signup,
+    this.role = UserRole.customer,
+    this.title = "Welcome Back 👋",
+    this.subtitle = "Login to continue to CutLine",
+    this.signupPrompt = "Don’t have an account?",
+    this.signupActionLabel = "Sign Up",
+  });
+
+  final String successRoute;
+  final String signupRoute;
+  final UserRole role;
+  final String title;
+  final String subtitle;
+  final String signupPrompt;
+  final String signupActionLabel;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
 
   @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       body: SingleChildScrollView(
@@ -27,7 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 const SizedBox(height: 60),
                 Text(
-                  "Welcome Back 👋",
+                  widget.title,
                   style: GoogleFonts.poppins(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -36,44 +66,83 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  "Login to continue to CutLine",
+                  widget.subtitle,
                   style: GoogleFonts.poppins(
                     color: Colors.grey.shade600,
                     fontSize: 15,
                   ),
                 ),
                 const SizedBox(height: 40),
-                _buildTextField(
-                  controller: _emailController,
-                  label: "Email",
-                  icon: Icons.email_outlined,
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 20),
-                _buildTextField(
-                  controller: _passwordController,
-                  label: "Password",
-                  icon: Icons.lock_outline,
-                  obscureText: !_isPasswordVisible,
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _isPasswordVisible
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      color: Colors.grey.shade500,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _isPasswordVisible = !_isPasswordVisible;
-                      });
-                    },
+                Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      _buildTextField(
+                        controller: _emailController,
+                        label: "Email",
+                        icon: Icons.email_outlined,
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (value) {
+                          final email = value?.trim() ?? '';
+                          if (email.isEmpty) return 'Email is required.';
+                          if (!email.contains('@')) {
+                            return 'Enter a valid email.';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      _buildTextField(
+                        controller: _passwordController,
+                        label: "Password",
+                        icon: Icons.lock_outline,
+                        obscureText: !_isPasswordVisible,
+                        validator: (value) {
+                          if ((value ?? '').isEmpty) {
+                            return 'Password is required.';
+                          }
+                          return null;
+                        },
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isPasswordVisible
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            color: Colors.grey.shade500,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isPasswordVisible = !_isPasswordVisible;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 10),
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {},
+                    onPressed: auth.isLoading
+                        ? null
+                        : () async {
+                            final email = _emailController.text.trim();
+                            if (email.isEmpty) {
+                              _showSnack('Enter your email to reset password.');
+                              return;
+                            }
+
+                            final sent = await auth.sendPasswordReset(email);
+                            if (!context.mounted) return;
+                            if (sent) {
+                              _showSnack(
+                                'Reset link sent. Check your email inbox.',
+                              );
+                            } else if (auth.lastError != null) {
+                              _showSnack(auth.lastError!);
+                            }
+                          },
                     child: Text(
                       "Forgot Password?",
                       style: GoogleFonts.poppins(
@@ -88,14 +157,43 @@ class _LoginScreenState extends State<LoginScreen> {
                   width: double.infinity,
                   height: 55,
                   child: ElevatedButton(
-                    onPressed: () {
-                      // Handle login logic here
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => const BarberHomeScreen()),
-                      );
-                    },
+                    onPressed: auth.isLoading
+                        ? null
+                        : () async {
+                            if (!_formKey.currentState!.validate()) return;
+                            final success = await auth.signIn(
+                              email: _emailController.text,
+                              password: _passwordController.text,
+                            );
+
+                            if (!context.mounted) return;
+                            if (success) {
+                              if (widget.role == UserRole.owner) {
+                                final profile = await auth.fetchUserProfile(
+                                  auth.currentUser?.uid ?? '',
+                                );
+                                final profileComplete =
+                                    profile?['profileComplete'] == true;
+                                final target = profileComplete
+                                    ? widget.successRoute
+                                    : AppRoutes.ownerSalonSetup;
+                                if (!context.mounted) return;
+                                Navigator.pushNamedAndRemoveUntil(
+                                  context,
+                                  target,
+                                  (_) => false,
+                                );
+                              } else {
+                                Navigator.pushNamedAndRemoveUntil(
+                                  context,
+                                  widget.successRoute,
+                                  (_) => false,
+                                );
+                              }
+                            } else if (auth.lastError != null) {
+                              _showSnack(auth.lastError!);
+                            }
+                          },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blueAccent,
                       shape: RoundedRectangleBorder(
@@ -103,14 +201,24 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       elevation: 3,
                     ),
-                    child: Text(
-                      "Login",
-                      style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    child: auth.isLoading
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text(
+                            "Login",
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 25),
@@ -118,7 +226,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      "Don’t have an account?",
+                      widget.signupPrompt,
                       style: GoogleFonts.poppins(
                         color: Colors.grey.shade700,
                         fontSize: 14,
@@ -126,11 +234,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     TextButton(
                       onPressed: () {
-                        // Navigate to signup
-                        Navigator.pushNamed(context, '/signup');
+                        if (widget.role == UserRole.barber) {
+                          _showBarberBlockedDialog();
+                          return;
+                        }
+                        Navigator.pushNamed(
+                          context,
+                          widget.signupRoute,
+                          arguments: widget.role,
+                        );
                       },
                       child: Text(
-                        "Sign Up",
+                        widget.signupActionLabel,
                         style: GoogleFonts.poppins(
                           color: Colors.orangeAccent,
                           fontWeight: FontWeight.w600,
@@ -153,12 +268,17 @@ class _LoginScreenState extends State<LoginScreen> {
     required IconData icon,
     bool obscureText = false,
     Widget? suffixIcon,
+    String? Function(String?)? validator,
     TextInputType keyboardType = TextInputType.text,
   }) {
-    return TextField(
+    return TextFormField(
       controller: controller,
       obscureText: obscureText,
       keyboardType: keyboardType,
+      textInputAction: keyboardType == TextInputType.emailAddress
+          ? TextInputAction.next
+          : TextInputAction.done,
+      validator: validator,
       decoration: InputDecoration(
         prefixIcon: Icon(icon, color: Colors.blueAccent),
         suffixIcon: suffixIcon,
@@ -174,6 +294,35 @@ class _LoginScreenState extends State<LoginScreen> {
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(color: Colors.grey.shade300),
         ),
+      ),
+    );
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: GoogleFonts.poppins()),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showBarberBlockedDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Sign up unavailable'),
+        content: const Text(
+          'Barbers cannot create accounts directly. Please ask your salon owner to create an account for you.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
       ),
     );
   }

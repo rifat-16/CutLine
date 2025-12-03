@@ -1,7 +1,10 @@
-import 'package:cutline/features/owner/screens/edit_profile_info_screen.dart';
+import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/owner/screens/barbers_screen.dart';
+import 'package:cutline/features/owner/screens/edit_salon_information.dart';
 import 'package:cutline/features/owner/screens/manage_services_screen.dart';
 import 'package:cutline/features/owner/screens/working_hours_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class OwnerSettingsScreen extends StatefulWidget {
   const OwnerSettingsScreen({super.key});
@@ -11,7 +14,6 @@ class OwnerSettingsScreen extends StatefulWidget {
 }
 
 class _OwnerSettingsScreenState extends State<OwnerSettingsScreen> {
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -38,6 +40,12 @@ class _OwnerSettingsScreenState extends State<OwnerSettingsScreen> {
             title: 'Working hours',
             subtitle: 'Set daily availability',
             onTap: () => _open(const WorkingHoursScreen()),
+          ),
+          _SettingTile(
+            icon: Icons.people_alt_outlined,
+            title: 'Manage barbers',
+            subtitle: 'Add, edit or remove barbers',
+            onTap: () => _open(const OwnerBarbersScreen()),
           ),
           _SettingTile(
             icon: Icons.storefront_outlined,
@@ -72,6 +80,7 @@ class _OwnerSettingsScreenState extends State<OwnerSettingsScreen> {
               trailing: const Icon(Icons.chevron_right),
             ),
           ),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -80,6 +89,7 @@ class _OwnerSettingsScreenState extends State<OwnerSettingsScreen> {
   void _open(Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
+
 }
 
 class _SettingTile extends StatelessWidget {

@@ -1,9 +1,4 @@
-import 'package:cutline/features/user/screens/chats_screen.dart';
-import 'package:cutline/features/user/screens/favorite_salon_screen.dart';
-import 'package:cutline/features/user/screens/my_booking_screen.dart';
-import 'package:cutline/features/user/screens/notification_screen.dart';
-import 'package:cutline/features/user/screens/salon_details_screen.dart';
-import 'package:cutline/features/user/screens/user_profile_screen.dart';
+import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/features/user/widgets/home_bottom_navigation.dart';
 import 'package:cutline/features/user/widgets/nearby_salon_card.dart';
 import 'package:cutline/features/user/widgets/user_promo_carousel.dart';
@@ -68,7 +63,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_none),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationScreen())),
+            onPressed: () => Navigator.pushNamed(context, AppRoutes.userNotifications),
           ),
           SizedBox(width: 8.w),
         ],
@@ -117,9 +112,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                     index: index,
                     child: NearbySalonCard(
                       salonName: nearbySalons[index],
-                      onTap: () => Navigator.push(
+                      onTap: () => Navigator.pushNamed(
                         context,
-                        MaterialPageRoute(builder: (_) => SalonDetailsScreen(salonName: nearbySalons[index])),
+                        AppRoutes.salonDetails,
+                        arguments: SalonDetailsArgs(salonName: nearbySalons[index]),
                       ),
                     ),
                   );
@@ -136,13 +132,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   void _handleBottomTap(BuildContext context, int index) {
     if (index == 1) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => MyBookingScreen()));
+      Navigator.pushNamed(context, AppRoutes.myBookings);
     } else if (index == 2) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const FavoriteSalonScreen()));
+      Navigator.pushNamed(context, AppRoutes.favoriteSalons);
     } else if (index == 3) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatsScreen()));
+      Navigator.pushNamed(context, AppRoutes.userChats);
     } else if (index == 4) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const UserProfileScreen()));
+      Navigator.pushNamed(context, AppRoutes.userProfile);
     }
   }
 }

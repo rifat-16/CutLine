@@ -1,8 +1,8 @@
-import 'package:cutline/features/user/screens/favorite_salon_screen.dart';
-import 'package:cutline/features/user/screens/my_booking_screen.dart';
-import 'package:cutline/features/user/screens/notification_screen.dart';
+import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class UserProfileScreen extends StatelessWidget {
   const UserProfileScreen({super.key});
@@ -37,19 +37,19 @@ class UserProfileScreen extends StatelessWidget {
                 icon: Icons.calendar_today_outlined,
                 label: 'My Bookings',
                 subtitle: 'See upcoming and past visits',
-                onTap: () => _openScreen(context, const MyBookingScreen()),
+                onTap: () => _openRoute(context, AppRoutes.myBookings),
               ),
               _ProfileTile(
                 icon: Icons.favorite_border_outlined,
                 label: 'Saved Salons',
                 subtitle: 'Manage your favourites',
-                onTap: () => _openScreen(context, const FavoriteSalonScreen()),
+                onTap: () => _openRoute(context, AppRoutes.favoriteSalons),
               ),
               _ProfileTile(
                 icon: Icons.notifications_none_outlined,
                 label: 'Notifications',
                 subtitle: 'Manage alerts',
-                onTap: () => _openScreen(context, const NotificationScreen()),
+                onTap: () => _openRoute(context, AppRoutes.userNotifications),
               ),
             ]),
             const SizedBox(height: CutlineSpacing.lg),
@@ -76,8 +76,8 @@ class UserProfileScreen extends StatelessWidget {
     );
   }
 
-  static void _openScreen(BuildContext context, Widget screen) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  static void _openRoute(BuildContext context, String route) {
+    Navigator.pushNamed(context, route);
   }
 
   static void _showUnavailableFeature(BuildContext context) {
@@ -152,6 +152,7 @@ class UserProfileScreen extends StatelessWidget {
   }
 
   static void _confirmLogout(BuildContext context) {
+    final auth = context.read<AuthProvider>();
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -165,9 +166,15 @@ class UserProfileScreen extends StatelessWidget {
               child: const Text('Cancel')),
           ElevatedButton(
             style: CutlineButtons.primary(),
-            onPressed: () {
+            onPressed: () async {
               Navigator.of(dialogContext).pop();
-              _showSnack(context, 'Logged out successfully.');
+              await auth.signOut();
+              if (!context.mounted) return;
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                AppRoutes.roleSelection,
+                (_) => false,
+              );
             },
             child: const Text('Logout'),
           ),
@@ -390,7 +397,8 @@ class _LogoutButton extends StatelessWidget {
         width: double.infinity,
         child: ElevatedButton.icon(
           style: CutlineButtons.primary(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18)),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 32, vertical: 18)),
           onPressed: onPressed,
           icon: const Icon(Icons.logout, size: 24),
           label: const Text(

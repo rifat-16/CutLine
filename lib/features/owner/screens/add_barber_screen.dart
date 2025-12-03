@@ -1,5 +1,9 @@
-import 'package:cutline/features/owner/utils/constants.dart';
+import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/owner/providers/add_barber_provider.dart';
+import 'package:cutline/features/owner/providers/salon_setup_provider.dart';
+import 'package:cutline/features/owner/widgets/setup/add_barber_form.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class AddBarberScreen extends StatefulWidget {
   const AddBarberScreen({super.key});
@@ -9,208 +13,76 @@ class AddBarberScreen extends StatefulWidget {
 }
 
 class _AddBarberScreenState extends State<AddBarberScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _roleController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _passwordController = TextEditingController();
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _roleController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
+  List<BarberInput> _barbers = [];
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FB),
-      appBar: AppBar(
-        title: const Text('Add barber'),
-        backgroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
-          children: [
-            const _HeroCard(),
-            const SizedBox(height: 20),
-            _FormSection(
-              title: 'Profile details',
-              children: [
-                _buildField(
-                  controller: _nameController,
-                  label: 'Full name',
-                  icon: Icons.badge_outlined,
-                ),
+    return ChangeNotifierProvider(
+      create: (context) =>
+          AddBarberProvider(authProvider: context.read<AuthProvider>()),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF4F6FB),
+        appBar: AppBar(
+          title: const Text('Add barber'),
+          backgroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: Consumer<AddBarberProvider>(
+          builder: (context, provider, _) => ListView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+            children: [
+              _FormSection(
+                title: 'Barber account',
+                helper:
+                    'Share these credentials with your barbers. They will use this email and password to log into their dashboards.',
+                children: [
+                  AddBarberForm(
+                    onChanged: (list) => setState(() => _barbers = list),
+                  ),
+                ],
+              ),
+              if (provider.error != null) ...[
                 const SizedBox(height: 12),
-                _buildField(
-                  controller: _roleController,
-                  label: 'Specialization',
-                  icon: Icons.cut_outlined,
+                Text(
+                  provider.error!,
+                  style: const TextStyle(color: Colors.red),
                 ),
               ],
-            ),
-            const SizedBox(height: 18),
-            _FormSection(
-              title: 'Login access',
-              helper:
-                  'We’ll share these credentials with the barber so they can log in.',
-              children: [
-                _buildField(
-                  controller: _emailController,
-                  label: 'Email',
-                  icon: Icons.email_outlined,
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Required';
-                    }
-                    final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
-                    if (!emailRegex.hasMatch(value.trim())) {
-                      return 'Enter a valid email';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                _buildField(
-                  controller: _phoneController,
-                  label: 'Phone number',
-                  icon: Icons.phone_iphone,
-                  keyboardType: TextInputType.phone,
-                ),
-                const SizedBox(height: 12),
-                _buildField(
-                  controller: _passwordController,
-                  label: 'Temporary password',
-                  icon: Icons.lock_outline,
-                  obscureText: true,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Required';
-                    }
-                    if (value.trim().length < 6) {
-                      return 'At least 6 characters';
-                    }
-                    return null;
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 30),
-            _SubmitButton(onPressed: _submit),
-          ],
+              const SizedBox(height: 24),
+              _SubmitButton(
+                onPressed: provider.isSaving ? null : () => _submit(provider),
+                isLoading: provider.isSaving,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    TextInputType keyboardType = TextInputType.text,
-    String? Function(String?)? validator,
-    ValueChanged<String>? onChanged,
-    bool obscureText = false,
-  }) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: keyboardType,
-      validator: validator ??
-          (value) =>
-              (value == null || value.trim().isEmpty) ? 'Required' : null,
-      onChanged: onChanged,
-      obscureText: obscureText,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-        ),
-      ),
-    );
-  }
-
-  void _submit() {
-    if (!(_formKey.currentState?.validate() ?? false)) {
+  Future<void> _submit(AddBarberProvider provider) async {
+    if (_barbers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in barber details first.')),
+      );
       return;
     }
-    final barber = OwnerBarber(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: _nameController.text.trim(),
-      email: _emailController.text.trim(),
-      phone: _phoneController.text.trim(),
-      password: _passwordController.text.trim(),
-      specialization: _roleController.text.trim(),
-      rating: 4.5,
-      servedToday: 0,
-      status: OwnerBarberStatus.onFloor,
-      nextClient: null,
-    );
-    Navigator.pop(context, barber);
-  }
-}
+    final barber = _barbers.first;
+    if (barber.name.trim().isEmpty ||
+        barber.email.trim().isEmpty ||
+        barber.password.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Name, email, and password are required.')),
+      );
+      return;
+    }
 
-class _HeroCard extends StatelessWidget {
-  const _HeroCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0EA5E9), Color(0xFF2563EB)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(26),
-        boxShadow: const [
-          BoxShadow(
-              color: Color(0x330E9FE9), blurRadius: 30, offset: Offset(0, 18))
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Icon(Icons.person_add_alt_1,
-                color: Colors.white, size: 26),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text('Invite a new team member',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700)),
-                SizedBox(height: 6),
-                Text('Create a profile and share login credentials instantly.',
-                    style: TextStyle(color: Colors.white70, fontSize: 13)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+    final success = await provider.createBarber(input: barber);
+    if (!mounted) return;
+    if (success) {
+      Navigator.pop(context, barber);
+    }
   }
 }
 
@@ -256,14 +128,15 @@ class _FormSection extends StatelessWidget {
 }
 
 class _SubmitButton extends StatelessWidget {
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
+  final bool isLoading;
 
-  const _SubmitButton({required this.onPressed});
+  const _SubmitButton({required this.onPressed, required this.isLoading});
 
   @override
   Widget build(BuildContext context) {
     return ElevatedButton(
-      onPressed: onPressed,
+      onPressed: isLoading ? null : onPressed,
       style: ElevatedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -272,12 +145,22 @@ class _SubmitButton extends StatelessWidget {
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
-          Icon(Icons.check_circle_outline, color: Colors.white),
-          SizedBox(width: 10),
-          Text('Save & Invite',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        children: [
+          if (isLoading)
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+          else
+            const Icon(Icons.check_circle_outline, color: Colors.white),
+          const SizedBox(width: 10),
+          Text(isLoading ? 'Saving...' : 'Save & Invite',
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w600)),
         ],
       ),
     );

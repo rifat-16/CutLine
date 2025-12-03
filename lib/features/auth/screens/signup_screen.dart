@@ -1,14 +1,38 @@
+import 'package:cutline/features/auth/models/user_role.dart';
+import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/routes/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 class SignupScreen extends StatefulWidget {
-  const SignupScreen({super.key});
+  const SignupScreen({
+    super.key,
+    this.postSignupRoute = AppRoutes.login,
+    this.loginRoute = AppRoutes.login,
+    this.signOutAfterSignup = true,
+    this.role = UserRole.customer,
+    this.title = "Create Account ✨",
+    this.subtitle = "Join CutLine and skip the waiting line.",
+    this.loginPrompt = "Already have an account?",
+    this.loginActionLabel = "Login",
+  });
+
+  final String postSignupRoute;
+  final String loginRoute;
+  final bool signOutAfterSignup;
+  final UserRole role;
+  final String title;
+  final String subtitle;
+  final String loginPrompt;
+  final String loginActionLabel;
 
   @override
   State<SignupScreen> createState() => _SignupScreenState();
 }
 
 class _SignupScreenState extends State<SignupScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -17,7 +41,18 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _isConfirmPasswordVisible = false;
 
   @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       body: SafeArea(
@@ -30,7 +65,7 @@ class _SignupScreenState extends State<SignupScreen> {
               children: [
                 const SizedBox(height: 60),
                 Text(
-                  "Create Account ✨",
+                  widget.title,
                   style: GoogleFonts.poppins(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -39,64 +74,102 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  "Join CutLine and skip the waiting line.",
+                  widget.subtitle,
                   style: GoogleFonts.poppins(
                     color: Colors.grey.shade600,
                     fontSize: 15,
                   ),
                 ),
                 const SizedBox(height: 40),
-                _buildTextField(
-                  controller: _nameController,
-                  label: "Full Name",
-                  icon: Icons.person_outline,
-                ),
-                const SizedBox(height: 20),
-                _buildTextField(
-                  controller: _emailController,
-                  label: "Email",
-                  icon: Icons.email_outlined,
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 20),
-                _buildTextField(
-                  controller: _passwordController,
-                  label: "Password",
-                  icon: Icons.lock_outline,
-                  obscureText: !_isPasswordVisible,
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _isPasswordVisible
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      color: Colors.grey.shade500,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _isPasswordVisible = !_isPasswordVisible;
-                      });
-                    },
-                  ),
-                ),
-                const SizedBox(height: 20),
-                _buildTextField(
-                  controller: _confirmPasswordController,
-                  label: "Confirm Password",
-                  icon: Icons.lock_outline,
-                  obscureText: !_isConfirmPasswordVisible,
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _isConfirmPasswordVisible
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      color: Colors.grey.shade500,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _isConfirmPasswordVisible =
-                        !_isConfirmPasswordVisible;
-                      });
-                    },
+                Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      _buildTextField(
+                        controller: _nameController,
+                        label: "Full Name",
+                        icon: Icons.person_outline,
+                        validator: (value) {
+                          if ((value ?? '').trim().isEmpty) {
+                            return 'Name is required.';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      _buildTextField(
+                        controller: _emailController,
+                        label: "Email",
+                        icon: Icons.email_outlined,
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (value) {
+                          final email = value?.trim() ?? '';
+                          if (email.isEmpty) return 'Email is required.';
+                          if (!email.contains('@')) {
+                            return 'Enter a valid email.';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      _buildTextField(
+                        controller: _passwordController,
+                        label: "Password",
+                        icon: Icons.lock_outline,
+                        obscureText: !_isPasswordVisible,
+                        validator: (value) {
+                          final password = value ?? '';
+                          if (password.isEmpty) return 'Password is required.';
+                          if (password.length < 6) {
+                            return 'Use at least 6 characters.';
+                          }
+                          return null;
+                        },
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isPasswordVisible
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            color: Colors.grey.shade500,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isPasswordVisible = !_isPasswordVisible;
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      _buildTextField(
+                        controller: _confirmPasswordController,
+                        label: "Confirm Password",
+                        icon: Icons.lock_outline,
+                        obscureText: !_isConfirmPasswordVisible,
+                        validator: (value) {
+                          if ((value ?? '').isEmpty) {
+                            return 'Confirm your password.';
+                          }
+                          if (value != _passwordController.text) {
+                            return 'Passwords do not match.';
+                          }
+                          return null;
+                        },
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isConfirmPasswordVisible
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            color: Colors.grey.shade500,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isConfirmPasswordVisible =
+                                  !_isConfirmPasswordVisible;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 40),
@@ -104,9 +177,35 @@ class _SignupScreenState extends State<SignupScreen> {
                   width: double.infinity,
                   height: 55,
                   child: ElevatedButton(
-                    onPressed: () {
-                      // Handle sign up logic here
-                    },
+                    onPressed: auth.isLoading
+                        ? null
+                        : () async {
+                            if (!_formKey.currentState!.validate()) return;
+
+                            final success = await auth.signUp(
+                              name: _nameController.text,
+                              email: _emailController.text,
+                              password: _passwordController.text,
+                              role: widget.role,
+                            );
+
+                            if (!context.mounted) return;
+                            if (success) {
+                              _showSnack(
+                                  'Account created successfully. Please log in.');
+                              if (widget.signOutAfterSignup) {
+                                await auth.signOut();
+                              }
+                              if (!context.mounted) return;
+                              Navigator.pushNamedAndRemoveUntil(
+                                context,
+                                widget.postSignupRoute,
+                                (_) => false,
+                              );
+                            } else if (auth.lastError != null) {
+                              _showSnack(auth.lastError!);
+                            }
+                          },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blueAccent,
                       shape: RoundedRectangleBorder(
@@ -114,14 +213,24 @@ class _SignupScreenState extends State<SignupScreen> {
                       ),
                       elevation: 3,
                     ),
-                    child: Text(
-                      "Sign Up",
-                      style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    child: auth.isLoading
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text(
+                            "Sign Up",
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 25),
@@ -129,7 +238,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      "Already have an account?",
+                      widget.loginPrompt,
                       style: GoogleFonts.poppins(
                         color: Colors.grey.shade700,
                         fontSize: 14,
@@ -137,10 +246,14 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                     TextButton(
                       onPressed: () {
-                        Navigator.pop(context); // Back to login
+                        Navigator.pushNamedAndRemoveUntil(
+                          context,
+                          widget.loginRoute,
+                          (_) => false,
+                        );
                       },
                       child: Text(
-                        "Login",
+                        widget.loginActionLabel,
                         style: GoogleFonts.poppins(
                           color: Colors.orangeAccent,
                           fontWeight: FontWeight.w600,
@@ -163,12 +276,17 @@ class _SignupScreenState extends State<SignupScreen> {
     required IconData icon,
     bool obscureText = false,
     Widget? suffixIcon,
+    String? Function(String?)? validator,
     TextInputType keyboardType = TextInputType.text,
   }) {
-    return TextField(
+    return TextFormField(
       controller: controller,
       obscureText: obscureText,
       keyboardType: keyboardType,
+      validator: validator,
+      textInputAction: keyboardType == TextInputType.emailAddress
+          ? TextInputAction.next
+          : TextInputAction.done,
       decoration: InputDecoration(
         prefixIcon: Icon(icon, color: Colors.blueAccent),
         suffixIcon: suffixIcon,
@@ -184,6 +302,16 @@ class _SignupScreenState extends State<SignupScreen> {
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(color: Colors.grey.shade300),
         ),
+      ),
+    );
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: GoogleFonts.poppins()),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.green,
       ),
     );
   }

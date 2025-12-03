@@ -1,7 +1,10 @@
 import 'dart:io';
+import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/barber/screens/work_history_screen.dart';
+import 'package:cutline/routes/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 
 import 'edit_profile_screen.dart';
 
@@ -18,7 +21,8 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
 
-    final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    final XFile? pickedFile =
+        await picker.pickImage(source: ImageSource.gallery);
 
     if (pickedFile != null) {
       setState(() {
@@ -50,15 +54,15 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
                       radius: 50,
                       backgroundColor: Colors.grey.shade300,
                       backgroundImage:
-                      _imageFile != null ? FileImage(_imageFile!) : null,
+                          _imageFile != null ? FileImage(_imageFile!) : null,
                       child: _imageFile == null
-                          ? const Icon(Icons.person, size: 60, color: Colors.white)
+                          ? const Icon(Icons.person,
+                              size: 60, color: Colors.white)
                           : null,
                     ),
                   ),
 
                   // EDIT ICON
-
                 ],
               ),
             ),
@@ -92,7 +96,8 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const EditProfileScreen()),
+                  MaterialPageRoute(
+                      builder: (context) => const EditProfileScreen()),
                 );
               },
             ),
@@ -102,7 +107,8 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const WorkHistoryScreen()),
+                  MaterialPageRoute(
+                      builder: (context) => const WorkHistoryScreen()),
                 );
               },
             ),
@@ -110,7 +116,7 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
               icon: Icons.logout,
               title: "Logout",
               color: Colors.red,
-              onTap: () {},
+              onTap: () => _confirmLogout(context),
             ),
           ],
         ),
@@ -169,12 +175,45 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
             Expanded(
               child: Text(
                 title,
-                style: TextStyle(fontSize: 16, color: color, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    fontSize: 16, color: color, fontWeight: FontWeight.w600),
               ),
             ),
             const Icon(Icons.arrow_forward_ios, size: 18, color: Colors.grey),
           ],
         ),
+      ),
+    );
+  }
+
+  void _confirmLogout(BuildContext context) {
+    final auth = context.read<AuthProvider>();
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Logout'),
+        content:
+            const Text('Are you sure you want to logout from this device?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await auth.signOut();
+              if (!mounted) return;
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                AppRoutes.roleSelection,
+                (_) => false,
+              );
+            },
+            child: const Text('Logout'),
+          ),
+        ],
       ),
     );
   }
