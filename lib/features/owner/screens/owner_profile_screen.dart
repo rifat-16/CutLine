@@ -45,8 +45,8 @@ class OwnerProfileScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 24),
                     const Text('Owner information',
-                        style:
-                            TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 16)),
                     const SizedBox(height: 12),
                     _OwnerInfoSection(
                       ownerName: ownerName,
@@ -98,10 +98,14 @@ class OwnerProfileScreen extends StatelessWidget {
               if (!context.mounted) return;
               Navigator.pushNamedAndRemoveUntil(
                 context,
-                AppRoutes.roleSelection,
+                AppRoutes.ownerLogin,
                 (_) => false,
               );
             },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Logout'),
           ),
         ],
@@ -205,8 +209,8 @@ class _ProfileCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           OutlinedButton.icon(
-            onPressed: () =>
-                OwnerProfileScreen._open(context, const OwnerProfileEditScreen()),
+            onPressed: () => OwnerProfileScreen._open(
+                context, const OwnerProfileEditScreen()),
             icon: const Icon(Icons.edit_outlined),
             label: const Text('Edit profile'),
           ),

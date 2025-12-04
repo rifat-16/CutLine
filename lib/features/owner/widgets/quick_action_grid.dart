@@ -23,15 +23,18 @@ class OwnerQuickActionGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final aspectRatio = width < 380 ? 2.0 : 2.3;
+    final spacing = width < 380 ? 12.0 : 16.0;
     return GridView.builder(
       itemCount: actions.length,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: 2.3,
+        crossAxisSpacing: spacing,
+        mainAxisSpacing: spacing,
+        childAspectRatio: aspectRatio,
       ),
       itemBuilder: (_, index) => _OwnerQuickActionCard(action: actions[index]),
     );
@@ -46,6 +49,7 @@ class _OwnerQuickActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasBadge = (action.badgeCount ?? 0) > 0;
+    final forceSingleLine = action.label.toLowerCase() == 'dashboard';
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -53,17 +57,16 @@ class _OwnerQuickActionCard extends StatelessWidget {
           onTap: action.onTap,
           borderRadius: BorderRadius.circular(22),
           child: Ink(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(22),
-              border:
-                  Border.all(color: action.color.withValues(alpha: 0.18)),
+              border: Border.all(color: action.color.withValues(alpha: 0.18)),
             ),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: action.color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(16),
@@ -78,6 +81,9 @@ class _OwnerQuickActionCard extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
                     ),
+                    maxLines: forceSingleLine ? 1 : 2,
+                    softWrap: !forceSingleLine,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],

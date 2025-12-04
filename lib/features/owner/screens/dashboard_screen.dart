@@ -171,18 +171,19 @@ class _DashboardStatsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final aspectRatio = width < 380 ? 0.82 : 0.95;
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        // Slightly taller cards to avoid text overflow on small screens.
-        childAspectRatio: 0.95,
+        childAspectRatio: aspectRatio,
       ),
-      itemCount: stats.length,
       itemBuilder: (context, index) => _StatCard(data: stats[index]),
+      itemCount: stats.length,
     );
   }
 }
@@ -195,7 +196,7 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -215,18 +216,30 @@ class _StatCard extends StatelessWidget {
             ),
             child: Icon(data.icon, color: data.color),
           ),
-          const SizedBox(height: 12),
-          Text(data.title,
-              style:
-                  const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-          const SizedBox(height: 6),
-          Text(data.value,
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                  color: Colors.black87)),
+          const SizedBox(height: 10),
+          Text(
+            data.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
           const SizedBox(height: 4),
-          Text(data.subtitle, style: const TextStyle(color: Colors.black54)),
+          Text(
+            data.value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: Colors.black87),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            data.subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.black54, fontSize: 12),
+          ),
         ],
       ),
     );

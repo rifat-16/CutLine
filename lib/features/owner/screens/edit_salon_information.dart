@@ -113,8 +113,7 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
                             const SizedBox(height: 18),
                             _buildField(
                               controller: _aboutController,
-                              label: 'About / description',
-                              icon: Icons.info_outline,
+                              label: 'About / description (optional)',
                               maxLines: 3,
                               isRequired: false,
                             ),
@@ -122,7 +121,9 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton(
-                                onPressed: provider.isSaving ? null : () => _submit(provider),
+                                onPressed: provider.isSaving
+                                    ? null
+                                    : () => _submit(provider),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF5B21B6),
                                   foregroundColor: Colors.white,
@@ -159,7 +160,7 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
   Widget _buildField({
     required TextEditingController controller,
     required String label,
-    required IconData icon,
+    IconData? icon,
     int maxLines = 1,
     TextInputType keyboardType = TextInputType.text,
     bool isRequired = false,
@@ -180,12 +181,15 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
                   (value == null || value.trim().isEmpty) ? 'Required' : null
               : null,
           decoration: InputDecoration(
-            prefixIcon: Padding(
-              padding: const EdgeInsets.only(left: 12, right: 8),
-              child: Icon(icon, color: const Color(0xFF5B21B6)),
-            ),
-            prefixIconConstraints:
-                const BoxConstraints(minWidth: 40, minHeight: 40),
+            prefixIcon: icon == null
+                ? null
+                : Padding(
+                    padding: const EdgeInsets.only(left: 12, right: 8),
+                    child: Icon(icon, color: const Color(0xFF5B21B6)),
+                  ),
+            prefixIconConstraints: icon == null
+                ? null
+                : const BoxConstraints(minWidth: 40, minHeight: 40),
             filled: true,
             fillColor: const Color(0xFFF9FAFB),
             contentPadding:
@@ -197,7 +201,8 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(24),
-              borderSide: const BorderSide(color: Color(0xFF5B21B6), width: 1.4),
+              borderSide:
+                  const BorderSide(color: Color(0xFF5B21B6), width: 1.4),
             ),
           ),
         ),

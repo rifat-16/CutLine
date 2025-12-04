@@ -1,5 +1,6 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/screens/barbers_screen.dart';
+import 'package:cutline/features/owner/screens/contact_support_screen.dart';
 import 'package:cutline/features/owner/screens/edit_salon_information.dart';
 import 'package:cutline/features/owner/screens/manage_services_screen.dart';
 import 'package:cutline/features/owner/screens/working_hours_screen.dart';
@@ -53,32 +54,21 @@ class _OwnerSettingsScreenState extends State<OwnerSettingsScreen> {
             subtitle: 'Name, address & contact',
             onTap: () => _open(const EditSalonInfoScreen()),
           ),
+          _SettingTile(
+            icon: Icons.photo_library_outlined,
+            title: 'Manage gallery',
+            subtitle: 'Coming soon in an update',
+            onTap: () => _showComingSoon(context),
+          ),
           const SizedBox(height: 24),
           const Text('Support',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
           const SizedBox(height: 10),
-          Card(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-            child: ListTile(
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Support request sent! We will email you.')));
-              },
-              leading: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child:
-                    const Icon(Icons.support_agent, color: Color(0xFF2563EB)),
-              ),
-              title: const Text('Contact support'),
-              subtitle: const Text('We usually reply within a few hours'),
-              trailing: const Icon(Icons.chevron_right),
-            ),
+          _SettingTile(
+            icon: Icons.support_agent_outlined,
+            title: 'Contact support',
+            subtitle: 'We usually reply within a few hours',
+            onTap: () => _open(const ContactSupportScreen()),
           ),
           const SizedBox(height: 24),
         ],
@@ -90,6 +80,23 @@ class _OwnerSettingsScreenState extends State<OwnerSettingsScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
+  void _showComingSoon(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Coming soon'),
+        content:
+            const Text('Manage gallery will be available in a future update.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SettingTile extends StatelessWidget {
