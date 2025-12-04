@@ -1,12 +1,13 @@
 import 'dart:io';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/barber/providers/barber_profile_provider.dart';
 import 'package:cutline/features/barber/screens/work_history_screen.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
-import 'edit_profile_screen.dart';
+import 'barber_edit_profile_screen.dart';
 
 class BarberProfileScreen extends StatefulWidget {
   const BarberProfileScreen({super.key});
@@ -33,98 +34,139 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Profile"),
-        centerTitle: true,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            // PROFILE HEADER
-            Center(
-              child: Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  InkWell(
-                    onTap: _pickImage,
-                    child: CircleAvatar(
-                      radius: 50,
-                      backgroundColor: Colors.grey.shade300,
-                      backgroundImage:
-                          _imageFile != null ? FileImage(_imageFile!) : null,
-                      child: _imageFile == null
-                          ? const Icon(Icons.person,
-                              size: 60, color: Colors.white)
-                          : null,
-                    ),
+    return ChangeNotifierProvider(
+      create: (context) {
+        final provider =
+            BarberProfileProvider(authProvider: context.read<AuthProvider>());
+        provider.load();
+        return provider;
+      },
+      builder: (context, _) {
+        final provider = context.watch<BarberProfileProvider>();
+        final profile = provider.profile;
+        final name =
+            profile?.name.isNotEmpty == true ? profile!.name : 'Barber';
+        final title = profile?.specialization.isNotEmpty == true
+            ? profile!.specialization
+            : 'Hair Artist';
+        final phone =
+            profile?.phone.isNotEmpty == true ? profile!.phone : 'Not added';
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text("Profile"),
+            centerTitle: true,
+            elevation: 0,
+          ),
+          body: provider.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      if (provider.error != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            provider.error!,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      // PROFILE HEADER
+                      Center(
+                        child: Stack(
+                          alignment: Alignment.bottomRight,
+                          children: [
+                            InkWell(
+                              onTap: _pickImage,
+                              child: CircleAvatar(
+                                radius: 50,
+                                backgroundColor: Colors.grey.shade300,
+                                backgroundImage: _imageFile != null
+                                    ? FileImage(_imageFile!)
+                                    : null,
+                                child: _imageFile == null
+                                    ? const Icon(Icons.person,
+                                        size: 60, color: Colors.white)
+                                    : null,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 15),
+                      Text(
+                        name,
+                        style: const TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        title,
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        phone,
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+
+                      const SizedBox(height: 30),
+
+                      // STATS
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _statCard("Clients", provider.clientsServed),
+                        ],
+                      ),
+
+                      const SizedBox(height: 30),
+
+                      // SETTINGS
+                      _settingTile(
+                        icon: Icons.edit,
+                        title: "Edit Profile",
+                        onTap: () async {
+                          final updated = await Navigator.push<bool>(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const EditProfileScreen()),
+                          );
+                          if (!mounted) return;
+                          if (updated == true) {
+                            context.read<BarberProfileProvider>().load();
+                          }
+                        },
+                      ),
+                      _settingTile(
+                        icon: Icons.history,
+                        title: "Work History",
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const WorkHistoryScreen()),
+                          );
+                        },
+                      ),
+                      _settingTile(
+                        icon: Icons.logout,
+                        title: "Logout",
+                        color: Colors.red,
+                        onTap: () => _confirmLogout(context),
+                      ),
+                    ],
                   ),
-
-                  // EDIT ICON
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 15),
-            const Text(
-              "Alex Barber",
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            Text(
-              "Senior Hair Artist",
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-
-            const SizedBox(height: 30),
-
-            // STATS
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _statCard("Clients", "120"),
-              ],
-            ),
-
-            const SizedBox(height: 30),
-
-            // SETTINGS
-            _settingTile(
-              icon: Icons.edit,
-              title: "Edit Profile",
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const EditProfileScreen()),
-                );
-              },
-            ),
-            _settingTile(
-              icon: Icons.history,
-              title: "Work History",
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const WorkHistoryScreen()),
-                );
-              },
-            ),
-            _settingTile(
-              icon: Icons.logout,
-              title: "Logout",
-              color: Colors.red,
-              onTap: () => _confirmLogout(context),
-            ),
-          ],
-        ),
-      ),
+                ),
+        );
+      },
     );
   }
 
-  Widget _statCard(String title, String value) {
+  Widget _statCard(String title, int value) {
     return Container(
       width: 100,
       padding: const EdgeInsets.symmetric(vertical: 18),
@@ -139,7 +181,7 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
       child: Column(
         children: [
           Text(
-            value,
+            '$value',
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 4),
@@ -201,17 +243,23 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
             onPressed: () async {
               Navigator.of(dialogContext).pop();
               await auth.signOut();
               if (!mounted) return;
               Navigator.pushNamedAndRemoveUntil(
                 context,
-                AppRoutes.roleSelection,
+                AppRoutes.barberLogin,
                 (_) => false,
               );
             },
-            child: const Text('Logout'),
+            child: const Text(
+              'Logout',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),

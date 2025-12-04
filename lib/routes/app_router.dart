@@ -6,7 +6,7 @@ import 'package:cutline/features/auth/screens/splash_screen.dart';
 import 'package:cutline/features/barber/screens/barber_home_screen.dart';
 import 'package:cutline/features/barber/screens/barber_notification_screen.dart';
 import 'package:cutline/features/barber/screens/barber_profile_screen.dart';
-import 'package:cutline/features/barber/screens/edit_profile_screen.dart';
+import 'package:cutline/features/barber/screens/barber_edit_profile_screen.dart';
 import 'package:cutline/features/barber/screens/work_history_screen.dart';
 import 'package:cutline/features/owner/screens/barbers_screen.dart';
 import 'package:cutline/features/owner/screens/booking_detail_screen.dart'

@@ -13,33 +13,28 @@ class BarberNotificationScreen extends StatelessWidget {
         centerTitle: true,
         elevation: 0,
       ),
-      body: ListView(
+      body: Padding(
         padding: const EdgeInsets.all(16),
-        children: [
-          _notificationTile(
-            title: "New Client Added",
-            subtitle: "A customer booked Haircut & Beard",
-            time: "2 min ago",
-            icon: Icons.person_add_alt_1,
-            color: Colors.blue,
-          ),
-          const SizedBox(height: 12),
-          _notificationTile(
-            title: "Serving Completed",
-            subtitle: "Your last client has been marked as done",
-            time: "10 min ago",
-            icon: Icons.check_circle,
-            color: Colors.green,
-          ),
-          const SizedBox(height: 12),
-          _notificationTile(
-            title: "Reminder",
-            subtitle: "Next appointment starts soon",
-            time: "25 min ago",
-            icon: Icons.alarm,
-            color: Colors.orange,
-          ),
-        ],
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(Icons.notifications_none_rounded,
+                size: 56, color: Colors.grey.shade400),
+            const SizedBox(height: 12),
+            const Text(
+              "Notification feature is coming soon",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Coming soon. Updates will appear here as soon as we roll them out.",
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
