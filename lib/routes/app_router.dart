@@ -34,6 +34,7 @@ import 'package:cutline/features/user/screens/notification_screen.dart';
 import 'package:cutline/features/user/screens/salon_details_screen.dart';
 import 'package:cutline/features/user/screens/salon_gallery_screen.dart';
 import 'package:cutline/features/user/screens/user_home_screen.dart';
+import 'package:cutline/features/user/screens/user_edit_profile_screen.dart';
 import 'package:cutline/features/user/screens/user_profile_screen.dart';
 import 'package:cutline/features/user/screens/view_all_salon_services.dart';
 import 'package:cutline/features/user/screens/waiting_customer_screen.dart';
@@ -67,6 +68,7 @@ class AppRoutes {
   static const myBookings = '/my-bookings';
   static const userChats = '/user-chats';
   static const userProfile = '/user-profile';
+  static const userEditProfile = '/user-edit-profile';
 
   static const ownerBookings = '/owner-bookings';
   static const ownerBookingRequests = '/owner-booking-requests';
@@ -155,13 +157,46 @@ class AppRouter {
         final args = settings.arguments;
         final parsedArgs = args is SalonDetailsArgs ? args : null;
         final salonName = parsedArgs?.salonName ?? (args is String ? args : '');
-        return _page(SalonDetailsScreen(salonName: salonName), settings);
+        final salonId = parsedArgs?.salonId ?? '';
+        return _page(
+            SalonDetailsScreen(salonId: salonId, salonName: salonName),
+            settings);
       case AppRoutes.booking:
-        return _page(const BookingScreen(), settings);
+        final args = settings.arguments;
+        final parsedArgs = args is BookingArgs ? args : null;
+        return _page(
+            BookingScreen(
+              salonId: parsedArgs?.salonId ?? '',
+              salonName: parsedArgs?.salonName ?? '',
+            ),
+            settings);
       case AppRoutes.bookingSummary:
-        return _page(const BookingSummaryScreen(), settings);
+        final args = settings.arguments;
+        final parsedArgs = args is BookingSummaryArgs ? args : null;
+        return _page(
+          BookingSummaryScreen(
+            salonId: parsedArgs?.salonId ?? '',
+            salonName: parsedArgs?.salonName ?? '',
+            services: parsedArgs?.services ?? const [],
+            barberName: parsedArgs?.barberName ?? '',
+            date: parsedArgs?.date ?? DateTime.now(),
+            time: parsedArgs?.time ?? '',
+            customerName: parsedArgs?.customerName ?? '',
+            customerPhone: parsedArgs?.customerPhone ?? '',
+            customerEmail: parsedArgs?.customerEmail ?? '',
+            customerUid: parsedArgs?.customerUid ?? '',
+          ),
+          settings,
+        );
       case AppRoutes.bookingReceipt:
-        return _page(const user_booking.BookingReceiptScreen(), settings);
+        final args = settings.arguments;
+        final parsedArgs = args is BookingReceiptArgs ? args : null;
+        return _page(
+            user_booking.BookingReceiptScreen(
+              salonId: parsedArgs?.salonId ?? '',
+              bookingId: parsedArgs?.bookingId ?? '',
+            ),
+            settings);
       case AppRoutes.favoriteSalons:
         return _page(const FavoriteSalonScreen(), settings);
       case AppRoutes.userNotifications:
@@ -177,7 +212,7 @@ class AppRouter {
         return _page(
           SalonGalleryScreen(
             salonName: parsedArgs?.salonName ?? (args is String ? args : ''),
-            uploadedCount: parsedArgs?.uploadedCount ?? 7,
+            uploadedCount: parsedArgs?.uploadedCount ?? 0,
             totalLimit: parsedArgs?.totalLimit ?? 10,
           ),
           settings,
@@ -190,6 +225,8 @@ class AppRouter {
         return _page(const ChatsScreen(), settings);
       case AppRoutes.userProfile:
         return _page(const UserProfileScreen(), settings);
+      case AppRoutes.userEditProfile:
+        return _page(const UserEditProfileScreen(), settings);
 
       case AppRoutes.ownerBookings:
         return _page(const BookingsScreen(), settings);
@@ -246,9 +283,59 @@ class AppRouter {
 }
 
 class SalonDetailsArgs {
+  final String salonId;
   final String salonName;
 
-  const SalonDetailsArgs({required this.salonName});
+  const SalonDetailsArgs({
+    required this.salonId,
+    required this.salonName,
+  });
+}
+
+class BookingArgs {
+  final String salonId;
+  final String salonName;
+
+  const BookingArgs({
+    required this.salonId,
+    required this.salonName,
+  });
+}
+
+class BookingSummaryArgs {
+  final String salonId;
+  final String salonName;
+  final List<String> services;
+  final String barberName;
+  final DateTime date;
+  final String time;
+  final String customerName;
+  final String customerPhone;
+  final String customerEmail;
+  final String customerUid;
+
+  const BookingSummaryArgs({
+    required this.salonId,
+    required this.salonName,
+    required this.services,
+    required this.barberName,
+    required this.date,
+    required this.time,
+    required this.customerName,
+    required this.customerPhone,
+    required this.customerEmail,
+    required this.customerUid,
+  });
+}
+
+class BookingReceiptArgs {
+  final String salonId;
+  final String bookingId;
+
+  const BookingReceiptArgs({
+    required this.salonId,
+    required this.bookingId,
+  });
 }
 
 class ViewAllServicesArgs {

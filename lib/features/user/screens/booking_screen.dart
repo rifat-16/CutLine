@@ -1,133 +1,184 @@
+import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/user/providers/booking_provider.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 class BookingScreen extends StatefulWidget {
-  const BookingScreen({super.key});
+  final String salonId;
+  final String salonName;
+
+  const BookingScreen({
+    super.key,
+    required this.salonId,
+    required this.salonName,
+  });
 
   @override
   State<BookingScreen> createState() => _BookingScreenState();
 }
 
 class _BookingScreenState extends State<BookingScreen> {
-  final List<String> services = const ['Haircut', 'Beard Trim', 'Facial', 'Coloring'];
-  final List<String> barbers = const ['Arafat', 'Rafi', 'Siam', 'Hasan'];
-  final List<String> timeSlots = const [
-    '10:00 AM',
-    '10:30 AM',
-    '11:00 AM',
-    '11:30 AM',
-    '12:00 PM',
-    '12:30 PM',
-    '1:00 PM',
-    '1:30 PM',
-    '2:00 PM',
-    '2:30 PM',
-    '3:00 PM',
-    '3:30 PM',
-    '4:00 PM',
-    '4:30 PM',
-    '5:00 PM',
-    '5:30 PM',
-    '6:00 PM',
-    '6:30 PM',
-    '7:00 PM',
-    '7:30 PM',
-  ];
-  final List<String> bookedSlots = const ['11:00 AM', '2:30 PM', '5:00 PM'];
-  final Map<String, int> servicePrices = const {
-    'Haircut': 500,
-    'Beard Trim': 300,
-    'Facial': 800,
-    'Coloring': 1200,
-  };
-
   List<String> selectedServiceList = [];
   String? selectedBarber;
   DateTime selectedDate = DateTime.now();
   String? selectedTime;
-  int currentWaiting = 3;
 
   @override
   Widget build(BuildContext context) {
-    final total = selectedServiceList.fold<int>(0, (sum, service) => sum + (servicePrices[service] ?? 0));
+    return ChangeNotifierProvider(
+      create: (_) =>
+          BookingProvider(salonId: widget.salonId, salonName: widget.salonName)
+            ..loadInitial(selectedDate),
+      builder: (context, _) {
+        final provider = context.watch<BookingProvider>();
+        final services = provider.services;
+        final barbers = provider.barbers;
+        final servicePrices = {
+          for (final s in services) s.name: s.price,
+        };
+        final total = selectedServiceList.fold<int>(
+            0, (sum, service) => sum + (servicePrices[service] ?? 0));
+        return Scaffold(
+          appBar: const CutlineAppBar(title: 'Book Your Slot'),
+          body: provider.isLoading && provider.services.isEmpty
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  padding: CutlineSpacing.screen.copyWith(bottom: 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CutlineAnimations.entrance(
+                        _SalonInfoCard(
+                          salonName: widget.salonName.isNotEmpty
+                              ? widget.salonName
+                              : 'Salon',
+                          location: provider.address.isNotEmpty
+                              ? provider.address
+                              : 'Location unavailable',
+                          rating: provider.rating,
+                          workingHours: provider.workingHoursLabel,
+                          imageUrl:
+                              'https://images.unsplash.com/photo-1600891964093-3b40cc0d2c7e',
+                        ),
+                      ),
+                      const SizedBox(height: CutlineSpacing.md),
+                      if (provider.error != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            provider.error!,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      const CutlineSectionHeader(title: 'Select Service'),
+                      const SizedBox(height: CutlineSpacing.sm),
+                      _ServiceSelector(
+                        services: services.map((e) => e.name).toList(),
+                        servicePrices: servicePrices,
+                        selectedServices: selectedServiceList,
+                        onToggle: (service) {
+                          setState(() {
+                            if (selectedServiceList.contains(service)) {
+                              selectedServiceList.remove(service);
+                            } else {
+                              selectedServiceList.add(service);
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: CutlineSpacing.md),
+                      const CutlineSectionHeader(title: 'Select Barber'),
+                      const SizedBox(height: CutlineSpacing.sm),
+                      _BarberGrid(
+                        barbers: barbers.map((e) => e.name).toList(),
+                        selectedBarber: selectedBarber,
+                        onSelected: (value) =>
+                            setState(() => selectedBarber = value),
+                      ),
+                      const SizedBox(height: CutlineSpacing.md),
+                      const CutlineSectionHeader(title: 'Select Date'),
+                      const SizedBox(height: CutlineSpacing.sm),
+                      _DateScroller(
+                        selectedDate: selectedDate,
+                        isClosed: provider.isClosedOn,
+                        onSelected: (date) {
+                          setState(() {
+                            selectedDate = date;
+                            selectedTime = null;
+                          });
+                          provider.updateTimeSlotsForDate(date);
+                          provider.loadBookedSlots(date);
+                        },
+                      ),
+                      const SizedBox(height: CutlineSpacing.md),
+                      const CutlineSectionHeader(title: 'Select Time Slot'),
+                      const SizedBox(height: CutlineSpacing.sm),
+                      _TimeSlotGrid(
+                        timeSlots: provider.timeSlots,
+                        bookedSlots: provider.bookedSlots,
+                        selectedSlot: selectedTime,
+                        selectedDate: selectedDate,
+                        now: DateTime.now(),
+                        onTap: (slot) => setState(() => selectedTime = slot),
+                      ),
+                      const SizedBox(height: CutlineSpacing.sm),
+                      Text(
+                        'Current waiting: ${provider.currentWaiting} people ahead',
+                        style: CutlineTextStyles.subtitle,
+                      ),
+                      const SizedBox(height: CutlineSpacing.sm),
+                      const Text('Estimated wait time: 20 min',
+                          style: CutlineTextStyles.subtitle),
+                      const SizedBox(height: CutlineSpacing.lg),
+                      _BookingSummaryCard(
+                        totalAmount: total,
+                        canProceed: selectedServiceList.isNotEmpty &&
+                            selectedBarber != null &&
+                            selectedTime != null,
+                        onConfirm: () {
+                          final auth = context.read<AuthProvider>();
+                          final user = auth.currentUser;
+                          final profile = auth.profile;
+                          final customerName =
+                              user?.displayName?.trim().isNotEmpty == true
+                                  ? user!.displayName!
+                                  : 'Guest';
+                          final customerEmail =
+                              user?.email?.trim().isNotEmpty == true
+                                  ? user!.email!
+                                  : '';
+                          final customerPhone = (profile?.phone ??
+                                  user?.phoneNumber ??
+                                  '')
+                              .trim();
+                          final customerUid = user?.uid ?? '';
 
-    return Scaffold(
-      appBar: const CutlineAppBar(title: 'Book Your Slot'),
-      body: SingleChildScrollView(
-        padding: CutlineSpacing.screen.copyWith(bottom: 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CutlineAnimations.entrance(
-              _SalonInfoCard(
-                salonName: 'Urban Fade Salon',
-                location: 'Dhanmondi, Dhaka',
-                rating: 4.8,
-                workingHours: '10 AM - 8 PM',
-                imageUrl: 'https://images.unsplash.com/photo-1600891964093-3b40cc0d2c7e',
-              ),
-            ),
-            const SizedBox(height: CutlineSpacing.md),
-            const CutlineSectionHeader(title: 'Select Service'),
-            const SizedBox(height: CutlineSpacing.sm),
-            _ServiceSelector(
-              services: services,
-              servicePrices: servicePrices,
-              selectedServices: selectedServiceList,
-              onToggle: (service) {
-                setState(() {
-                  if (selectedServiceList.contains(service)) {
-                    selectedServiceList.remove(service);
-                  } else {
-                    selectedServiceList.add(service);
-                  }
-                });
-              },
-            ),
-            const SizedBox(height: CutlineSpacing.md),
-            const CutlineSectionHeader(title: 'Select Barber'),
-            const SizedBox(height: CutlineSpacing.sm),
-            _BarberGrid(
-              barbers: barbers,
-              selectedBarber: selectedBarber,
-              onSelected: (value) => setState(() => selectedBarber = value),
-            ),
-            const SizedBox(height: CutlineSpacing.md),
-            const CutlineSectionHeader(title: 'Select Date'),
-            const SizedBox(height: CutlineSpacing.sm),
-            _DateScroller(
-              selectedDate: selectedDate,
-              onSelected: (date) => setState(() => selectedDate = date),
-            ),
-            const SizedBox(height: CutlineSpacing.md),
-            const CutlineSectionHeader(title: 'Select Time Slot'),
-            const SizedBox(height: CutlineSpacing.sm),
-            _TimeSlotGrid(
-              timeSlots: timeSlots,
-              bookedSlots: bookedSlots,
-              selectedSlot: selectedTime,
-              onTap: (slot) => setState(() => selectedTime = slot),
-            ),
-            const SizedBox(height: CutlineSpacing.sm),
-            Text(
-              'Current waiting: $currentWaiting people ahead',
-              style: CutlineTextStyles.subtitle,
-            ),
-            const SizedBox(height: CutlineSpacing.sm),
-            const Text('Estimated wait time: 20 min', style: CutlineTextStyles.subtitle),
-            const SizedBox(height: CutlineSpacing.lg),
-            _BookingSummaryCard(
-              totalAmount: total,
-              canProceed: selectedServiceList.isNotEmpty && selectedBarber != null && selectedTime != null,
-              onConfirm: () {
-                Navigator.pushNamed(context, AppRoutes.bookingSummary);
-              },
-            ),
-          ],
-        ),
-      ),
+                          Navigator.pushNamed(
+                            context,
+                            AppRoutes.bookingSummary,
+                            arguments: BookingSummaryArgs(
+                              salonId: widget.salonId,
+                              salonName: widget.salonName,
+                              services: selectedServiceList,
+                              barberName: selectedBarber ?? '',
+                              date: selectedDate,
+                              time: selectedTime ?? '',
+                              customerName: customerName,
+                              customerPhone: customerPhone,
+                              customerEmail: customerEmail,
+                              customerUid: customerUid,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+        );
+      },
     );
   }
 }
@@ -292,20 +343,10 @@ class _BarberGrid extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                ClipOval(
-                  child: Image.network(
-                    'https://i.pravatar.cc/150?img=${index + 10}',
-                    width: 44,
-                    height: 44,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(
-                      width: 44,
-                      height: 44,
-                      color: Colors.grey.shade200,
-                      alignment: Alignment.center,
-                      child: const Icon(Icons.person, color: Colors.grey, size: 22),
-                    ),
-                  ),
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: Colors.grey.shade200,
+                  child: const Icon(Icons.person, color: Colors.grey, size: 22),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -333,8 +374,13 @@ class _BarberGrid extends StatelessWidget {
 class _DateScroller extends StatelessWidget {
   final DateTime selectedDate;
   final ValueChanged<DateTime> onSelected;
+  final bool Function(DateTime)? isClosed;
 
-  const _DateScroller({required this.selectedDate, required this.onSelected});
+  const _DateScroller({
+    required this.selectedDate,
+    required this.onSelected,
+    this.isClosed,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -345,14 +391,17 @@ class _DateScroller extends StatelessWidget {
         itemCount: 7,
         itemBuilder: (context, index) {
           final date = DateTime.now().add(Duration(days: index));
+          final closed = isClosed?.call(date) ?? false;
           final isSelected = selectedDate.year == date.year && selectedDate.month == date.month && selectedDate.day == date.day;
           final card = GestureDetector(
-            onTap: () => onSelected(date),
+            onTap: closed ? null : () => onSelected(date),
             child: Container(
               width: 70,
               margin: EdgeInsets.only(right: index == 6 ? 0 : 12),
               decoration: BoxDecoration(
-                color: isSelected ? CutlineColors.primary : Colors.white,
+                color: closed
+                    ? Colors.grey.shade200
+                    : (isSelected ? CutlineColors.primary : Colors.white),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: CutlineColors.primary),
               ),
@@ -361,7 +410,9 @@ class _DateScroller extends StatelessWidget {
                   DateFormat('EEE\ndd').format(date),
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: isSelected ? Colors.white : CutlineColors.primary,
+                    color: closed
+                        ? Colors.grey
+                        : (isSelected ? Colors.white : CutlineColors.primary),
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -380,12 +431,16 @@ class _TimeSlotGrid extends StatelessWidget {
   final List<String> bookedSlots;
   final String? selectedSlot;
   final ValueChanged<String> onTap;
+  final DateTime selectedDate;
+  final DateTime now;
 
   const _TimeSlotGrid({
     required this.timeSlots,
     required this.bookedSlots,
     required this.selectedSlot,
     required this.onTap,
+    required this.selectedDate,
+    required this.now,
   });
 
   @override
@@ -404,21 +459,24 @@ class _TimeSlotGrid extends StatelessWidget {
         final slot = timeSlots[index];
         final isBooked = bookedSlots.contains(slot);
         final isSelected = selectedSlot == slot;
+        final isPast = _isPastSlot(slot);
+        final isDisabled = isBooked || isPast;
         final card = GestureDetector(
-          onTap: isBooked ? () {} : () => onTap(slot),
+          onTap: isDisabled ? () {} : () => onTap(slot),
           child: Container(
             decoration: BoxDecoration(
-              color: isBooked
+              color: isDisabled
                   ? Colors.grey.shade200
                   : (isSelected ? CutlineColors.primary : Colors.white),
-              border: Border.all(color: isBooked ? Colors.grey.shade300 : CutlineColors.primary),
+              border: Border.all(
+                  color: isDisabled ? Colors.grey.shade300 : CutlineColors.primary),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Center(
               child: Text(
                 slot,
                 style: TextStyle(
-                  color: isBooked
+                  color: isDisabled
                       ? Colors.grey
                       : (isSelected ? Colors.white : CutlineColors.primary),
                   fontWeight: FontWeight.w600,
@@ -430,6 +488,28 @@ class _TimeSlotGrid extends StatelessWidget {
         return CutlineAnimations.staggeredList(child: card, index: index);
       },
     );
+  }
+
+  bool _isPastSlot(String slot) {
+    // Only block past times on the selected date (today).
+    if (selectedDate.year != now.year ||
+        selectedDate.month != now.month ||
+        selectedDate.day != now.day) {
+      return false;
+    }
+    try {
+      final parsed = DateFormat('h:mm a').parse(slot);
+      final slotDateTime = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+        parsed.hour,
+        parsed.minute,
+      );
+      return slotDateTime.isBefore(now);
+    } catch (_) {
+      return false;
+    }
   }
 }
 

@@ -1,5 +1,7 @@
+import 'package:cutline/features/user/providers/salon_services_provider.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class ViewAllSalonServices extends StatefulWidget {
   final String salonName;
@@ -27,47 +29,73 @@ class _ViewAllSalonServicesState extends State<ViewAllSalonServices> with Single
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CutlineAppBar(
-        title: '${widget.salonName} Services',
-        centerTitle: true,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: CutlineColors.primary,
-          labelColor: CutlineColors.primary,
-          unselectedLabelColor: Colors.black54,
-          tabs: const [
-            Tab(text: 'All Services'),
-            Tab(text: 'Combo Offers'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [
-          _ServiceList(),
-          _ComboOfferList(),
-        ],
-      ),
+    return ChangeNotifierProvider(
+      create: (_) =>
+          SalonServicesProvider(salonName: widget.salonName)..load(),
+      builder: (context, _) {
+        final provider = context.watch<SalonServicesProvider>();
+        return Scaffold(
+          appBar: CutlineAppBar(
+            title: '${widget.salonName} Services',
+            centerTitle: true,
+            bottom: TabBar(
+              controller: _tabController,
+              indicatorColor: CutlineColors.primary,
+              labelColor: CutlineColors.primary,
+              unselectedLabelColor: Colors.black54,
+              tabs: const [
+                Tab(text: 'All Services'),
+                Tab(text: 'Combo Offers'),
+              ],
+            ),
+          ),
+          body: provider.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : provider.error != null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          provider.error!,
+                          style: CutlineTextStyles.subtitle,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    )
+                  : TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _ServiceList(services: provider.services),
+                        _ComboOfferList(combos: provider.combos),
+                      ],
+                    ),
+        );
+      },
     );
   }
 }
 
 class _ServiceList extends StatelessWidget {
-  const _ServiceList();
+  final List<SalonService> services;
+
+  const _ServiceList({required this.services});
 
   @override
   Widget build(BuildContext context) {
+    if (services.isEmpty) {
+      return const _EmptyState(message: 'Services will appear here soon.');
+    }
     return ListView.builder(
       padding: CutlineSpacing.section.copyWith(top: 16, bottom: 16),
-      itemCount: 6,
+      itemCount: services.length,
       itemBuilder: (context, index) {
+        final svc = services[index];
         return CutlineAnimations.staggeredList(
           index: index,
           child: _ServiceTile(
-            title: 'Premium Service ${index + 1}',
-            duration: 'Duration: 30 min',
-            price: '৳${(index + 1) * 250}',
+            title: svc.name,
+            duration: 'Duration: ${svc.durationMinutes} min',
+            price: '৳${svc.price}',
           ),
         );
       },
@@ -114,29 +142,31 @@ class _ServiceTile extends StatelessWidget {
 }
 
 class _ComboOfferList extends StatelessWidget {
-  const _ComboOfferList();
+  final List<SalonCombo> combos;
 
-  static final List<_ComboOffer> comboOffers = [
-    const _ComboOffer(title: '💎 Full Grooming Combo', details: 'Haircut + Beard + Facial', discount: 'Save 20% Today!', price: '৳850'),
-    const _ComboOffer(title: '🔥 Classic Style Combo', details: 'Haircut + Beard Trim', discount: 'Save 15% on this combo!', price: '৳650'),
-    const _ComboOffer(title: '✨ Luxury Spa Combo', details: 'Facial + Head Massage + Steam', discount: 'Save 25% Today!', price: '৳1200'),
-  ];
+  const _ComboOfferList({required this.combos});
 
   @override
   Widget build(BuildContext context) {
+    if (combos.isEmpty) {
+      return const _EmptyState(message: 'Combo offers will appear here soon.');
+    }
     return ListView.builder(
       padding: CutlineSpacing.section.copyWith(top: 16, bottom: 16),
-      itemCount: comboOffers.length,
+      itemCount: combos.length,
       itemBuilder: (context, index) {
-        final offer = comboOffers[index];
-        return CutlineAnimations.staggeredList(index: index, child: _ComboOfferCard(offer: offer));
+        final offer = combos[index];
+        return CutlineAnimations.staggeredList(
+          index: index,
+          child: _ComboOfferCard(offer: offer),
+        );
       },
     );
   }
 }
 
 class _ComboOfferCard extends StatelessWidget {
-  final _ComboOffer offer;
+  final SalonCombo offer;
 
   const _ComboOfferCard({required this.offer});
 
@@ -161,8 +191,11 @@ class _ComboOfferCard extends StatelessWidget {
               Text(offer.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 6),
               Text(offer.details, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-              const SizedBox(height: 6),
-              Text(offer.discount, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+              if (offer.discountLabel.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(offer.discountLabel,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+              ],
             ],
           ),
           Column(
@@ -171,7 +204,7 @@ class _ComboOfferCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-                child: Text(offer.price, style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 16)),
+                child: Text('৳${offer.price}', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 16)),
               ),
               const SizedBox(height: 8),
               ElevatedButton(
@@ -193,11 +226,22 @@ class _ComboOfferCard extends StatelessWidget {
   }
 }
 
-class _ComboOffer {
-  final String title;
-  final String details;
-  final String discount;
-  final String price;
+class _EmptyState extends StatelessWidget {
+  final String message;
 
-  const _ComboOffer({required this.title, required this.details, required this.discount, required this.price});
+  const _EmptyState({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          message,
+          style: CutlineTextStyles.subtitle,
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
 }

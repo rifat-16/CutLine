@@ -6,7 +6,7 @@ class SalonGalleryScreen extends StatelessWidget {
   final int uploadedCount;
   final int totalLimit;
 
-  const SalonGalleryScreen({super.key, required this.salonName, this.uploadedCount = 7, this.totalLimit = 10});
+  const SalonGalleryScreen({super.key, required this.salonName, this.uploadedCount = 0, this.totalLimit = 10});
 
   @override
   Widget build(BuildContext context) {
@@ -28,27 +28,38 @@ class SalonGalleryScreen extends StatelessWidget {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async => Future<void>.delayed(const Duration(seconds: 1)),
-        child: GridView.builder(
-          padding: CutlineSpacing.section.copyWith(top: 16, bottom: 16),
+        onRefresh: () async => Future<void>.delayed(const Duration(milliseconds: 500)),
+        child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          itemCount: uploadedCount,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 1,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1.3,
-          ),
-          itemBuilder: (context, index) {
-            final imagePath = 'assets/images/salon_${(index % 4) + 1}.jpg';
-            return CutlineAnimations.staggeredList(
-              index: index,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.asset(imagePath, fit: BoxFit.cover),
+          padding: CutlineSpacing.section.copyWith(top: 24, bottom: 24),
+          children: [
+            Container(
+              height: 220,
+              decoration: CutlineDecorations.card(
+                colors: [CutlineColors.primary.withValues(alpha: 0.08), Colors.white],
               ),
-            );
-          },
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.photo_library_outlined, size: 48, color: CutlineColors.primary),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Salon gallery coming soon',
+                      style: CutlineTextStyles.title.copyWith(fontSize: 18),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Images will appear here after the next update.',
+                      style: CutlineTextStyles.subtitle,
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

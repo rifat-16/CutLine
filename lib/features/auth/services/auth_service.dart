@@ -20,6 +20,7 @@ class AuthService {
     required String email,
     required String password,
     String? displayName,
+    String? phoneNumber,
   }) async {
     final credential = await _firebaseAuth.createUserWithEmailAndPassword(
       email: email,
@@ -27,8 +28,9 @@ class AuthService {
     );
 
     final trimmedName = displayName?.trim();
-    if (trimmedName != null && trimmedName.isNotEmpty) {
-      await credential.user?.updateDisplayName(trimmedName);
+    final user = credential.user;
+    if (user != null && trimmedName != null && trimmedName.isNotEmpty) {
+      await user.updateDisplayName(trimmedName);
     }
 
     return credential;

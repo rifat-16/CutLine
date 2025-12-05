@@ -1,76 +1,94 @@
+import 'package:cutline/features/user/providers/booking_receipt_provider.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class BookingReceiptScreen extends StatelessWidget {
-  const BookingReceiptScreen({super.key});
+  final String salonId;
+  final String bookingId;
+
+  const BookingReceiptScreen({
+    super.key,
+    required this.salonId,
+    required this.bookingId,
+  });
 
   @override
   Widget build(BuildContext context) {
-    const salonDetails = _SalonDetails(
-      name: 'Salon Luxe',
-      address: '123 Main Street, Dhaka',
-      phone: '+880 1712 345678',
-      email: 'salonluxe@example.com',
-      stylist: 'Rafi Uddin',
-      appointment: '12 Nov 2025, 3:00 PM',
-    );
+    return ChangeNotifierProvider(
+      create: (_) => BookingReceiptProvider(
+        salonId: salonId,
+        bookingId: bookingId,
+      )..load(),
+      builder: (context, _) {
+        final provider = context.watch<BookingReceiptProvider>();
+        final data = provider.data;
 
-    const customer = _CustomerInfo(name: 'Boss', phone: '+880 1999 556677', email: 'boss@email.com');
-
-    const services = [
-      _ServiceLine(title: 'Haircut', price: '৳250', icon: Icons.content_cut),
-      _ServiceLine(title: 'Beard Trim', price: '৳150', icon: Icons.face_6_outlined),
-    ];
-
-    return Scaffold(
-      appBar: const CutlineAppBar(title: 'Booking Receipt', centerTitle: true),
-      backgroundColor: CutlineColors.secondaryBackground,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Column(
-          children: [
-            CutlineAnimations.entrance(
-              _ReceiptCard(
-                salonDetails: salonDetails,
-                customer: customer,
-                services: services,
-                totals: const _PriceSummary(subtotal: '৳400', serviceCharge: '৳40', total: '৳440'),
-              ),
-            ),
-            const SizedBox(height: CutlineSpacing.lg),
-            Padding(
-              padding: CutlineSpacing.section,
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: CutlineButtons.primary(padding: const EdgeInsets.symmetric(vertical: 14)),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Back to My Bookings', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        return Scaffold(
+          appBar: const CutlineAppBar(title: 'Booking Receipt', centerTitle: true),
+          backgroundColor: CutlineColors.secondaryBackground,
+          body: provider.isLoading && data == null
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Column(
+                    children: [
+                      if (provider.error != null && data == null)
+                        Padding(
+                          padding: CutlineSpacing.section,
+                          child: Text(
+                            provider.error!,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      if (data != null)
+                        CutlineAnimations.entrance(
+                          _ReceiptCard(
+                            data: data,
+                          ),
+                        ),
+                      const SizedBox(height: CutlineSpacing.lg),
+                      Padding(
+                        padding: CutlineSpacing.section,
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            style: CutlineButtons.primary(
+                                padding: const EdgeInsets.symmetric(vertical: 14)),
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Back to My Bookings',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ),
-          ],
-        ),
-      ),
+        );
+      },
     );
   }
 }
 
 class _ReceiptCard extends StatelessWidget {
-  final _SalonDetails salonDetails;
-  final _CustomerInfo customer;
-  final List<_ServiceLine> services;
-  final _PriceSummary totals;
+  final BookingReceiptData data;
 
-  const _ReceiptCard({
-    required this.salonDetails,
-    required this.customer,
-    required this.services,
-    required this.totals,
-  });
+  const _ReceiptCard({required this.data});
 
   @override
   Widget build(BuildContext context) {
+    final services = data.services
+        .map((s) => _ServiceLine(
+              title: s.name,
+              price: '৳${s.price}',
+              icon: Icons.content_cut,
+            ))
+        .toList();
+    final totals = _PriceSummary(
+      subtotal: '৳${data.subtotal}',
+      serviceCharge: '৳${data.serviceCharge}',
+      total: '৳${data.total}',
+    );
     return Container(
       width: double.infinity,
       margin: CutlineSpacing.section,
@@ -79,14 +97,14 @@ class _ReceiptCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SectionTitle(icon: Icons.storefront, title: salonDetails.name),
+          _SectionTitle(icon: Icons.storefront, title: data.salonName),
           const SizedBox(height: CutlineSpacing.xs),
           ...[
-            salonDetails.address,
-            'Phone: ${salonDetails.phone}',
-            'Email: ${salonDetails.email}',
-            'Stylist: ${salonDetails.stylist}',
-            'Date: ${salonDetails.appointment}',
+            data.address.isNotEmpty ? data.address : 'Address unavailable',
+            'Phone: ${data.contact.isNotEmpty ? data.contact : 'N/A'}',
+            'Email: ${data.email.isNotEmpty ? data.email : 'N/A'}',
+            if (data.barberName.isNotEmpty) 'Stylist: ${data.barberName}',
+            'Date: ${data.date} ${data.time}',
           ].map((line) => Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Text(line, style: CutlineTextStyles.body),
@@ -94,9 +112,9 @@ class _ReceiptCard extends StatelessWidget {
           const Divider(height: 32),
           const Text('Customer Information', style: CutlineTextStyles.title),
           const SizedBox(height: CutlineSpacing.sm),
-          _InfoRow(label: 'Name', value: customer.name),
-          _InfoRow(label: 'Phone', value: customer.phone),
-          _InfoRow(label: 'Email', value: customer.email),
+          _InfoRow(label: 'Name', value: data.customerName.isNotEmpty ? data.customerName : 'N/A'),
+          _InfoRow(label: 'Phone', value: data.customerPhone.isNotEmpty ? data.customerPhone : 'N/A'),
+          _InfoRow(label: 'Email', value: data.customerEmail.isNotEmpty ? data.customerEmail : 'N/A'),
           const Divider(height: 32),
           const Text('Service Details', style: CutlineTextStyles.title),
           const SizedBox(height: CutlineSpacing.sm),
@@ -107,7 +125,10 @@ class _ReceiptCard extends StatelessWidget {
           const Divider(height: 32),
           _PriceRow(label: 'Total', value: totals.total, emphasize: true),
           const SizedBox(height: CutlineSpacing.md),
-          const _PaymentStatusCard(),
+          _PaymentStatusCard(
+            paymentMethod: data.paymentMethod,
+            status: data.status,
+          ),
           const SizedBox(height: CutlineSpacing.lg),
           const Center(
             child: Column(
@@ -197,7 +218,13 @@ class _PriceRow extends StatelessWidget {
 }
 
 class _PaymentStatusCard extends StatelessWidget {
-  const _PaymentStatusCard();
+  final String paymentMethod;
+  final String status;
+
+  const _PaymentStatusCard({
+    required this.paymentMethod,
+    required this.status,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -209,10 +236,10 @@ class _PaymentStatusCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(CutlineDecorations.radius),
       ),
       child: Column(
-        children: const [
-          _InfoRow(label: '💳 Payment Method', value: 'Pay at salon'),
-          SizedBox(height: 8),
-          _InfoRow(label: '✅ Booking Status', value: 'Completed'),
+        children: [
+          _InfoRow(label: '💳 Payment Method', value: paymentMethod),
+          const SizedBox(height: 8),
+          _InfoRow(label: '✅ Booking Status', value: status),
         ],
       ),
     );
@@ -235,32 +262,6 @@ class _SectionTitle extends StatelessWidget {
       ],
     );
   }
-}
-
-class _SalonDetails {
-  final String name;
-  final String address;
-  final String phone;
-  final String email;
-  final String stylist;
-  final String appointment;
-
-  const _SalonDetails({
-    required this.name,
-    required this.address,
-    required this.phone,
-    required this.email,
-    required this.stylist,
-    required this.appointment,
-  });
-}
-
-class _CustomerInfo {
-  final String name;
-  final String phone;
-  final String email;
-
-  const _CustomerInfo({required this.name, required this.phone, required this.email});
 }
 
 class _PriceSummary {

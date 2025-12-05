@@ -1,5 +1,6 @@
 import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/owner/services/salon_lookup_service.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -168,28 +169,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                             if (!context.mounted) return;
                             if (success) {
-                              if (widget.role == UserRole.owner) {
-                                final profile = await auth.fetchUserProfile(
-                                  auth.currentUser?.uid ?? '',
-                                );
-                                final profileComplete =
-                                    profile?['profileComplete'] == true;
-                                final target = profileComplete
-                                    ? widget.successRoute
-                                    : AppRoutes.ownerSalonSetup;
-                                if (!context.mounted) return;
-                                Navigator.pushNamedAndRemoveUntil(
-                                  context,
-                                  target,
-                                  (_) => false,
-                                );
-                              } else {
-                                Navigator.pushNamedAndRemoveUntil(
-                                  context,
-                                  widget.successRoute,
-                                  (_) => false,
-                                );
-                              }
+                              await _routeByRole(auth);
                             } else if (auth.lastError != null) {
                               _showSnack(auth.lastError!);
                             }
@@ -306,6 +286,41 @@ class _LoginScreenState extends State<LoginScreen> {
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  Future<void> _routeByRole(AuthProvider auth) async {
+    final uid = auth.currentUser?.uid;
+    if (uid == null) return;
+
+    final profile = await auth.fetchUserProfile(uid);
+    if (!mounted) return;
+
+    final roleKey = profile?['role'] as String?;
+    final resolvedRole =
+        roleKey != null ? UserRoleKey.fromKey(roleKey) : widget.role;
+    final profileComplete = profile?['profileComplete'] == true;
+
+    String target;
+    switch (resolvedRole) {
+      case UserRole.owner:
+        final hasSalon = await SalonLookupService().salonExists(uid);
+        if (!hasSalon) {
+          await auth.setProfileComplete(false);
+        }
+        target = profileComplete && hasSalon
+            ? AppRoutes.ownerHome
+            : AppRoutes.ownerSalonSetup;
+        break;
+      case UserRole.barber:
+        target = AppRoutes.barberHome;
+        break;
+      default:
+        target = AppRoutes.userHome;
+        break;
+    }
+
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, target, (_) => false);
   }
 
   void _showBarberBlockedDialog() {

@@ -35,6 +35,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _isPasswordVisible = false;
@@ -44,6 +45,7 @@ class _SignupScreenState extends State<SignupScreen> {
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
+    _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -107,6 +109,21 @@ class _SignupScreenState extends State<SignupScreen> {
                           if (email.isEmpty) return 'Email is required.';
                           if (!email.contains('@')) {
                             return 'Enter a valid email.';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      _buildTextField(
+                        controller: _phoneController,
+                        label: "Phone",
+                        icon: Icons.phone_outlined,
+                        keyboardType: TextInputType.phone,
+                        validator: (value) {
+                          final phone = value?.trim() ?? '';
+                          if (phone.isEmpty) return 'Phone is required.';
+                          if (phone.length < 7) {
+                            return 'Enter a valid phone.';
                           }
                           return null;
                         },
@@ -186,6 +203,7 @@ class _SignupScreenState extends State<SignupScreen> {
                               name: _nameController.text,
                               email: _emailController.text,
                               password: _passwordController.text,
+                              phone: _phoneController.text,
                               role: widget.role,
                             );
 

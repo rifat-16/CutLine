@@ -37,6 +37,29 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
               padding: const EdgeInsets.all(16),
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
+                if (!provider.isSalonOpen)
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.red.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Icon(Icons.info_outline, color: Colors.red),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'The salon is currently closed. Please ask the owner to open the salon to start serving customers.',
+                            style: TextStyle(color: Colors.red, fontSize: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -76,7 +99,28 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                       style: const TextStyle(color: Colors.red),
                     ),
                   ),
-                if (provider.isLoading)
+                if (!provider.isSalonOpen)
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: Colors.grey.shade300, width: 1),
+                    ),
+                    child: Column(
+                      children: const [
+                        Icon(Icons.lock_outline,
+                            size: 40, color: Colors.black54),
+                        SizedBox(height: 10),
+                        Text(
+                          "Salon is closed. Queue will appear when the owner opens the salon.",
+                          style: TextStyle(fontSize: 15, color: Colors.black54),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  )
+                else if (provider.isLoading)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 40),
                     child: Center(child: CircularProgressIndicator()),
@@ -153,6 +197,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
         ),
       ),
       actions: [
+        _AvailabilityToggle(provider: provider),
         IconButton(
           icon: const Icon(Icons.notifications_none),
           onPressed: () {
@@ -245,6 +290,76 @@ Widget _buildStatusCard(String title, int count, String label, Color color) {
   );
 }
 
+class _AvailabilityToggle extends StatelessWidget {
+  final BarberHomeProvider provider;
+
+  const _AvailabilityToggle({required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+      child: provider.isLoading
+          ? const SizedBox(
+              width: 36,
+              height: 36,
+              child: Center(
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          : _AvailabilitySwitch(provider: provider),
+    );
+  }
+}
+
+class _AvailabilitySwitch extends StatelessWidget {
+  final BarberHomeProvider provider;
+
+  const _AvailabilitySwitch({required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    final isAvailable = provider.isAvailable;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _statusDot(isAvailable),
+        const SizedBox(width: 6),
+        Text(
+          isAvailable ? 'Available' : 'Unavailable',
+          style: TextStyle(
+            color: isAvailable ? Colors.green : Colors.redAccent,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        Switch.adaptive(
+          value: isAvailable,
+          onChanged: provider.isUpdatingAvailability
+              ? null
+              : (value) => provider.setAvailability(value),
+          activeThumbColor: Colors.green,
+          activeTrackColor: Colors.green.withValues(alpha: 0.35),
+        ),
+      ],
+    );
+  }
+
+  Widget _statusDot(bool isAvailable) {
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        color: isAvailable ? Colors.green : Colors.redAccent,
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
 Widget _queueTab(String title, bool isSelected) {
   return AnimatedContainer(
     duration: const Duration(milliseconds: 200),
@@ -281,7 +396,7 @@ class _QueueCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.98),
+        color: Colors.white.withValues(alpha: 0.98),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.grey.shade300, width: 1),
       ),
@@ -320,7 +435,7 @@ class _QueueCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                 decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.12),
+                  color: statusColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Text(
@@ -371,7 +486,7 @@ class _QueueCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.green.withOpacity(0.12),
+        color: Colors.green.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(14),
       ),
       child: const Text(

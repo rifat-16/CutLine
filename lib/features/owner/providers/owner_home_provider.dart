@@ -18,12 +18,16 @@ class OwnerHomeProvider extends ChangeNotifier {
   String? _salonName;
   List<OwnerQueueItem> _queueItems = [];
   int _pendingRequests = 0;
+  bool _isOpen = true;
+  bool _isUpdatingStatus = false;
 
   bool get isLoading => _isLoading;
   String? get error => _error;
   String? get salonName => _salonName;
   List<OwnerQueueItem> get queueItems => _queueItems;
   int get pendingRequests => _pendingRequests;
+  bool get isOpen => _isOpen;
+  bool get isUpdatingStatus => _isUpdatingStatus;
 
   Future<void> fetchAll() async {
     final ownerId = _authProvider.currentUser?.uid;
@@ -49,7 +53,9 @@ class OwnerHomeProvider extends ChangeNotifier {
   Future<void> _loadSalon(String ownerId) async {
     final doc = await _firestore.collection('salons').doc(ownerId).get();
     if (doc.exists) {
-      _salonName = (doc.data() ?? {})['name'] as String?;
+      final data = doc.data() ?? {};
+      _salonName = data['name'] as String?;
+      _isOpen = (data['isOpen'] as bool?) ?? _isOpen;
     }
   }
 
@@ -81,6 +87,28 @@ class OwnerHomeProvider extends ChangeNotifier {
       _pendingRequests = snap.size;
     } catch (_) {
       _pendingRequests = 0;
+    }
+  }
+
+  Future<void> setSalonOpen(bool value) async {
+    final ownerId = _authProvider.currentUser?.uid;
+    if (ownerId == null) return;
+    final previous = _isOpen;
+    _isOpen = value;
+    _isUpdatingStatus = true;
+    _setError(null);
+    notifyListeners();
+    try {
+      await _firestore
+          .collection('salons')
+          .doc(ownerId)
+          .set({'isOpen': value}, SetOptions(merge: true));
+    } catch (_) {
+      _isOpen = previous;
+      _setError('Could not update status. Try again.');
+    } finally {
+      _isUpdatingStatus = false;
+      notifyListeners();
     }
   }
 

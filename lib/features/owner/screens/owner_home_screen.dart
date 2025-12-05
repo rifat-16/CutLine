@@ -158,34 +158,54 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
     return AppBar(
       elevation: 0,
       backgroundColor: Colors.white,
-      titleSpacing: 6,
-      leadingWidth: 68,
-      leading: Padding(
-        padding: const EdgeInsets.only(left: 16, right: 6),
-        child: GestureDetector(
-          onTap: () => _openScreen(const OwnerProfileScreen()),
-          child: CircleAvatar(
-            radius: 18,
-            backgroundColor: const Color(0xFF2563EB),
-            child: const Icon(Icons.person, color: Colors.white, size: 28),
-          ),
-        ),
-      ),
+      titleSpacing: 0,
       title: Padding(
-        padding: const EdgeInsets.only(left: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
           children: [
-            Text(provider.salonName ?? 'Salon name',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontSize: 26)),
-            Text('Owner dashboard',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: Colors.blueGrey)),
+            GestureDetector(
+              onTap: () => _openScreen(const OwnerProfileScreen()),
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: const Color(0xFF2563EB),
+                child: const Icon(Icons.person, color: Colors.white, size: 28),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          provider.salonName ?? 'Salon name',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(fontSize: 24),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: false,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildAvailabilityToggle(provider),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Owner dashboard',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Colors.blueGrey),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -282,6 +302,40 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
       context: ctx,
       item: item,
       onStatusChange: (status) => _handleStatusChange(ctx, item.id, status),
+    );
+  }
+
+  Widget _buildAvailabilityToggle(OwnerHomeProvider provider) {
+    final statusColor = provider.isOpen ? const Color(0xFF22C55E) : Colors.red;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          provider.isOpen ? 'Open' : 'Closed',
+          style: TextStyle(
+            color: statusColor,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Switch.adaptive(
+          value: provider.isOpen,
+          activeColor: const Color(0xFF2563EB),
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          onChanged: provider.isUpdatingStatus
+              ? null
+              : (value) => provider.setSalonOpen(value),
+        ),
+        if (provider.isUpdatingStatus) ...[
+          const SizedBox(width: 6),
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ],
+      ],
     );
   }
 }

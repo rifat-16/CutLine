@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cutline/features/auth/models/user_model.dart';
 import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cutline/features/auth/services/auth_service.dart';
 import 'package:cutline/features/auth/services/user_profile_service.dart';
@@ -15,6 +16,7 @@ class AuthProvider extends ChangeNotifier {
     _currentUser = _authService.currentUser;
     _authSubscription = _authService.authStateChanges.listen((user) {
       _currentUser = user;
+      _loadProfile();
       notifyListeners();
     });
   }
@@ -24,10 +26,12 @@ class AuthProvider extends ChangeNotifier {
   StreamSubscription<User?>? _authSubscription;
 
   User? _currentUser;
+  CutlineUser? _profile;
   bool _isLoading = false;
   String? _lastError;
 
   User? get currentUser => _currentUser;
+  CutlineUser? get profile => _profile;
   bool get isAuthenticated => _currentUser != null;
   bool get isLoading => _isLoading;
   String? get lastError => _lastError;
@@ -45,6 +49,7 @@ class AuthProvider extends ChangeNotifier {
     required String name,
     required String email,
     required String password,
+    String phone = '',
     required UserRole role,
   }) async {
     return _runAuthFlow(() async {
@@ -52,6 +57,7 @@ class AuthProvider extends ChangeNotifier {
         email: email.trim(),
         password: password,
         displayName: name.trim(),
+        phoneNumber: phone.trim().isEmpty ? null : phone.trim(),
       );
 
       final uid = credential.user?.uid;
@@ -60,6 +66,7 @@ class AuthProvider extends ChangeNotifier {
           uid: uid,
           email: email,
           name: name,
+          phone: phone,
           role: role,
         );
       }
@@ -73,6 +80,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signOut() {
+    _profile = null;
     return _authService.signOut();
   }
 
@@ -90,12 +98,14 @@ class AuthProvider extends ChangeNotifier {
     final uid = _currentUser?.uid;
     if (uid == null) return;
     await _userProfileService.setProfileComplete(uid, value);
+    await _loadProfile();
   }
 
   Future<void> refreshCurrentUser() async {
     try {
       final user = await _authService.reloadCurrentUser();
       _currentUser = user;
+      await _loadProfile();
       notifyListeners();
     } on FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found' || e.code == 'user-disabled') {
@@ -105,6 +115,47 @@ class AuthProvider extends ChangeNotifier {
         return;
       }
       _setError(_mapFirebaseError(e));
+    }
+  }
+
+  Future<void> updateProfile({
+    String? name,
+    String? email,
+    String? phone,
+  }) async {
+    final uid = _currentUser?.uid;
+    if (uid == null) return;
+    _setLoading(true);
+    try {
+      await _userProfileService.updateUserProfile(
+        uid: uid,
+        name: name,
+        email: email,
+        phone: phone,
+      );
+      // Update displayName locally for quick UI reflection.
+      if (name != null && name.trim().isNotEmpty) {
+        await _currentUser?.updateDisplayName(name.trim());
+      }
+      await _loadProfile();
+    } catch (e) {
+      _setError('Failed to update profile. Please try again.');
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> _loadProfile() async {
+    final uid = _currentUser?.uid;
+    if (uid == null) {
+      _profile = null;
+      return;
+    }
+    final data = await fetchUserProfile(uid);
+    if (data != null) {
+      _profile = CutlineUser.fromMap(data);
+    } else {
+      _profile = null;
     }
   }
 

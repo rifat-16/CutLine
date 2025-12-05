@@ -16,6 +16,7 @@ class _OwnerProfileEditScreenState extends State<OwnerProfileEditScreen> {
   late final TextEditingController _phoneController;
   late final TextEditingController _emailController;
   bool _initialized = false;
+  bool _dirty = false;
 
   @override
   void initState() {
@@ -49,6 +50,7 @@ class _OwnerProfileEditScreenState extends State<OwnerProfileEditScreen> {
           _phoneController.text = provider.phone;
           _emailController.text = provider.email;
           _initialized = true;
+          _dirty = false;
         }
 
         return Scaffold(
@@ -85,19 +87,13 @@ class _OwnerProfileEditScreenState extends State<OwnerProfileEditScreen> {
                         icon: Icons.email_outlined,
                         keyboardType: TextInputType.emailAddress,
                       ),
-                      const SizedBox(height: 16),
-                      _buildField(
-                        controller: _emailController,
-                        label: 'Email address',
-                        icon: Icons.email_outlined,
-                        keyboardType: TextInputType.emailAddress,
-                      ),
                       const SizedBox(height: 24),
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed:
-                              provider.isSaving ? null : () => _submit(provider),
+                          onPressed: provider.isSaving || !_dirty
+                              ? null
+                              : () => _submit(provider),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2563EB),
                             foregroundColor: Colors.white,
@@ -145,6 +141,7 @@ class _OwnerProfileEditScreenState extends State<OwnerProfileEditScreen> {
           controller: controller,
           maxLines: maxLines,
           keyboardType: keyboardType,
+          onChanged: (_) => setState(() => _dirty = true),
           validator: isRequired
               ? (value) =>
                   (value == null || value.trim().isEmpty) ? 'Required' : null

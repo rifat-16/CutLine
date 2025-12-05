@@ -74,8 +74,14 @@ class OwnerProfileScreen extends StatelessWidget {
     );
   }
 
-  static void _open(BuildContext context, Widget screen) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  static Future<void> _open(BuildContext context, Widget screen) async {
+    final provider = context.read<EditSalonProvider>();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => screen),
+    );
+    // Refresh profile data when returning from edit.
+    await provider.load();
   }
 
   static void _confirmLogout(BuildContext context) {

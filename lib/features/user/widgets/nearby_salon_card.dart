@@ -4,17 +4,37 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class NearbySalonCard extends StatelessWidget {
   final String salonName;
+  final String location;
+  final int waitMinutes;
+  final bool isOpen;
+  final bool isFavorite;
+  final List<String> topServices;
   final VoidCallback onTap;
 
-  const NearbySalonCard({super.key, required this.salonName, required this.onTap});
+  const NearbySalonCard({
+    super.key,
+    required this.salonName,
+    required this.location,
+    required this.waitMinutes,
+    required this.isOpen,
+    this.isFavorite = false,
+    required this.topServices,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final waitLabel = waitMinutes <= 0 ? 'No wait' : '$waitMinutes mins';
+    final servicesLabel = topServices.isEmpty
+        ? 'Popular services will appear here'
+        : topServices.join(', ');
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(CutlineDecorations.radius),
       child: Container(
-        decoration: CutlineDecorations.card(solidColor: CutlineColors.background),
+        decoration:
+            CutlineDecorations.card(solidColor: CutlineColors.background),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -31,7 +51,11 @@ class NearbySalonCard extends StatelessWidget {
                     color: Colors.grey.shade300,
                   ),
                   child: Center(
-                    child: Text('Cover Image Area', style: CutlineTextStyles.subtitle),
+                    child: Text(
+                      'Cover image will appear after the next update',
+                      style: CutlineTextStyles.subtitle,
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
                 Positioned(
@@ -39,31 +63,58 @@ class NearbySalonCard extends StatelessWidget {
                   top: 12.h,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.black38,
+                      color: isFavorite
+                          ? Colors.redAccent.withValues(alpha: 0.9)
+                          : Colors.black38,
                       borderRadius: BorderRadius.circular(50),
                     ),
                     padding: EdgeInsets.all(4.r),
-                    child: const Icon(Icons.favorite_border, color: Colors.white),
+                    child: Icon(
+                      isFavorite ? Icons.favorite : Icons.favorite_border,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
                 Positioned(
-                  left: 16.w,
-                  bottom: 16.h,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        salonName,
-                        style: CutlineTextStyles.title.copyWith(color: Colors.white),
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
+                    decoration: BoxDecoration(
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(CutlineDecorations.radius),
+                        bottomRight: Radius.circular(CutlineDecorations.radius),
                       ),
-                      Row(
-                        children: const [
-                          Icon(Icons.star, size: 16, color: CutlineColors.accent),
-                          SizedBox(width: 4),
-                          Text('4.6 (120)', style: TextStyle(color: Colors.white)),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0),
+                          Colors.black.withValues(alpha: 0.06),
+                          Colors.black.withValues(alpha: 0.1),
                         ],
                       ),
-                    ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          salonName,
+                          style: CutlineTextStyles.title
+                              .copyWith(color: Colors.black),
+                        ),
+                        Row(
+                          children: const [
+                            Icon(Icons.star,
+                                size: 16, color: CutlineColors.accent),
+                            SizedBox(width: 4),
+                            Text('4.6 (120)',
+                                style: TextStyle(color: Colors.grey)),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -79,7 +130,7 @@ class NearbySalonCard extends StatelessWidget {
                       SizedBox(width: 4.w),
                       Expanded(
                         child: Text(
-                          'Banani, Dhaka • 0.8 km away',
+                          '$location • nearby',
                           style: CutlineTextStyles.body,
                         ),
                       ),
@@ -90,13 +141,19 @@ class NearbySalonCard extends StatelessWidget {
                     children: [
                       Icon(Icons.access_time, size: 16, color: Colors.grey),
                       SizedBox(width: 4.w),
-                      Text('Wait time: 10 mins  •  ', style: CutlineTextStyles.body),
-                      Text('Open Now',
-                          style: TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+                      Text('Wait time: $waitLabel  •  ',
+                          style: CutlineTextStyles.body),
+                      Text(
+                        isOpen ? 'Open Now' : 'Closed',
+                        style: TextStyle(
+                          color: isOpen ? Colors.green : Colors.red,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                   ),
                   SizedBox(height: 6.h),
-                  const Text('Top Services: Haircut, Beard Trim, Facial',
+                  Text('Top Services: $servicesLabel',
                       style: CutlineTextStyles.subtitle),
                 ],
               ),

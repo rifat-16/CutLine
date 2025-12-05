@@ -44,14 +44,19 @@ class EditSalonProvider extends ChangeNotifier {
       phone = (data['contact'] as String?) ?? '';
       address = (data['address'] as String?) ?? '';
       about = (data['description'] as String?) ?? '';
-      if (ownerName.isEmpty || email.isEmpty) {
-        final userDoc =
-            await _firestore.collection('users').doc(ownerId).get();
-        final userData = userDoc.data() ?? {};
-        ownerName = ownerName.isEmpty
-            ? ((userData['name'] as String?) ?? ownerName)
-            : ownerName;
-        email = email.isEmpty ? ((userData['email'] as String?) ?? email) : email;
+      final userDoc = await _firestore.collection('users').doc(ownerId).get();
+      final userData = userDoc.data() ?? {};
+      final userEmail =
+          (_authProvider.currentUser?.email ?? userData['email'] as String?)
+              ?.trim();
+      final userName = (_authProvider.currentUser?.displayName ??
+              userData['name'] as String?)
+          ?.trim();
+
+      ownerName = ownerName.isEmpty ? (userName ?? ownerName) : ownerName;
+      // Always prefer user email for owner profile display
+      if (userEmail != null && userEmail.isNotEmpty) {
+        email = userEmail;
       }
     } catch (e) {
       _setError('Failed to load salon info.');

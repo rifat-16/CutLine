@@ -16,11 +16,17 @@ class BarberHomeProvider extends ChangeNotifier {
   String? _error;
   BarberProfile? _profile;
   List<BarberQueueItem> _queue = [];
+  bool _salonOpen = true;
+  bool _isAvailable = true;
+  bool _isUpdatingAvailability = false;
 
   bool get isLoading => _isLoading;
   String? get error => _error;
   BarberProfile? get profile => _profile;
   List<BarberQueueItem> get queue => _queue;
+  bool get isSalonOpen => _salonOpen;
+  bool get isAvailable => _isAvailable;
+  bool get isUpdatingAvailability => _isUpdatingAvailability;
 
   int get waitingCount => _countStatus(BarberQueueStatus.waiting);
   int get servingCount => _countStatus(BarberQueueStatus.serving);
@@ -41,7 +47,12 @@ class BarberHomeProvider extends ChangeNotifier {
         return;
       }
       _profile = profile;
+      _salonOpen = await _fetchSalonOpen(profile.ownerId);
+      _isAvailable = await _fetchAvailability(profile);
       _queue = await _fetchQueue(profile);
+      if (!_salonOpen) {
+        _queue = [];
+      }
     } catch (_) {
       _setError('Failed to load data. Pull to refresh.');
     } finally {
@@ -117,6 +128,68 @@ class BarberHomeProvider extends ChangeNotifier {
       customerPhone: (data['customerPhone'] as String?) ?? '',
       note: data['note'] as String?,
     );
+  }
+
+  Future<bool> _fetchSalonOpen(String ownerId) async {
+    if (ownerId.isEmpty) return true;
+    try {
+      final doc = await _firestore.collection('salons').doc(ownerId).get();
+      if (!doc.exists) return true;
+      final data = doc.data() ?? {};
+      final isOpen = data['isOpen'];
+      if (isOpen is bool) return isOpen;
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<bool> _fetchAvailability(BarberProfile profile) async {
+    try {
+      final doc = await _firestore
+          .collection('salons')
+          .doc(profile.ownerId)
+          .collection('barbers')
+          .doc(profile.uid)
+          .get();
+      if (!doc.exists) return true;
+      final data = doc.data() ?? {};
+      final available = data['isAvailable'];
+      if (available is bool) return available;
+    } catch (_) {
+      // ignore
+    }
+    return true;
+  }
+
+  Future<void> setAvailability(bool value) async {
+    final profile = _profile;
+    if (profile == null) return;
+    final previous = _isAvailable;
+    _isAvailable = value;
+    _isUpdatingAvailability = true;
+    notifyListeners();
+    try {
+      await _firestore
+          .collection('salons')
+          .doc(profile.ownerId)
+          .collection('barbers')
+          .doc(profile.uid)
+          .set(
+        {
+          'isAvailable': value,
+          'uid': profile.uid,
+          'name': profile.name,
+        },
+        SetOptions(merge: true),
+      );
+    } catch (_) {
+      _isAvailable = previous;
+      _setError('Could not update availability.');
+    } finally {
+      _isUpdatingAvailability = false;
+      notifyListeners();
+    }
   }
 
   BarberQueueStatus _statusFromString(String status) {
