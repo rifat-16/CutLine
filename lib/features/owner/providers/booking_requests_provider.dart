@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 class BookingRequestsProvider extends ChangeNotifier {
   BookingRequestsProvider({
@@ -31,18 +32,27 @@ class BookingRequestsProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-      final snap = await _firestore
-          .collection('salons')
-          .doc(ownerId)
-          .collection('bookingRequests')
-          .orderBy('createdAt', descending: true)
-          .get();
+      QuerySnapshot<Map<String, dynamic>> snap;
+      try {
+        snap = await _firestore
+            .collection('salons')
+            .doc(ownerId)
+            .collection('bookings')
+            .orderBy('createdAt', descending: true)
+            .get();
+      } catch (_) {
+        snap = await _firestore
+            .collection('salons')
+            .doc(ownerId)
+            .collection('bookings')
+            .get();
+      }
 
       _requests = snap.docs
           .map((doc) => _mapRequest(doc.id, doc.data()))
           .whereType<OwnerBookingRequest>()
           .toList();
-    } catch (e) {
+    } catch (_) {
       _setError('Failed to load requests. Pull to refresh.');
     } finally {
       _setLoading(false);
@@ -50,61 +60,147 @@ class BookingRequestsProvider extends ChangeNotifier {
   }
 
   OwnerBookingRequest? _mapRequest(String id, Map<String, dynamic> data) {
-    final services =
-        (data['services'] as List?)?.map((e) => e.toString()).toList() ?? [];
-    final statusString = (data['status'] as String?) ?? 'pending';
-    final status = _statusFromString(statusString);
+    final rawStatus = ((data['status'] as String?) ?? 'pending').toLowerCase();
+    if (_isHiddenStatus(rawStatus)) return null;
 
-    final timestamp = data['dateTime'];
-    DateTime dateTime;
-    if (timestamp is Timestamp) {
-      dateTime = timestamp.toDate();
-    } else {
-      dateTime = DateTime.now();
-    }
+    final services = _mapServices(data['services']);
+    final status = _statusFromString(rawStatus);
+
+    final dateTime = _parseDateTime(data['date'], data['time']) ??
+        _parseTimestamp(data['dateTime']) ??
+        DateTime.now();
 
     return OwnerBookingRequest(
       id: id,
-      customerName: (data['customerName'] as String?) ?? 'Customer',
+      customerName: (data['customerName'] as String?)?.trim() ?? 'Customer',
       customerAvatar: (data['customerAvatar'] as String?) ?? '',
-      customerPhone: (data['customerPhone'] as String?) ?? '',
-      barberName: (data['barberName'] as String?) ?? 'Any',
+      customerPhone: (data['customerPhone'] as String?)?.trim() ?? '',
+      barberName: (data['barberName'] as String?)?.trim() ?? 'Any',
       services: services,
       dateTime: dateTime,
-      durationMinutes: (data['durationMinutes'] as num?)?.toInt() ?? 30,
-      totalPrice: (data['totalPrice'] as num?)?.toInt() ?? 0,
+      durationMinutes: _durationMinutes(data, services.length),
+      totalPrice: (data['total'] as num?)?.toInt() ??
+          (data['totalPrice'] as num?)?.toInt() ??
+          0,
       status: status,
     );
+  }
+
+  List<String> _mapServices(dynamic raw) {
+    if (raw is! List) return [];
+    return raw
+        .map((e) {
+          if (e is Map<String, dynamic>) {
+            final name = e['name'];
+            if (name is String && name.trim().isNotEmpty) return name.trim();
+          } else if (e is String && e.trim().isNotEmpty) {
+            return e.trim();
+          }
+          return null;
+        })
+        .whereType<String>()
+        .toList();
+  }
+
+  int _durationMinutes(Map<String, dynamic> data, int serviceCount) {
+    return (data['durationMinutes'] as num?)?.toInt() ??
+        (data['duration'] as num?)?.toInt() ??
+        (serviceCount > 0 ? serviceCount * 30 : 30);
+  }
+
+  DateTime? _parseTimestamp(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    return null;
+  }
+
+  DateTime? _parseDateTime(dynamic dateRaw, dynamic timeRaw) {
+    final date = dateRaw is String ? dateRaw : '';
+    final time = timeRaw is String ? timeRaw : '';
+    if (date.isEmpty || time.isEmpty) return null;
+    try {
+      final parsedDate = DateTime.parse(date);
+      final parsedTime = DateFormat.jm().parse(time);
+      return DateTime(parsedDate.year, parsedDate.month, parsedDate.day,
+          parsedTime.hour, parsedTime.minute);
+    } catch (_) {
+      return null;
+    }
   }
 
   OwnerBookingRequestStatus _statusFromString(String status) {
     switch (status) {
       case 'accepted':
         return OwnerBookingRequestStatus.accepted;
+      case 'waiting':
+        return OwnerBookingRequestStatus.accepted;
       case 'rejected':
         return OwnerBookingRequestStatus.rejected;
+      case 'cancelled':
+      case 'completed':
+        return OwnerBookingRequestStatus.rejected;
+      case 'upcoming':
+        return OwnerBookingRequestStatus.pending;
       default:
         return OwnerBookingRequestStatus.pending;
     }
   }
 
+  bool _isHiddenStatus(String status) {
+    return status == 'cancelled' ||
+        status == 'completed' ||
+        status == 'accepted' ||
+        status == 'waiting' ||
+        status == 'rejected';
+  }
+
   Future<void> updateStatus(String id, OwnerBookingRequestStatus status) async {
     final ownerId = _authProvider.currentUser?.uid;
     if (ownerId == null) return;
+    final statusToSave =
+        status == OwnerBookingRequestStatus.accepted ? 'waiting' : 'rejected';
+    OwnerBookingRequest? request;
+    for (final r in _requests) {
+      if (r.id == id) {
+        request = r;
+        break;
+      }
+    }
+
     try {
       await _firestore
           .collection('salons')
           .doc(ownerId)
-          .collection('bookingRequests')
+          .collection('bookings')
           .doc(id)
-          .set({'status': status.name}, SetOptions(merge: true));
+          .set({'status': statusToSave}, SetOptions(merge: true));
     } catch (_) {
       _setError('Could not update status. Try again.');
     }
 
-    _requests = _requests
-        .map((r) => r.id == id ? r.copyWith(status: status) : r)
-        .toList();
+    if (status == OwnerBookingRequestStatus.accepted && request != null) {
+      final queueData = {
+        'customerName': request.customerName,
+        'service': request.services.join(', '),
+        'barberName': request.barberName,
+        'price': request.totalPrice,
+        'status': 'waiting',
+        'waitMinutes': request.durationMinutes,
+        'slotLabel': DateFormat('h:mm a').format(request.dateTime),
+        'customerPhone': request.customerPhone,
+      };
+      try {
+        await _firestore
+            .collection('salons')
+            .doc(ownerId)
+            .collection('queue')
+            .doc(id)
+            .set(queueData, SetOptions(merge: true));
+      } catch (_) {
+        // keep UI in sync even if queue write fails
+      }
+    }
+
+    _requests = _requests.where((r) => r.id != id).toList();
     notifyListeners();
   }
 

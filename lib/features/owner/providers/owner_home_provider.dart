@@ -1,5 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'dart:async';
+
+import 'package:cutline/features/owner/services/owner_queue_service.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:flutter/material.dart';
 
@@ -7,11 +10,20 @@ class OwnerHomeProvider extends ChangeNotifier {
   OwnerHomeProvider({
     required AuthProvider authProvider,
     FirebaseFirestore? firestore,
+    OwnerQueueService? queueService,
   })  : _authProvider = authProvider,
-        _firestore = firestore ?? FirebaseFirestore.instance;
+        _firestore = firestore ?? FirebaseFirestore.instance,
+        _queueService =
+            queueService ?? OwnerQueueService(firestore: firestore) {
+    _queueSubscription = _queueService.onChanged.listen((_) {
+      _refreshQueue();
+    });
+  }
 
   final AuthProvider _authProvider;
   final FirebaseFirestore _firestore;
+  final OwnerQueueService _queueService;
+  StreamSubscription<void>? _queueSubscription;
 
   bool _isLoading = false;
   String? _error;
@@ -60,30 +72,24 @@ class OwnerHomeProvider extends ChangeNotifier {
   }
 
   Future<void> _loadQueue(String ownerId) async {
-    QuerySnapshot<Map<String, dynamic>> snap;
-    try {
-      snap = await _firestore
-          .collection('salons')
-          .doc(ownerId)
-          .collection('queue')
-          .get();
-    } catch (_) {
-      snap = await _firestore.collection('queue').get();
-    }
-    _queueItems = snap.docs
-        .map((doc) => _mapQueue(doc.id, doc.data()))
-        .whereType<OwnerQueueItem>()
-        .toList();
+    _queueItems = await _queueService.loadQueue(ownerId);
+    notifyListeners();
   }
 
   Future<void> _loadBookingRequests(String ownerId) async {
+    final collection = _firestore
+        .collection('salons')
+        .doc(ownerId)
+        .collection('bookings');
     try {
-      final snap = await _firestore
-          .collection('salons')
-          .doc(ownerId)
-          .collection('bookingRequests')
-          .where('status', isEqualTo: 'pending')
-          .get();
+      QuerySnapshot<Map<String, dynamic>> snap;
+      try {
+        snap = await collection
+            .where('status', whereIn: ['pending', 'upcoming'])
+            .get();
+      } catch (_) {
+        snap = await collection.where('status', isEqualTo: 'upcoming').get();
+      }
       _pendingRequests = snap.size;
     } catch (_) {
       _pendingRequests = 0;
@@ -112,45 +118,11 @@ class OwnerHomeProvider extends ChangeNotifier {
     }
   }
 
-  OwnerQueueItem? _mapQueue(String id, Map<String, dynamic> data) {
-    final statusString = (data['status'] as String?) ?? 'waiting';
-    final status = _statusFromString(statusString);
-    return OwnerQueueItem(
-      id: id,
-      customerName: (data['customerName'] as String?) ?? 'Customer',
-      service: (data['service'] as String?) ?? 'Service',
-      barberName: (data['barberName'] as String?) ?? 'Barber',
-      price: (data['price'] as num?)?.toInt() ?? 0,
-      status: status,
-      waitMinutes: (data['waitMinutes'] as num?)?.toInt() ?? 0,
-      slotLabel: (data['slotLabel'] as String?) ?? id,
-      customerPhone: (data['customerPhone'] as String?) ?? '',
-      note: data['note'] as String?,
-    );
-  }
-
-  OwnerQueueStatus _statusFromString(String status) {
-    switch (status) {
-      case 'serving':
-        return OwnerQueueStatus.serving;
-      case 'done':
-      case 'completed':
-        return OwnerQueueStatus.done;
-      default:
-        return OwnerQueueStatus.waiting;
-    }
-  }
-
   Future<void> updateQueueStatus(String id, OwnerQueueStatus status) async {
     final ownerId = _authProvider.currentUser?.uid;
     if (ownerId == null) return;
     try {
-      await _firestore
-          .collection('salons')
-          .doc(ownerId)
-          .collection('queue')
-          .doc(id)
-          .set({'status': status.name}, SetOptions(merge: true));
+      await _queueService.updateStatus(ownerId: ownerId, id: id, status: status);
     } catch (_) {
       // ignore write failures for now
     }
@@ -169,5 +141,22 @@ class OwnerHomeProvider extends ChangeNotifier {
   void _setError(String? message) {
     _error = message;
     notifyListeners();
+  }
+
+  Future<void> _refreshQueue() async {
+    final ownerId = _authProvider.currentUser?.uid;
+    if (ownerId == null) return;
+    try {
+      _queueItems = await _queueService.loadQueue(ownerId);
+      notifyListeners();
+    } catch (_) {
+      // silent fail
+    }
+  }
+
+  @override
+  void dispose() {
+    _queueSubscription?.cancel();
+    super.dispose();
   }
 }

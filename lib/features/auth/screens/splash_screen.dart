@@ -46,15 +46,18 @@ class _SplashScreenState extends State<SplashScreen> {
     final profile = await auth.fetchUserProfile(user.uid);
     if (!mounted) return;
 
+    // Fallback: if no profile is found but a salon document exists,
+    // treat the user as an owner so we don’t drop them into the customer app.
+    final hasSalon = await SalonLookupService().salonExists(user.uid);
     final role = profile?['role'] != null
         ? UserRoleKey.fromKey(profile!['role'] as String? ?? 'customer')
-        : UserRole.customer;
-    final profileComplete = profile?['profileComplete'] == true;
+        : (hasSalon ? UserRole.owner : UserRole.customer);
+    final profileComplete =
+        profile?['profileComplete'] == true || (profile == null && hasSalon);
 
     String target;
     switch (role) {
       case UserRole.owner:
-        final hasSalon = await SalonLookupService().salonExists(user.uid);
         if (!hasSalon) {
           await auth.setProfileComplete(false);
         }

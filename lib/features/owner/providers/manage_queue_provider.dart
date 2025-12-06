@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/owner/services/owner_queue_service.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:flutter/material.dart';
 
@@ -7,11 +10,20 @@ class ManageQueueProvider extends ChangeNotifier {
   ManageQueueProvider({
     required AuthProvider authProvider,
     FirebaseFirestore? firestore,
+    OwnerQueueService? queueService,
   })  : _authProvider = authProvider,
-        _firestore = firestore ?? FirebaseFirestore.instance;
+        _firestore = firestore ?? FirebaseFirestore.instance,
+        _queueService =
+            queueService ?? OwnerQueueService(firestore: firestore) {
+    _queueSubscription = _queueService.onChanged.listen((_) {
+      _refreshSilent();
+    });
+  }
 
   final AuthProvider _authProvider;
   final FirebaseFirestore _firestore;
+  final OwnerQueueService _queueService;
+  StreamSubscription<void>? _queueSubscription;
 
   bool _isLoading = false;
   String? _error;
@@ -22,82 +34,45 @@ class ManageQueueProvider extends ChangeNotifier {
   List<OwnerQueueItem> get queue => _queue;
 
   Future<void> load() async {
-    final ownerId = _authProvider.currentUser?.uid;
-    if (ownerId == null) {
-      _setError('Please log in again.');
-      return;
-    }
-    _setLoading(true);
-    _setError(null);
-    try {
-      QuerySnapshot<Map<String, dynamic>> snap;
-      try {
-        snap = await _firestore
-            .collection('salons')
-            .doc(ownerId)
-            .collection('queue')
-            .get();
-      } catch (_) {
-        snap = await _firestore.collection('queue').get();
-      }
-      _queue = snap.docs
-          .map((doc) => _mapQueue(doc.id, doc.data()))
-          .whereType<OwnerQueueItem>()
-          .toList();
-    } catch (_) {
-      _setError('Failed to load queue.');
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  OwnerQueueItem? _mapQueue(String id, Map<String, dynamic> data) {
-    final statusString = (data['status'] as String?) ?? 'waiting';
-    final status = _statusFromString(statusString);
-    return OwnerQueueItem(
-      id: id,
-      customerName: (data['customerName'] as String?) ?? 'Customer',
-      service: (data['service'] as String?) ?? 'Service',
-      barberName: (data['barberName'] as String?) ?? 'Barber',
-      price: (data['price'] as num?)?.toInt() ?? 0,
-      status: status,
-      waitMinutes: (data['waitMinutes'] as num?)?.toInt() ?? 0,
-      slotLabel: (data['slotLabel'] as String?) ?? id,
-      customerPhone: (data['customerPhone'] as String?) ?? '',
-      note: data['note'] as String?,
-    );
-  }
-
-  OwnerQueueStatus _statusFromString(String status) {
-    switch (status) {
-      case 'serving':
-        return OwnerQueueStatus.serving;
-      case 'done':
-      case 'completed':
-        return OwnerQueueStatus.done;
-      default:
-        return OwnerQueueStatus.waiting;
-    }
+    await _fetchQueue(showLoading: true);
   }
 
   Future<void> updateStatus(String id, OwnerQueueStatus status) async {
     final ownerId = _authProvider.currentUser?.uid;
     if (ownerId == null) return;
     try {
-      await _firestore
-          .collection('salons')
-          .doc(ownerId)
-          .collection('queue')
-          .doc(id)
-          .set({'status': status.name}, SetOptions(merge: true));
+      await _queueService.updateStatus(ownerId: ownerId, id: id, status: status);
     } catch (_) {
       // ignore for now
     }
+
     _queue = _queue
         .map((item) => item.id == id ? item.copyWith(status: status) : item)
         .toList();
     notifyListeners();
   }
+
+  Future<void> _fetchQueue({bool showLoading = false}) async {
+    final ownerId = _authProvider.currentUser?.uid;
+    if (ownerId == null) {
+      _setError('Please log in again.');
+      return;
+    }
+    if (showLoading) {
+      _setLoading(true);
+      _setError(null);
+    }
+    try {
+      _queue = await _queueService.loadQueue(ownerId);
+    } catch (_) {
+      if (showLoading) _setError('Failed to load queue.');
+    } finally {
+      if (showLoading) _setLoading(false);
+      notifyListeners();
+    }
+  }
+
+  Future<void> _refreshSilent() => _fetchQueue(showLoading: false);
 
   void _setLoading(bool value) {
     _isLoading = value;
@@ -107,5 +82,11 @@ class ManageQueueProvider extends ChangeNotifier {
   void _setError(String? message) {
     _error = message;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _queueSubscription?.cancel();
+    super.dispose();
   }
 }

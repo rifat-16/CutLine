@@ -46,14 +46,21 @@ class EditSalonProvider extends ChangeNotifier {
       about = (data['description'] as String?) ?? '';
       final userDoc = await _firestore.collection('users').doc(ownerId).get();
       final userData = userDoc.data() ?? {};
-      final userEmail =
-          (_authProvider.currentUser?.email ?? userData['email'] as String?)
-              ?.trim();
-      final userName = (_authProvider.currentUser?.displayName ??
-              userData['name'] as String?)
+      final userEmail = (_authProvider.currentUser?.email ??
+              userData['email'] as String?)
           ?.trim();
+      final displayName =
+          (_authProvider.currentUser?.displayName ?? '').trim();
+      final profileName = (userData['name'] as String?)?.trim() ?? '';
+      final pickedName = ownerName.isNotEmpty
+          ? ownerName
+          : (profileName.isNotEmpty
+              ? profileName
+              : (displayName.isNotEmpty && displayName != userEmail
+                  ? displayName
+                  : ''));
 
-      ownerName = ownerName.isEmpty ? (userName ?? ownerName) : ownerName;
+      ownerName = pickedName;
       // Always prefer user email for owner profile display
       if (userEmail != null && userEmail.isNotEmpty) {
         email = userEmail;
