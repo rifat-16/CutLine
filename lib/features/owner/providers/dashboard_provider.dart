@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/owner/providers/dashboard_period.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 class DashboardProvider extends ChangeNotifier {
   DashboardProvider({
@@ -16,14 +18,28 @@ class DashboardProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   DashboardMetrics _metrics = DashboardMetrics.empty();
+  List<OwnerBooking> _bookings = [];
   List<ServicePerformance> _services = [];
   List<BarberPerformance> _barbers = [];
+  Map<OwnerBookingStatus, int> _bookingStatusCounts = const {};
+  Map<OwnerQueueStatus, int> _queueStatusCounts = const {};
+  DashboardPeriod _period = DashboardPeriod.today;
 
   bool get isLoading => _isLoading;
   String? get error => _error;
   DashboardMetrics get metrics => _metrics;
+  List<OwnerBooking> get bookings => _bookings;
   List<ServicePerformance> get services => _services;
   List<BarberPerformance> get barbers => _barbers;
+  Map<OwnerBookingStatus, int> get bookingStatusCounts => _bookingStatusCounts;
+  Map<OwnerQueueStatus, int> get queueStatusCounts => _queueStatusCounts;
+  DashboardPeriod get period => _period;
+
+  void setPeriod(DashboardPeriod period) {
+    if (_period == period) return;
+    _period = period;
+    notifyListeners();
+  }
 
   Future<void> load() async {
     final ownerId = _authProvider.currentUser?.uid;
@@ -45,13 +61,20 @@ class DashboardProvider extends ChangeNotifier {
           .collection('queue')
           .get();
 
-      final bookings =
-          bookingsSnap.docs.map((d) => _mapBooking(d.data())).toList();
+      final bookings = bookingsSnap.docs
+          .map((d) => _mapBooking(d.id, d.data()))
+          .whereType<OwnerBooking>()
+          .toList()
+        ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
       final queue = queueSnap.docs.map((d) => _mapQueue(d.data())).toList();
 
+      _bookings = bookings;
       _computeMetrics(bookings, queue);
       _services = _computeServicePerformance(bookings);
       _barbers = _computeBarberPerformance(queue);
+      _bookingStatusCounts = _countBookings(bookings);
+      _queueStatusCounts = _countQueue(queue);
+      notifyListeners();
     } catch (_) {
       _setError('Failed to load dashboard. Pull to refresh.');
     } finally {
@@ -59,26 +82,38 @@ class DashboardProvider extends ChangeNotifier {
     }
   }
 
-  OwnerBooking? _mapBooking(Map<String, dynamic> data) {
+  OwnerBooking? _mapBooking(String id, Map<String, dynamic> data) {
     final statusString = (data['status'] as String?) ?? 'upcoming';
     final status = _statusFromString(statusString);
-    final ts = data['dateTime'];
-    DateTime dateTime;
-    if (ts is Timestamp) {
-      dateTime = ts.toDate();
-    } else {
-      dateTime = DateTime.now();
-    }
+    final dateTime = _parseDateTime(data);
+    if (dateTime == null) return null;
+
+    final services = (data['services'] as List?)
+            ?.map((e) =>
+                (e is Map && e['name'] is String) ? e['name'] as String : '')
+            .whereType<String>()
+            .where((e) => e.isNotEmpty)
+            .toList() ??
+        const [];
+    final serviceLabel =
+        services.isNotEmpty ? services.join(', ') : (data['service'] as String?);
+
     return OwnerBooking(
-      id: (data['id'] as String?) ?? '',
+      id: id,
       customerName: (data['customerName'] as String?) ?? 'Customer',
       customerAvatar: '',
-      salonName: (data['salonName'] as String?) ?? '',
-      service: (data['service'] as String?) ?? 'Service',
-      price: (data['price'] as num?)?.toInt() ?? 0,
+      salonName: (data['salonName'] as String?) ??
+          (data['salon'] as String?) ??
+          '',
+      service: serviceLabel ?? 'Service',
+      price: (data['price'] as num?)?.toInt() ??
+          (data['total'] as num?)?.toInt() ??
+          0,
       dateTime: dateTime,
       status: status,
-      paymentMethod: (data['paymentMethod'] as String?) ?? 'Cash',
+      paymentMethod: (data['paymentMethod'] as String?) ??
+          (data['payment'] as String?) ??
+          'Cash',
     );
   }
 
@@ -100,17 +135,16 @@ class DashboardProvider extends ChangeNotifier {
   }
 
   void _computeMetrics(
-      List<OwnerBooking?> bookings, List<OwnerQueueItem> queue) {
-    final filtered = bookings.whereType<OwnerBooking>().toList();
-    final totalBookings = filtered.length;
-    final totalRevenue = filtered.fold<int>(0, (acc, b) => acc + b.price);
+      List<OwnerBooking> bookings, List<OwnerQueueItem> queue) {
+    final totalBookings = bookings.length;
+    final totalRevenue = bookings.fold<int>(0, (acc, b) => acc + b.price);
     final cancelled =
-        filtered.where((b) => b.status == OwnerBookingStatus.cancelled).length;
-    final uniqueCustomers = filtered.map((b) => b.customerName).toSet().length;
+        bookings.where((b) => b.status == OwnerBookingStatus.cancelled).length;
+    final uniqueCustomers = bookings.map((b) => b.customerName).toSet().length;
     final manualWalkIns =
         queue.where((q) => q.status == OwnerQueueStatus.waiting).length;
     final bookingsByHour = <int, int>{};
-    for (final b in filtered) {
+    for (final b in bookings) {
       final hour = b.dateTime.hour;
       bookingsByHour[hour] = (bookingsByHour[hour] ?? 0) + 1;
     }
@@ -136,10 +170,34 @@ class DashboardProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Map<OwnerBookingStatus, int> _countBookings(List<OwnerBooking> bookings) {
+    final map = <OwnerBookingStatus, int>{
+      OwnerBookingStatus.upcoming: 0,
+      OwnerBookingStatus.completed: 0,
+      OwnerBookingStatus.cancelled: 0,
+    };
+    for (final booking in bookings) {
+      map[booking.status] = (map[booking.status] ?? 0) + 1;
+    }
+    return map;
+  }
+
+  Map<OwnerQueueStatus, int> _countQueue(List<OwnerQueueItem> queue) {
+    final map = <OwnerQueueStatus, int>{
+      OwnerQueueStatus.waiting: 0,
+      OwnerQueueStatus.serving: 0,
+      OwnerQueueStatus.done: 0,
+    };
+    for (final item in queue) {
+      map[item.status] = (map[item.status] ?? 0) + 1;
+    }
+    return map;
+  }
+
   List<ServicePerformance> _computeServicePerformance(
-      List<OwnerBooking?> bookings) {
+      List<OwnerBooking> bookings) {
     final counts = <String, int>{};
-    for (final b in bookings.whereType<OwnerBooking>()) {
+    for (final b in bookings) {
       counts[b.service] = (counts[b.service] ?? 0) + 1;
     }
     return counts.entries
@@ -170,9 +228,15 @@ class DashboardProvider extends ChangeNotifier {
 
   OwnerBookingStatus _statusFromString(String status) {
     switch (status) {
+      case 'waiting':
+      case 'pending':
+      case 'accepted':
+        return OwnerBookingStatus.upcoming;
       case 'completed':
+      case 'done':
         return OwnerBookingStatus.completed;
       case 'cancelled':
+      case 'rejected':
         return OwnerBookingStatus.cancelled;
       default:
         return OwnerBookingStatus.upcoming;
@@ -188,6 +252,23 @@ class DashboardProvider extends ChangeNotifier {
         return OwnerQueueStatus.done;
       default:
         return OwnerQueueStatus.waiting;
+    }
+  }
+
+  DateTime? _parseDateTime(Map<String, dynamic> data) {
+    final ts = data['dateTime'];
+    if (ts is Timestamp) return ts.toDate();
+
+    final dateStr = (data['date'] as String?) ?? '';
+    final timeStr = (data['time'] as String?) ?? '';
+    if (dateStr.isEmpty || timeStr.isEmpty) return DateTime.now();
+    try {
+      final parsedDate = DateTime.parse(dateStr);
+      final parsedTime = DateFormat('h:mm a').parse(timeStr);
+      return DateTime(parsedDate.year, parsedDate.month, parsedDate.day,
+          parsedTime.hour, parsedTime.minute);
+    } catch (_) {
+      return DateTime.now();
     }
   }
 

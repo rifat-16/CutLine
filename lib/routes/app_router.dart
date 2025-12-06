@@ -255,7 +255,14 @@ class AppRouter {
       case AppRoutes.ownerEditSalonInfo:
         return _page(const EditSalonInfoScreen(), settings);
       case AppRoutes.ownerBookingReceipt:
-        return _page(const owner_booking.BookingReceiptScreen(), settings);
+        final args = settings.arguments;
+        final parsedArgs = args is BookingReceiptArgs ? args : null;
+        return _page(
+          owner_booking.BookingReceiptScreen(
+            bookingId: parsedArgs?.bookingId,
+          ),
+          settings,
+        );
 
       case AppRoutes.barberNotifications:
         return _page(const BarberNotificationScreen(), settings);

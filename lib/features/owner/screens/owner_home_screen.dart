@@ -28,7 +28,7 @@ class OwnerHomeScreen extends StatefulWidget {
 
 class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
   int _selectedIndex = 0;
-  String _queueFilter = '';
+  String _queueFilter = 'Waiting';
 
   static const List<String> _queueFilters = ['Waiting', 'Serving', 'Completed'];
 

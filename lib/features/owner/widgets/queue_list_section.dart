@@ -59,9 +59,7 @@ class OwnerQueueListSection extends StatelessWidget {
                       child: ChoiceChip(
                         label: Text(filter),
                         selected: selectedFilter == filter,
-                        onSelected: (_) => onFilterChange(
-                          selectedFilter == filter ? '' : filter,
-                        ),
+                        onSelected: (_) => onFilterChange(filter),
                         selectedColor:
                             const Color(0xFF2563EB).withValues(alpha: 0.12),
                         labelPadding:

@@ -24,6 +24,10 @@ class OwnerHomeProvider extends ChangeNotifier {
   final FirebaseFirestore _firestore;
   final OwnerQueueService _queueService;
   StreamSubscription<void>? _queueSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _bookingRequestsSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _queueLiveSubscription;
 
   bool _isLoading = false;
   String? _error;
@@ -55,6 +59,8 @@ class OwnerHomeProvider extends ChangeNotifier {
         _loadQueue(ownerId),
         _loadBookingRequests(ownerId),
       ]);
+      _listenToBookingRequests(ownerId);
+      _listenToQueue(ownerId);
     } catch (e) {
       _setError('Failed to load data. Pull to refresh.');
     } finally {
@@ -93,6 +99,49 @@ class OwnerHomeProvider extends ChangeNotifier {
       _pendingRequests = snap.size;
     } catch (_) {
       _pendingRequests = 0;
+    }
+  }
+
+  void _listenToBookingRequests(String ownerId) {
+    _bookingRequestsSubscription?.cancel();
+    final collection = _firestore
+        .collection('salons')
+        .doc(ownerId)
+        .collection('bookings');
+    try {
+      _bookingRequestsSubscription = collection
+          .where('status', whereIn: ['pending', 'upcoming'])
+          .snapshots()
+          .listen((snapshot) {
+        _pendingRequests = snapshot.size;
+        notifyListeners();
+      }, onError: (_) {});
+    } catch (_) {
+      _bookingRequestsSubscription = collection
+          .where('status', isEqualTo: 'upcoming')
+          .snapshots()
+          .listen((snapshot) {
+        _pendingRequests = snapshot.size;
+        notifyListeners();
+      }, onError: (_) {});
+    }
+  }
+
+  void _listenToQueue(String ownerId) {
+    _queueLiveSubscription?.cancel();
+    try {
+      _queueLiveSubscription = _firestore
+          .collection('salons')
+          .doc(ownerId)
+          .collection('queue')
+          .snapshots()
+          .listen((_) => _refreshQueue(), onError: (_) {});
+    } catch (_) {
+      // fall back to top-level queue collection if nested path fails
+      _queueLiveSubscription = _firestore
+          .collection('queue')
+          .snapshots()
+          .listen((_) => _refreshQueue(), onError: (_) {});
     }
   }
 
@@ -157,6 +206,8 @@ class OwnerHomeProvider extends ChangeNotifier {
   @override
   void dispose() {
     _queueSubscription?.cancel();
+    _bookingRequestsSubscription?.cancel();
+    _queueLiveSubscription?.cancel();
     super.dispose();
   }
 }

@@ -1,4 +1,5 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/owner/providers/booking_receipt_provider.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
@@ -6,17 +7,19 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 class BookingReceiptScreen extends StatelessWidget {
-  const BookingReceiptScreen({super.key, this.booking});
+  const BookingReceiptScreen({super.key, this.booking, this.bookingId});
 
   final OwnerBooking? booking;
+  final String? bookingId;
 
   @override
   Widget build(BuildContext context) {
+    final ownerId = context.read<AuthProvider>().currentUser?.uid ?? '';
     final ownerName = context.read<AuthProvider>().currentUser?.displayName;
     final fmt = DateFormat('EEE, d MMM yyyy • hh:mm a');
+    final id = bookingId ?? booking?.id ?? '';
 
-    final data = booking;
-    if (data == null) {
+    if (id.isEmpty || ownerId.isEmpty) {
       return Scaffold(
         appBar:
             const CutlineAppBar(title: 'Booking Receipt', centerTitle: true),
@@ -24,63 +27,111 @@ class BookingReceiptScreen extends StatelessWidget {
       );
     }
 
-    final services = [
-      _ServiceLine(
-          title: data.service,
-          price: '৳${data.price}',
-          icon: Icons.content_cut),
-    ];
+    return ChangeNotifierProvider(
+      create: (_) {
+        final provider = OwnerBookingReceiptProvider(
+          ownerId: ownerId,
+          bookingId: id,
+        );
+        provider.load();
+        return provider;
+      },
+      builder: (context, _) {
+        final provider = context.watch<OwnerBookingReceiptProvider>();
+        final data = provider.data;
+        final isLoading = provider.isLoading;
+        final error = provider.error;
 
-    return Scaffold(
-      appBar: const CutlineAppBar(title: 'Booking Receipt', centerTitle: true),
-      backgroundColor: CutlineColors.secondaryBackground,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Column(
-          children: [
-            CutlineAnimations.entrance(
-              _ReceiptCard(
-                salonDetails: _SalonDetails(
-                  name: data.salonName,
-                  address: '—',
-                  phone: '',
-                  email: '',
-                  stylist: ownerName ?? 'Stylist',
-                  appointment: fmt.format(data.dateTime),
+        if (isLoading && data == null) {
+          return Scaffold(
+            appBar: const CutlineAppBar(
+                title: 'Booking Receipt', centerTitle: true),
+            body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (error != null && data == null && booking == null) {
+          return Scaffold(
+            appBar: const CutlineAppBar(
+                title: 'Booking Receipt', centerTitle: true),
+            body: Center(child: Text(error)),
+          );
+        }
+
+        final services = (data?.services ?? [])
+            .map((s) =>
+                _ServiceLine(title: s.name, price: '৳${s.price}', icon: Icons.content_cut))
+            .toList();
+        if (services.isEmpty && booking != null) {
+          services.add(_ServiceLine(
+              title: booking!.service,
+              price: '৳${booking!.price}',
+              icon: Icons.content_cut));
+        }
+
+        final subtotal = data?.subtotal ?? booking?.price ?? 0;
+        final serviceCharge = data?.serviceCharge ?? 0;
+        final total = data?.total ?? booking?.price ?? 0;
+        final paymentMethod = data?.paymentMethod ?? 'Cash';
+        final status = data?.status ?? booking?.status ?? OwnerBookingStatus.upcoming;
+        final appointment =
+            fmt.format(data?.dateTime ?? booking?.dateTime ?? DateTime.now());
+
+        return Scaffold(
+          appBar:
+              const CutlineAppBar(title: 'Booking Receipt', centerTitle: true),
+          backgroundColor: CutlineColors.secondaryBackground,
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Column(
+              children: [
+                CutlineAnimations.entrance(
+                  _ReceiptCard(
+                    salonDetails: _SalonDetails(
+                      name: data?.salonName ?? booking?.salonName ?? 'Salon',
+                      address: data?.address ?? '—',
+                      phone: data?.phone ?? '',
+                      email: data?.email ?? '',
+                      stylist: data?.barberName.isNotEmpty == true
+                          ? data!.barberName
+                          : ownerName ?? 'Stylist',
+                      appointment: appointment,
+                    ),
+                    customer: _CustomerInfo(
+                      name: data?.customerName ?? booking?.customerName ?? '',
+                      phone: data?.customerPhone ?? '',
+                      email: data?.customerEmail ?? '',
+                    ),
+                    services: services,
+                    totals: _PriceSummary(
+                      subtotal: '৳$subtotal',
+                      serviceCharge: '৳$serviceCharge',
+                      total: '৳$total',
+                    ),
+                    paymentMethod: paymentMethod,
+                    status: status,
+                  ),
                 ),
-                customer: _CustomerInfo(
-                  name: data.customerName,
-                  phone: '',
-                  email: '',
+                const SizedBox(height: CutlineSpacing.lg),
+                Padding(
+                  padding: CutlineSpacing.section,
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: CutlineButtons.primary(
+                          padding: const EdgeInsets.symmetric(vertical: 14)),
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Back to Bookings',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
                 ),
-                services: services,
-                totals: _PriceSummary(
-                  subtotal: '৳${data.price}',
-                  serviceCharge: '৳0',
-                  total: '৳${data.price}',
-                ),
-                paymentMethod: data.paymentMethod,
-                status: data.status,
-              ),
+              ],
             ),
-            const SizedBox(height: CutlineSpacing.lg),
-            Padding(
-              padding: CutlineSpacing.section,
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: CutlineButtons.primary(
-                      padding: const EdgeInsets.symmetric(vertical: 14)),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Back to Bookings',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

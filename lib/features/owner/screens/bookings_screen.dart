@@ -88,7 +88,12 @@ class BookingsScreen extends StatelessWidget {
   void _openDetails(BuildContext context, OwnerBooking booking) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => BookingReceiptScreen()),
+      MaterialPageRoute(
+        builder: (_) => BookingReceiptScreen(
+          booking: booking,
+          bookingId: booking.id,
+        ),
+      ),
     );
   }
 }
