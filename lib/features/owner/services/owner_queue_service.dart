@@ -17,7 +17,66 @@ class OwnerQueueService {
   Future<List<OwnerQueueItem>> loadQueue(String ownerId) async {
     final queue = await _loadQueueCollection(ownerId);
     final bookings = await _loadBookingBackfill(ownerId);
-    return _mergeQueue(queue, bookings);
+    final merged = _mergeQueue(queue, bookings);
+    await _hydrateCustomerAvatars(merged);
+    return merged;
+  }
+
+  Future<void> _hydrateCustomerAvatars(List<OwnerQueueItem> items) async {
+    final itemsNeedingAvatars = items
+        .where((item) => item.customerAvatar.isEmpty && item.customerUid.isNotEmpty)
+        .toList();
+    if (itemsNeedingAvatars.isEmpty) return;
+
+    final batchSize = 10;
+    for (int i = 0; i < itemsNeedingAvatars.length; i += batchSize) {
+      final batch = itemsNeedingAvatars.skip(i).take(batchSize).toList();
+      final uids = batch.map((item) => item.customerUid).toList();
+
+      try {
+        final snap = await _firestore
+            .collection('users')
+            .where(FieldPath.documentId, whereIn: uids)
+            .get();
+
+        final avatarMap = <String, String>{};
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          final photoUrl = (data['photoUrl'] as String?) ??
+              (data['avatarUrl'] as String?) ??
+              (data['customerAvatar'] as String?) ??
+              '';
+          if (photoUrl.isNotEmpty) {
+            avatarMap[doc.id] = photoUrl;
+          }
+        }
+
+        for (final item in batch) {
+          final avatar = avatarMap[item.customerUid];
+          if (avatar != null && avatar.isNotEmpty) {
+            final index = items.indexWhere((i) => i.id == item.id);
+            if (index != -1) {
+              items[index] = OwnerQueueItem(
+                id: items[index].id,
+                customerName: items[index].customerName,
+                service: items[index].service,
+                barberName: items[index].barberName,
+                price: items[index].price,
+                status: items[index].status,
+                waitMinutes: items[index].waitMinutes,
+                slotLabel: items[index].slotLabel,
+                customerPhone: items[index].customerPhone,
+                note: items[index].note,
+                customerAvatar: avatar,
+                customerUid: items[index].customerUid,
+              );
+            }
+          }
+        }
+      } catch (_) {
+        // Ignore errors in avatar fetching
+      }
+    }
   }
 
   Future<void> updateStatus({
@@ -139,17 +198,36 @@ class OwnerQueueService {
   Future<List<OwnerQueueItem>> _loadQueueCollection(String ownerId) async {
     QuerySnapshot<Map<String, dynamic>> snap;
     try {
-      snap = await _firestore
-          .collection('salons')
-          .doc(ownerId)
-          .collection('queue')
-          .get();
+      // Try to load only active queue items first
+      try {
+        snap = await _firestore
+            .collection('salons')
+            .doc(ownerId)
+            .collection('queue')
+            .where('status', whereIn: ['waiting', 'serving'])
+            .get();
+      } catch (_) {
+        // Fallback: load all and filter
+        snap = await _firestore
+            .collection('salons')
+            .doc(ownerId)
+            .collection('queue')
+            .get();
+      }
     } catch (_) {
-      snap = await _firestore.collection('queue').get();
+      try {
+        snap = await _firestore
+            .collection('queue')
+            .where('status', whereIn: ['waiting', 'serving'])
+            .get();
+      } catch (_) {
+        snap = await _firestore.collection('queue').get();
+      }
     }
     return snap.docs
         .map((doc) => _mapQueue(doc.id, doc.data()))
         .whereType<OwnerQueueItem>()
+        .where((item) => item.status != OwnerQueueStatus.done) // Filter out completed items
         .toList();
   }
 
@@ -157,19 +235,29 @@ class OwnerQueueService {
     try {
       QuerySnapshot<Map<String, dynamic>> snap;
       try {
+        // Only load active bookings (waiting or serving)
         snap = await _firestore
             .collection('salons')
             .doc(ownerId)
             .collection('bookings')
-            .where('status',
-                whereIn: ['waiting', 'serving', 'completed', 'done'])
+            .where('status', whereIn: ['waiting', 'serving'])
             .get();
       } catch (_) {
-        return const [];
+        // Fallback: try loading all and filter
+        try {
+          snap = await _firestore
+              .collection('salons')
+              .doc(ownerId)
+              .collection('bookings')
+              .get();
+        } catch (_) {
+          return const [];
+        }
       }
       return snap.docs
           .map((doc) => _mapBooking(doc.id, doc.data()))
           .whereType<OwnerQueueItem>()
+          .where((item) => item.status != OwnerQueueStatus.done) // Filter out completed items
           .toList();
     } catch (_) {
       return const [];
@@ -201,6 +289,14 @@ class OwnerQueueService {
       slotLabel: (data['slotLabel'] as String?) ?? id,
       customerPhone: (data['customerPhone'] as String?) ?? '',
       note: data['note'] as String?,
+      customerAvatar: (data['customerAvatar'] as String?) ??
+          (data['customerPhotoUrl'] as String?) ??
+          (data['photoUrl'] as String?) ??
+          '',
+      customerUid: (data['customerUid'] as String?) ??
+          (data['customerId'] as String?) ??
+          (data['uid'] as String?) ??
+          '',
     );
   }
 
@@ -239,6 +335,14 @@ class OwnerQueueService {
       slotLabel: timeLabel.isNotEmpty ? timeLabel : id,
       customerPhone: (data['customerPhone'] as String?) ?? '',
       note: data['note'] as String?,
+      customerAvatar: (data['customerAvatar'] as String?) ??
+          (data['customerPhotoUrl'] as String?) ??
+          (data['photoUrl'] as String?) ??
+          '',
+      customerUid: (data['customerUid'] as String?) ??
+          (data['customerId'] as String?) ??
+          (data['uid'] as String?) ??
+          '',
     );
   }
 

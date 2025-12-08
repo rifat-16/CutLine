@@ -102,6 +102,7 @@ class DashboardProvider extends ChangeNotifier {
       id: id,
       customerName: (data['customerName'] as String?) ?? 'Customer',
       customerAvatar: '',
+      customerUid: '',
       salonName: (data['salonName'] as String?) ??
           (data['salon'] as String?) ??
           '',
@@ -131,6 +132,14 @@ class DashboardProvider extends ChangeNotifier {
       slotLabel: (data['slotLabel'] as String?) ?? '',
       customerPhone: (data['customerPhone'] as String?) ?? '',
       note: data['note'] as String?,
+      customerAvatar: (data['customerAvatar'] as String?) ??
+          (data['customerPhotoUrl'] as String?) ??
+          (data['photoUrl'] as String?) ??
+          '',
+      customerUid: (data['customerUid'] as String?) ??
+          (data['customerId'] as String?) ??
+          (data['uid'] as String?) ??
+          '',
     );
   }
 

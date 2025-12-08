@@ -18,6 +18,7 @@ class BarberProfileScreen extends StatefulWidget {
 
 class _BarberProfileScreenState extends State<BarberProfileScreen> {
   File? _imageFile;
+  bool _profileUpdated = false;
 
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
@@ -52,13 +53,18 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
         final phone =
             profile?.phone.isNotEmpty == true ? profile!.phone : 'Not added';
 
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text("Profile"),
-            centerTitle: true,
-            elevation: 0,
-          ),
-          body: provider.isLoading
+        return WillPopScope(
+          onWillPop: () async {
+            Navigator.of(context).pop(_profileUpdated);
+            return false;
+          },
+          child: Scaffold(
+            appBar: AppBar(
+              title: const Text("Profile"),
+              centerTitle: true,
+              elevation: 0,
+            ),
+            body: provider.isLoading
               ? const Center(child: CircularProgressIndicator())
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
@@ -77,16 +83,26 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
                         child: Stack(
                           alignment: Alignment.bottomRight,
                           children: [
-                            CircleAvatar(
-                              radius: 50,
-                              backgroundColor: Colors.grey.shade300,
-                              backgroundImage: _imageFile != null
-                                  ? FileImage(_imageFile!)
-                                  : null,
-                              child: _imageFile == null
-                                  ? const Icon(Icons.person,
-                                      size: 60, color: Colors.white)
-                                  : null,
+                            Builder(
+                              builder: (context) {
+                                ImageProvider? imageProvider;
+                                if (_imageFile != null) {
+                                  imageProvider = FileImage(_imageFile!);
+                                } else if (provider.profile?.photoUrl != null &&
+                                    provider.profile!.photoUrl.isNotEmpty) {
+                                  imageProvider =
+                                      NetworkImage(provider.profile!.photoUrl);
+                                }
+                                return CircleAvatar(
+                                  radius: 50,
+                                  backgroundColor: Colors.grey.shade300,
+                                  backgroundImage: imageProvider,
+                                  child: imageProvider == null
+                                      ? const Icon(Icons.person,
+                                          size: 60, color: Colors.white)
+                                      : null,
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -133,6 +149,9 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
                           );
                           if (!mounted) return;
                           if (updated == true) {
+                            setState(() {
+                              _profileUpdated = true;
+                            });
                             context.read<BarberProfileProvider>().load();
                           }
                         },
@@ -158,6 +177,7 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
                     ],
                   ),
                 ),
+          ),
         );
       },
     );

@@ -2,6 +2,7 @@ import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/barber/providers/barber_home_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 
 import 'barber_notification_screen.dart';
 import 'barber_profile_screen.dart';
@@ -85,7 +86,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                 ),
                 const SizedBox(height: 20),
                 const Text(
-                  "Live queue",
+                  "Today's queue",
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 10),
@@ -175,7 +176,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
   }
 
   AppBar _buildAppBar(BuildContext context, BarberHomeProvider provider) {
-    final barberName = provider.profile?.name;
+    final salonName = provider.salonName;
     return AppBar(
       titleSpacing: 0,
       centerTitle: false,
@@ -185,13 +186,8 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              barberName?.isNotEmpty == true ? barberName! : 'Barber',
+              salonName?.isNotEmpty == true ? salonName! : 'Salon',
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              "Today's queue",
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
             ),
           ],
         ),
@@ -211,17 +207,28 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
         Padding(
           padding: const EdgeInsets.only(right: 12.0),
           child: InkWell(
-            onTap: () {
-              Navigator.push(
+            onTap: () async {
+              final updated = await Navigator.push<bool>(
                 context,
                 MaterialPageRoute(
                     builder: (context) => const BarberProfileScreen()),
               );
+              if (!mounted) return;
+              if (updated == true) {
+                context.read<BarberHomeProvider>().load();
+              }
             },
-            child: const CircleAvatar(
+            child: CircleAvatar(
               radius: 16,
               backgroundColor: Colors.grey,
-              child: Icon(Icons.person, color: Colors.white),
+              backgroundImage: provider.profile?.photoUrl != null &&
+                      provider.profile!.photoUrl.isNotEmpty
+                  ? NetworkImage(provider.profile!.photoUrl)
+                  : null,
+              child: provider.profile?.photoUrl == null ||
+                      provider.profile!.photoUrl.isEmpty
+                  ? const Icon(Icons.person, color: Colors.white)
+                  : null,
             ),
           ),
         ),
@@ -379,7 +386,7 @@ Widget _queueTab(String title, bool isSelected) {
   );
 }
 
-class _QueueCard extends StatelessWidget {
+class _QueueCard extends StatefulWidget {
   final BarberQueueItem item;
   final VoidCallback? onStartServing;
   final VoidCallback? onMarkDone;
@@ -391,8 +398,101 @@ class _QueueCard extends StatelessWidget {
   });
 
   @override
+  State<_QueueCard> createState() => _QueueCardState();
+}
+
+class _QueueCardState extends State<_QueueCard> {
+  Timer? _timer;
+  int _elapsedMinutes = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateElapsedTime();
+    if (widget.item.status == BarberQueueStatus.serving) {
+      _startTimer();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_QueueCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.item.status == BarberQueueStatus.serving &&
+        oldWidget.item.status != BarberQueueStatus.serving) {
+      _startTimer();
+    } else if (widget.item.status != BarberQueueStatus.serving) {
+      _stopTimer();
+    }
+    _updateElapsedTime();
+  }
+
+  @override
+  void dispose() {
+    _stopTimer();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        setState(() {
+          _updateElapsedTime();
+        });
+      }
+    });
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  void _updateElapsedTime() {
+    if (widget.item.status == BarberQueueStatus.serving &&
+        widget.item.startedAt != null) {
+      final now = DateTime.now();
+      final elapsed = now.difference(widget.item.startedAt!);
+      _elapsedMinutes = elapsed.inMinutes;
+    } else {
+      _elapsedMinutes = 0;
+    }
+  }
+
+  String _getTimeDisplay() {
+    if (widget.item.status == BarberQueueStatus.serving) {
+      if (_elapsedMinutes <= 0) {
+        return "0 min";
+      }
+      return "$_elapsedMinutes min";
+    } else if (widget.item.status == BarberQueueStatus.done) {
+      if (widget.item.completedAt != null && widget.item.startedAt != null) {
+        final actualMinutes =
+            widget.item.completedAt!.difference(widget.item.startedAt!).inMinutes;
+        if (actualMinutes <= 0) {
+          return "1 min";
+        }
+        return "$actualMinutes min";
+      }
+      return "${widget.item.waitMinutes} min";
+    } else {
+      return "${widget.item.waitMinutes} min";
+    }
+  }
+
+  Color _getTimeColor() {
+    if (widget.item.status == BarberQueueStatus.serving) {
+      if (_elapsedMinutes >= widget.item.waitMinutes) {
+        return Colors.red;
+      }
+      return Colors.orange;
+    }
+    return Colors.orange;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final statusColor = _statusColor(item.status);
+    final statusColor = _statusColor(widget.item.status);
     final actionButton = _buildActionButton();
     return Container(
       padding: const EdgeInsets.all(18),
@@ -407,25 +507,26 @@ class _QueueCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(item.customerName,
+              Text(widget.item.customerName,
                   style: const TextStyle(
                       fontSize: 20, fontWeight: FontWeight.bold)),
-              Text("${item.waitMinutes} min",
-                  style: const TextStyle(color: Colors.orange, fontSize: 15)),
+              Text(_getTimeDisplay(),
+                  style: TextStyle(
+                      color: _getTimeColor(), fontSize: 15)),
             ],
           ),
           const SizedBox(height: 8),
           Text(
-            "${item.service} • ৳${item.price}   ${item.slotLabel}",
+            "${widget.item.service} • ৳${widget.item.price}   ${widget.item.slotLabel}",
             style: const TextStyle(color: Colors.black54, fontSize: 14),
           ),
           const SizedBox(height: 6),
-          Text("Barber: ${item.barberName}",
+          Text("Barber: ${widget.item.barberName}",
               style: const TextStyle(color: Colors.black54, fontSize: 14)),
-          if (item.note != null && item.note!.isNotEmpty) ...[
+          if (widget.item.note != null && widget.item.note!.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(
-              item.note!,
+              widget.item.note!,
               style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
             ),
           ],
@@ -440,7 +541,7 @@ class _QueueCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Text(
-                  _statusLabel(item.status),
+                  _statusLabel(widget.item.status),
                   style: TextStyle(
                       color: statusColor, fontWeight: FontWeight.w600),
                 ),
@@ -457,7 +558,7 @@ class _QueueCard extends StatelessWidget {
   }
 
   Widget? _buildActionButton() {
-    if (onStartServing != null) {
+    if (widget.onStartServing != null) {
       return ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
           elevation: 0,
@@ -466,7 +567,7 @@ class _QueueCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           shape: const StadiumBorder(),
         ),
-        onPressed: onStartServing,
+        onPressed: widget.onStartServing,
         icon: const Icon(Icons.play_arrow_rounded, size: 20),
         label: const Text(
           "Start Serving",
@@ -474,7 +575,7 @@ class _QueueCard extends StatelessWidget {
         ),
       );
     }
-    if (onMarkDone != null) {
+    if (widget.onMarkDone != null) {
       return ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
           elevation: 0,
@@ -483,7 +584,7 @@ class _QueueCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           shape: const StadiumBorder(),
         ),
-        onPressed: onMarkDone,
+        onPressed: widget.onMarkDone,
         icon: const Icon(Icons.check_circle_rounded, size: 20),
         label: const Text(
           "Mark Completed",

@@ -53,6 +53,7 @@ class BarberEditProfileProvider extends ChangeNotifier {
         specialization: (data['specialization'] as String?) ?? '',
         phone: (data['phone'] as String?) ?? '',
         email: (data['email'] as String?) ?? '',
+        photoUrl: _photoUrl ?? '',
       );
     } catch (_) {
       _setError('Failed to load profile.');
@@ -74,6 +75,7 @@ class BarberEditProfileProvider extends ChangeNotifier {
     _setSaving(true);
     _setError(null);
     try {
+      final oldName = _profile?.name ?? '';
       await _firestore.collection('users').doc(uid).set({
         'name': name.trim(),
         'specialization': specialization.trim(),
@@ -89,14 +91,71 @@ class BarberEditProfileProvider extends ChangeNotifier {
           specialization: specialization,
           phone: phone,
           email: _profile!.email,
+          photoUrl: _photoUrl ?? '',
         );
       }
+
+      // Update queue items if name changed
+      if (oldName.isNotEmpty && oldName != name.trim() && _profile != null) {
+        await _updateQueueItems(_profile!.ownerId, uid, oldName, name.trim());
+      }
+
       _setSaving(false);
       return true;
     } catch (_) {
       _setError('Could not save profile. Try again.');
       _setSaving(false);
       return false;
+    }
+  }
+
+  Future<void> _updateQueueItems(
+      String ownerId, String barberId, String oldName, String newName) async {
+    try {
+      final queueRef = _firestore
+          .collection('salons')
+          .doc(ownerId)
+          .collection('queue');
+      QuerySnapshot<Map<String, dynamic>> snap;
+      try {
+        snap = await queueRef.get();
+      } catch (_) {
+        snap = await _firestore.collection('queue').get();
+      }
+
+      final batch = _firestore.batch();
+      int batchCount = 0;
+      const batchLimit = 500;
+
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final itemBarberId = data['barberId'] ?? data['barberUid'];
+        final itemBarberName = (data['barberName'] as String?) ?? '';
+
+        final shouldUpdate = (itemBarberId is String &&
+                itemBarberId.isNotEmpty &&
+                itemBarberId == barberId) ||
+            (itemBarberName.isNotEmpty &&
+                itemBarberName.toLowerCase() == oldName.toLowerCase());
+
+        if (shouldUpdate) {
+          batch.update(doc.reference, {
+            'barberId': barberId,
+            'barberName': newName,
+          });
+          batchCount++;
+          if (batchCount >= batchLimit) {
+            await batch.commit();
+            batchCount = 0;
+          }
+        }
+      }
+
+      if (batchCount > 0) {
+        await batch.commit();
+      }
+    } catch (_) {
+      // Ignore errors in queue update
     }
   }
 

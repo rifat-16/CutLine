@@ -32,6 +32,7 @@ class OwnerHomeProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   String? _salonName;
+  String? _photoUrl;
   List<OwnerQueueItem> _queueItems = [];
   int _pendingRequests = 0;
   bool _isOpen = true;
@@ -40,6 +41,7 @@ class OwnerHomeProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   String? get salonName => _salonName;
+  String? get photoUrl => _photoUrl;
   List<OwnerQueueItem> get queueItems => _queueItems;
   int get pendingRequests => _pendingRequests;
   bool get isOpen => _isOpen;
@@ -74,6 +76,10 @@ class OwnerHomeProvider extends ChangeNotifier {
       final data = doc.data() ?? {};
       _salonName = data['name'] as String?;
       _isOpen = (data['isOpen'] as bool?) ?? _isOpen;
+      _photoUrl = (data['photoUrl'] as String?)?.trim();
+      if (_photoUrl != null && _photoUrl!.isEmpty) {
+        _photoUrl = null;
+      }
     }
   }
 
@@ -130,18 +136,38 @@ class OwnerHomeProvider extends ChangeNotifier {
   void _listenToQueue(String ownerId) {
     _queueLiveSubscription?.cancel();
     try {
-      _queueLiveSubscription = _firestore
-          .collection('salons')
-          .doc(ownerId)
-          .collection('queue')
-          .snapshots()
-          .listen((_) => _refreshQueue(), onError: (_) {});
+      // Listen only to active queue items
+      try {
+        _queueLiveSubscription = _firestore
+            .collection('salons')
+            .doc(ownerId)
+            .collection('queue')
+            .where('status', whereIn: ['waiting', 'serving'])
+            .snapshots()
+            .listen((_) => _refreshQueue(), onError: (_) {});
+      } catch (_) {
+        // Fallback: listen to all and filter in service
+        _queueLiveSubscription = _firestore
+            .collection('salons')
+            .doc(ownerId)
+            .collection('queue')
+            .snapshots()
+            .listen((_) => _refreshQueue(), onError: (_) {});
+      }
     } catch (_) {
       // fall back to top-level queue collection if nested path fails
-      _queueLiveSubscription = _firestore
-          .collection('queue')
-          .snapshots()
-          .listen((_) => _refreshQueue(), onError: (_) {});
+      try {
+        _queueLiveSubscription = _firestore
+            .collection('queue')
+            .where('status', whereIn: ['waiting', 'serving'])
+            .snapshots()
+            .listen((_) => _refreshQueue(), onError: (_) {});
+      } catch (_) {
+        _queueLiveSubscription = _firestore
+            .collection('queue')
+            .snapshots()
+            .listen((_) => _refreshQueue(), onError: (_) {});
+      }
     }
   }
 

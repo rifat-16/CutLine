@@ -144,6 +144,7 @@ class EditSalonProvider extends ChangeNotifier {
       _setError('Please log in again.');
       return;
     }
+    final previousUrl = photoUrl;
     final file = await _picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 85,
@@ -164,6 +165,10 @@ class EditSalonProvider extends ChangeNotifier {
           .doc(ownerId)
           .set({'photoUrl': url, 'updatedAt': FieldValue.serverTimestamp()},
               SetOptions(merge: true));
+      // Delete old photo if it exists and is different from the new one
+      if (previousUrl != null && previousUrl.isNotEmpty && previousUrl != url) {
+        await _deleteOldPhoto(previousUrl);
+      }
     } catch (_) {
       _setError('Could not upload photo. Try again.');
     } finally {
@@ -183,5 +188,14 @@ class EditSalonProvider extends ChangeNotifier {
     final dot = name.lastIndexOf('.');
     if (dot == -1 || dot == name.length - 1) return 'jpg';
     return name.substring(dot + 1);
+  }
+
+  Future<void> _deleteOldPhoto(String url) async {
+    try {
+      final ref = _storage.refFromURL(url);
+      await ref.delete();
+    } catch (_) {
+      // Ignore cleanup failures.
+    }
   }
 }

@@ -121,7 +121,10 @@ class _ReceiptCard extends StatelessWidget {
           ...services,
           const Divider(height: 32),
           _PriceRow(label: 'Subtotal', value: totals.subtotal),
-          _PriceRow(label: 'Service Charge', value: totals.serviceCharge),
+          _PriceRow(
+            label: 'Platform Fee',
+            value: data.serviceCharge == 0 ? 'Free' : totals.serviceCharge,
+          ),
           const Divider(height: 32),
           _PriceRow(label: 'Total', value: totals.total, emphasize: true),
           const SizedBox(height: CutlineSpacing.md),

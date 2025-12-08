@@ -74,7 +74,7 @@ class BookingReceiptProvider extends ChangeNotifier {
       status: (data['status'] as String?) ?? 'upcoming',
       services: services,
       subtotal: services.fold<int>(0, (acc, s) => acc + s.price),
-      serviceCharge: (data['serviceCharge'] as num?)?.toInt() ?? 10,
+      serviceCharge: (data['serviceCharge'] as num?)?.toInt() ?? 0,
       total: total,
       customerName: (data['customerName'] as String?) ?? '',
       customerPhone: (data['customerPhone'] as String?) ?? '',

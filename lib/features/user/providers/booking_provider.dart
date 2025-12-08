@@ -116,27 +116,85 @@ class BookingProvider extends ChangeNotifier {
           id: doc.id,
           name: (data['name'] as String?) ?? 'Barber',
           rating: (data['rating'] as num?)?.toDouble() ?? 4.8,
-          avatarUrl: data['avatarUrl'] as String?,
+          avatarUrl: (data['avatarUrl'] as String?) ??
+              (data['photoUrl'] as String?),
+          uid: (data['uid'] as String?) ?? doc.id,
         );
       }).toList();
-      if (barbers.isNotEmpty) return barbers;
+      
+      // Hydrate avatars from users collection if needed
+      final hydratedBarbers = await _hydrateBarberAvatars(barbers);
+      
+      if (hydratedBarbers.isNotEmpty) return hydratedBarbers;
 
       final embedded = salonData['barbers'];
       if (embedded is List) {
-        return embedded
+        final embeddedBarbers = embedded
             .whereType<Map>()
             .map((e) => BookingBarber(
                   id: (e['uid'] as String?) ?? '',
                   name: (e['name'] as String?) ?? 'Barber',
                   rating: (e['rating'] as num?)?.toDouble() ?? 4.8,
-                  avatarUrl: e['avatarUrl'] as String?,
+                  avatarUrl: (e['avatarUrl'] as String?) ??
+                      (e['photoUrl'] as String?),
+                  uid: (e['uid'] as String?) ?? '',
                 ))
             .toList();
+        final hydratedEmbedded = await _hydrateBarberAvatars(embeddedBarbers);
+        return hydratedEmbedded;
       }
       return const [];
     } catch (_) {
       return [];
     }
+  }
+
+  Future<List<BookingBarber>> _hydrateBarberAvatars(List<BookingBarber> barbers) async {
+    final missing = barbers
+        .where((b) => (b.avatarUrl == null || b.avatarUrl!.isEmpty) && b.uid.isNotEmpty)
+        .map((b) => b.uid)
+        .toSet()
+        .toList();
+    if (missing.isEmpty) return barbers;
+
+    final avatarMap = <String, String>{};
+    const int chunkSize = 10;
+    for (var i = 0; i < missing.length; i += chunkSize) {
+      final chunk = missing.skip(i).take(chunkSize).toList();
+      try {
+        final snap = await _firestore
+            .collection('users')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          final url = (data['photoUrl'] as String?) ??
+              (data['avatarUrl'] as String?);
+          if (url != null && url.isNotEmpty) {
+            avatarMap[doc.id] = url;
+          }
+        }
+      } catch (_) {
+        // Ignore errors
+      }
+    }
+
+    // Return updated barbers with fetched avatars
+    return barbers.map((barber) {
+      if (barber.avatarUrl == null || barber.avatarUrl!.isEmpty) {
+        final url = avatarMap[barber.uid];
+        if (url != null && url.isNotEmpty) {
+          return BookingBarber(
+            id: barber.id,
+            name: barber.name,
+            rating: barber.rating,
+            avatarUrl: url,
+            uid: barber.uid,
+          );
+        }
+      }
+      return barber;
+    }).toList();
   }
 
   Future<int> _estimateWaiting() async {
@@ -306,11 +364,13 @@ class BookingBarber {
   final String name;
   final double rating;
   final String? avatarUrl;
+  final String uid;
 
   const BookingBarber({
     required this.id,
     required this.name,
     required this.rating,
     required this.avatarUrl,
+    required this.uid,
   });
 }

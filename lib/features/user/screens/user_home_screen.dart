@@ -2,8 +2,6 @@ import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/user/providers/user_home_provider.dart';
 import 'package:cutline/features/user/widgets/home_bottom_navigation.dart';
 import 'package:cutline/features/user/widgets/nearby_salon_card.dart';
-import 'package:cutline/features/user/widgets/user_promo_carousel.dart';
-import 'package:cutline/features/user/widgets/user_promo_indicator.dart';
 import 'package:cutline/features/user/widgets/user_search_bar.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:cutline/routes/app_router.dart';
@@ -19,45 +17,12 @@ class UserHomeScreen extends StatefulWidget {
 }
 
 class _UserHomeScreenState extends State<UserHomeScreen> {
-  final List<String> offers = const [
-    'Get 20% off on your next visit!',
-    'Refer a friend and earn discounts!',
-    'Happy Hour: 10AM–1PM, 30% OFF!',
-    'Book early and skip the queue!',
-  ];
-
-  late final PageController _pageController;
-  int _currentOfferIndex = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController(initialPage: 1);
-    _startOfferSlider();
-  }
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _searchController.dispose();
     super.dispose();
-  }
-
-  Future<void> _startOfferSlider() async {
-    while (mounted) {
-      await Future.delayed(const Duration(seconds: 5));
-      if (_pageController.hasClients) {
-        final nextPage = (_pageController.page?.round() ?? 0) + 1;
-        _pageController.animateToPage(
-          nextPage,
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.easeInOut,
-        );
-        if (nextPage == offers.length + 1) {
-          await Future.delayed(const Duration(milliseconds: 600));
-          _pageController.jumpToPage(1);
-        }
-      }
-    }
   }
 
   @override
@@ -92,27 +57,11 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const UserSearchBar(),
-                      SizedBox(height: CutlineSpacing.sm),
-                      UserPromoCarousel(
-                        offers: offers,
-                        controller: _pageController,
-                        onChanged: (index) {
-                          setState(() {
-                            if (index == 0) {
-                              _currentOfferIndex = offers.length - 1;
-                            } else if (index == offers.length + 1) {
-                              _currentOfferIndex = 0;
-                            } else {
-                              _currentOfferIndex = index - 1;
-                            }
-                          });
+                      UserSearchBar(
+                        controller: _searchController,
+                        onChanged: (query) {
+                          context.read<UserHomeProvider>().setSearchQuery(query);
                         },
-                      ),
-                      const SizedBox(height: CutlineSpacing.sm),
-                      UserPromoIndicator(
-                        count: offers.length,
-                        activeIndex: _currentOfferIndex,
                       ),
                       SizedBox(height: CutlineSpacing.md),
                       Text(
@@ -136,14 +85,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   child: RefreshIndicator(
                     onRefresh: () => provider.load(),
                     child: provider.isLoading
-                        ? ListView(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            children: [
-                              SizedBox(height: 140.h),
-                              const Center(
-                                child: CircularProgressIndicator(),
-                              ),
-                            ],
+                        ? const Center(
+                            child: CircularProgressIndicator(),
                           )
                         : provider.salons.isEmpty
                             ? ListView(

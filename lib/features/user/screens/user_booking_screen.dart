@@ -93,7 +93,7 @@ class _BookingScreenState extends State<BookingScreen> {
                       const CutlineSectionHeader(title: 'Select Barber'),
                       const SizedBox(height: CutlineSpacing.sm),
                       _BarberGrid(
-                        barbers: barbers.map((e) => e.name).toList(),
+                        barbers: barbers,
                         selectedBarber: selectedBarber,
                         onSelected: (value) =>
                             setState(() => selectedBarber = value),
@@ -310,7 +310,7 @@ class _ServiceSelector extends StatelessWidget {
 }
 
 class _BarberGrid extends StatelessWidget {
-  final List<String> barbers;
+  final List<BookingBarber> barbers;
   final String? selectedBarber;
   final ValueChanged<String> onSelected;
 
@@ -330,9 +330,9 @@ class _BarberGrid extends StatelessWidget {
       ),
       itemBuilder: (context, index) {
         final barber = barbers[index];
-        final isSelected = barber == selectedBarber;
+        final isSelected = barber.name == selectedBarber;
         final card = GestureDetector(
-          onTap: () => onSelected(barber),
+          onTap: () => onSelected(barber.name),
           child: Container(
             decoration: CutlineDecorations.card(
               colors: isSelected
@@ -343,14 +343,39 @@ class _BarberGrid extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor: Colors.grey.shade200,
-                  child: const Icon(Icons.person, color: Colors.grey, size: 22),
+                ClipOval(
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    color: Colors.grey.shade200,
+                    child: barber.avatarUrl != null && barber.avatarUrl!.isNotEmpty
+                        ? Image.network(
+                            barber.avatarUrl!,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Center(
+                                child: CircularProgressIndicator(
+                                  value: loadingProgress.expectedTotalBytes != null
+                                      ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
+                                      : null,
+                                  strokeWidth: 2,
+                                ),
+                              );
+                            },
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.person,
+                              color: Colors.grey,
+                              size: 22,
+                            ),
+                          )
+                        : const Icon(Icons.person, color: Colors.grey, size: 22),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  barber,
+                  barber.name,
                   style: TextStyle(
                     color: isSelected ? Colors.white : CutlineColors.primary,
                     fontWeight: FontWeight.w600,
@@ -358,7 +383,7 @@ class _BarberGrid extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '⭐ 4.9 • Hair Specialist',
+                  '⭐ ${barber.rating} • Hair Specialist',
                   style: TextStyle(color: isSelected ? Colors.white70 : Colors.black54, fontSize: 12),
                 ),
               ],

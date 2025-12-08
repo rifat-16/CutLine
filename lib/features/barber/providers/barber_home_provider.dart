@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 class BarberHomeProvider extends ChangeNotifier {
   BarberHomeProvider({
@@ -11,6 +12,7 @@ class BarberHomeProvider extends ChangeNotifier {
 
   final AuthProvider _authProvider;
   final FirebaseFirestore _firestore;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _queueSubscription;
 
   bool _isLoading = false;
   String? _error;
@@ -19,6 +21,7 @@ class BarberHomeProvider extends ChangeNotifier {
   bool _salonOpen = true;
   bool _isAvailable = true;
   bool _isUpdatingAvailability = false;
+  String? _salonName;
 
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -27,6 +30,7 @@ class BarberHomeProvider extends ChangeNotifier {
   bool get isSalonOpen => _salonOpen;
   bool get isAvailable => _isAvailable;
   bool get isUpdatingAvailability => _isUpdatingAvailability;
+  String? get salonName => _salonName;
 
   int get waitingCount => _countStatus(BarberQueueStatus.waiting);
   int get servingCount => _countStatus(BarberQueueStatus.serving);
@@ -48,9 +52,11 @@ class BarberHomeProvider extends ChangeNotifier {
       }
       _profile = profile;
       _salonOpen = await _fetchSalonOpen(profile.ownerId);
+      _salonName = await _fetchSalonName(profile.ownerId);
       _isAvailable = await _fetchAvailability(profile);
-      _queue = await _fetchQueue(profile);
-      if (!_salonOpen) {
+      if (_salonOpen) {
+        _startQueueListener(profile);
+      } else {
         _queue = [];
       }
     } catch (_) {
@@ -71,30 +77,49 @@ class BarberHomeProvider extends ChangeNotifier {
         uid: uid,
         ownerId: ownerId,
         name: (data['name'] as String?) ?? '',
+        photoUrl: (data['photoUrl'] as String?) ?? '',
       );
     } catch (_) {
       return null;
     }
   }
 
-  Future<List<BarberQueueItem>> _fetchQueue(BarberProfile profile) async {
-    QuerySnapshot<Map<String, dynamic>> snap;
+  void _startQueueListener(BarberProfile profile) {
+    _queueSubscription?.cancel();
     try {
-      snap = await _firestore
+      _queueSubscription = _firestore
           .collection('salons')
           .doc(profile.ownerId)
           .collection('queue')
-          .get();
+          .snapshots()
+          .listen((snapshot) {
+        _queue = snapshot.docs
+            .where((doc) => _isForBarber(doc.data(), profile))
+            .map((doc) => _mapQueue(doc.id, doc.data(), profile))
+            .whereType<BarberQueueItem>()
+            .toList()
+          ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
+        notifyListeners();
+      }, onError: (_) {
+        // Fallback to top-level queue collection
+        _queueSubscription = _firestore
+            .collection('queue')
+            .snapshots()
+            .listen((snapshot) {
+          _queue = snapshot.docs
+              .where((doc) => _isForBarber(doc.data(), profile))
+              .map((doc) => _mapQueue(doc.id, doc.data(), profile))
+              .whereType<BarberQueueItem>()
+              .toList()
+            ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
+          notifyListeners();
+        }, onError: (_) {
+          _setError('Failed to load queue. Pull to refresh.');
+        });
+      });
     } catch (_) {
-      snap = await _firestore.collection('queue').get();
+      _setError('Failed to load queue. Pull to refresh.');
     }
-
-    return snap.docs
-        .where((doc) => _isForBarber(doc.data(), profile))
-        .map((doc) => _mapQueue(doc.id, doc.data(), profile))
-        .whereType<BarberQueueItem>()
-        .toList()
-      ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
   }
 
   bool _isForBarber(Map<String, dynamic> data, BarberProfile profile) {
@@ -116,6 +141,20 @@ class BarberHomeProvider extends ChangeNotifier {
   BarberQueueItem? _mapQueue(
       String id, Map<String, dynamic> data, BarberProfile profile) {
     final status = _statusFromString((data['status'] as String?) ?? 'waiting');
+    DateTime? startedAt;
+    DateTime? completedAt;
+    if (data['startedAt'] != null) {
+      final ts = data['startedAt'];
+      if (ts is Timestamp) {
+        startedAt = ts.toDate();
+      }
+    }
+    if (data['completedAt'] != null) {
+      final ts = data['completedAt'];
+      if (ts is Timestamp) {
+        completedAt = ts.toDate();
+      }
+    }
     return BarberQueueItem(
       id: id,
       customerName: (data['customerName'] as String?) ?? 'Customer',
@@ -127,6 +166,8 @@ class BarberHomeProvider extends ChangeNotifier {
       slotLabel: (data['slotLabel'] as String?) ?? id,
       customerPhone: (data['customerPhone'] as String?) ?? '',
       note: data['note'] as String?,
+      startedAt: startedAt,
+      completedAt: completedAt,
     );
   }
 
@@ -141,6 +182,18 @@ class BarberHomeProvider extends ChangeNotifier {
       return true;
     } catch (_) {
       return true;
+    }
+  }
+
+  Future<String?> _fetchSalonName(String ownerId) async {
+    if (ownerId.isEmpty) return null;
+    try {
+      final doc = await _firestore.collection('salons').doc(ownerId).get();
+      if (!doc.exists) return null;
+      final data = doc.data() ?? {};
+      return data['name'] as String?;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -210,12 +263,20 @@ class BarberHomeProvider extends ChangeNotifier {
     try {
       final statusString =
           status == BarberQueueStatus.done ? 'completed' : status.name;
+      final updateData = <String, dynamic>{'status': status.name};
+      
+      if (status == BarberQueueStatus.serving) {
+        updateData['startedAt'] = FieldValue.serverTimestamp();
+      } else if (status == BarberQueueStatus.done) {
+        updateData['completedAt'] = FieldValue.serverTimestamp();
+      }
+
       await _firestore
           .collection('salons')
           .doc(profile.ownerId)
           .collection('queue')
           .doc(id)
-          .set({'status': status.name}, SetOptions(merge: true));
+          .set(updateData, SetOptions(merge: true));
       await _firestore
           .collection('salons')
           .doc(profile.ownerId)
@@ -227,7 +288,12 @@ class BarberHomeProvider extends ChangeNotifier {
     }
     final index = _queue.indexWhere((item) => item.id == id);
     if (index != -1) {
-      _queue[index] = _queue[index].copyWith(status: status);
+      final now = DateTime.now();
+      _queue[index] = _queue[index].copyWith(
+        status: status,
+        startedAt: status == BarberQueueStatus.serving ? now : _queue[index].startedAt,
+        completedAt: status == BarberQueueStatus.done ? now : _queue[index].completedAt,
+      );
       notifyListeners();
     }
   }
@@ -245,17 +311,25 @@ class BarberHomeProvider extends ChangeNotifier {
     _error = message;
     notifyListeners();
   }
+
+  @override
+  void dispose() {
+    _queueSubscription?.cancel();
+    super.dispose();
+  }
 }
 
 class BarberProfile {
   final String uid;
   final String ownerId;
   final String name;
+  final String photoUrl;
 
   const BarberProfile({
     required this.uid,
     required this.ownerId,
     required this.name,
+    required this.photoUrl,
   });
 }
 
@@ -270,6 +344,8 @@ class BarberQueueItem {
   final String slotLabel;
   final String customerPhone;
   final String? note;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
 
   const BarberQueueItem({
     required this.id,
@@ -282,9 +358,15 @@ class BarberQueueItem {
     required this.slotLabel,
     required this.customerPhone,
     this.note,
+    this.startedAt,
+    this.completedAt,
   });
 
-  BarberQueueItem copyWith({BarberQueueStatus? status}) {
+  BarberQueueItem copyWith({
+    BarberQueueStatus? status,
+    DateTime? startedAt,
+    DateTime? completedAt,
+  }) {
     return BarberQueueItem(
       id: id,
       customerName: customerName,
@@ -296,6 +378,8 @@ class BarberQueueItem {
       slotLabel: slotLabel,
       customerPhone: customerPhone,
       note: note,
+      startedAt: startedAt ?? this.startedAt,
+      completedAt: completedAt ?? this.completedAt,
     );
   }
 }

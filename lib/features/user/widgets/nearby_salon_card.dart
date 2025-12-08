@@ -104,17 +104,22 @@ class NearbySalonCard extends StatelessWidget {
                       children: [
                         Text(
                           salonName,
-                          style: CutlineTextStyles.title
-                              .copyWith(color: Colors.black),
-                        ),
-                        Row(
-                          children: const [
-                            Icon(Icons.star,
-                                size: 16, color: CutlineColors.accent),
-                            SizedBox(width: 4),
-                            Text('4.6 (120)',
-                                style: TextStyle(color: Colors.grey)),
-                          ],
+                          style: CutlineTextStyles.title.copyWith(
+                            color: Colors.white,
+                            fontSize: 24,
+                            shadows: [
+                              Shadow(
+                                offset: const Offset(0, 1),
+                                blurRadius: 3,
+                                color: Colors.black.withValues(alpha: 0.5),
+                              ),
+                              Shadow(
+                                offset: const Offset(0, 1),
+                                blurRadius: 6,
+                                color: Colors.black.withValues(alpha: 0.3),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),

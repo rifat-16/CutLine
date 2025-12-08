@@ -2,6 +2,7 @@ import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/screens/barbers_screen.dart';
 import 'package:cutline/features/owner/screens/contact_support_screen.dart';
 import 'package:cutline/features/owner/screens/edit_salon_information.dart';
+import 'package:cutline/features/owner/screens/manage_gallery_screen.dart';
 import 'package:cutline/features/owner/screens/manage_services_screen.dart';
 import 'package:cutline/features/owner/screens/working_hours_screen.dart';
 import 'package:flutter/material.dart';
@@ -57,8 +58,8 @@ class _OwnerSettingsScreenState extends State<OwnerSettingsScreen> {
           _SettingTile(
             icon: Icons.photo_library_outlined,
             title: 'Manage gallery',
-            subtitle: 'Coming soon in an update',
-            onTap: () => _showComingSoon(context),
+            subtitle: 'Add, edit or remove photos',
+            onTap: () => _open(const ManageGalleryScreen()),
           ),
           const SizedBox(height: 24),
           const Text('Support',
@@ -78,24 +79,6 @@ class _OwnerSettingsScreenState extends State<OwnerSettingsScreen> {
 
   void _open(Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
-  }
-
-  void _showComingSoon(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Coming soon'),
-        content:
-            const Text('Manage gallery will be available in a future update.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
   }
 }
 

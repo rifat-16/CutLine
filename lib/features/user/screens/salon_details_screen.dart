@@ -247,16 +247,43 @@ class SalonInfoSection extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Row(
-                children: [
-                  const Icon(Icons.star,
-                      color: CutlineColors.accent, size: 20),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${details.rating.toStringAsFixed(1)} (${details.reviews} reviews)',
-                    style: CutlineTextStyles.subtitleBold,
-                  ),
-                ],
+              TextButton(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      title: const Text(
+                        'Coming Soon',
+                        style: CutlineTextStyles.title,
+                      ),
+                      content: const Text(
+                        'This feature is coming soon. It will be available in the next update.',
+                        style: CutlineTextStyles.body,
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: Text(
+                            'OK',
+                            style: CutlineTextStyles.body.copyWith(
+                              color: CutlineColors.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(40, 20),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('See Map', style: CutlineTextStyles.link),
               ),
             ],
           ),
@@ -270,17 +297,6 @@ class SalonInfoSection extends StatelessWidget {
                   details.locationLabel,
                   style: CutlineTextStyles.body,
                 ),
-              ),
-              TextButton(
-                onPressed: () {
-                  // TODO: Implement map opening function.
-                },
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(40, 20),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: const Text('See Map', style: CutlineTextStyles.link),
               ),
             ],
           ),
@@ -489,28 +505,59 @@ class _BarberCard extends StatelessWidget {
 
   const _BarberCard({required this.barber});
 
+  void _showBarberProfile(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _BarberProfileSheet(barber: barber),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 170,
-      margin: const EdgeInsets.only(right: 12, bottom: 8),
-      decoration: CutlineDecorations.card(
-        colors: [CutlineColors.background, CutlineColors.primary.withValues(alpha: 0.04)],
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircleAvatar(
-            radius: 32,
-            backgroundColor: Colors.grey.shade200,
-            backgroundImage:
-                barber.avatarUrl != null && barber.avatarUrl!.isNotEmpty
-                    ? NetworkImage(barber.avatarUrl!) as ImageProvider
-                    : null,
-            child: (barber.avatarUrl == null || barber.avatarUrl!.isEmpty)
-                ? const Icon(Icons.person, color: Colors.grey)
-                : null,
+    return InkWell(
+      onTap: () => _showBarberProfile(context),
+      borderRadius: BorderRadius.circular(CutlineDecorations.radius),
+      child: Container(
+        width: 170,
+        margin: const EdgeInsets.only(right: 12, bottom: 8),
+        decoration: CutlineDecorations.card(
+          colors: [CutlineColors.background, CutlineColors.primary.withValues(alpha: 0.04)],
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+          ClipOval(
+            child: Container(
+              width: 64,
+              height: 64,
+              color: Colors.grey.shade200,
+              child: barber.avatarUrl != null && barber.avatarUrl!.isNotEmpty
+                  ? Image.network(
+                      barber.avatarUrl!,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                    loadingProgress.expectedTotalBytes!
+                                : null,
+                            strokeWidth: 2,
+                          ),
+                        );
+                      },
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.person,
+                        color: Colors.grey,
+                        size: 40,
+                      ),
+                    )
+                  : const Icon(Icons.person, color: Colors.grey, size: 40),
+            ),
           ),
           const SizedBox(height: 10),
           Text(
@@ -550,6 +597,172 @@ class _BarberCard extends StatelessWidget {
           ],
         ],
       ),
+      ),
+    );
+  }
+}
+
+// Barber Profile Bottom Sheet
+class _BarberProfileSheet extends StatelessWidget {
+  final SalonBarber barber;
+
+  const _BarberProfileSheet({required this.barber});
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      // Profile Picture
+                      ClipOval(
+                        child: Container(
+                          width: 100,
+                          height: 100,
+                          color: Colors.grey.shade200,
+                          child: barber.avatarUrl != null && barber.avatarUrl!.isNotEmpty
+                              ? Image.network(
+                                  barber.avatarUrl!,
+                                  fit: BoxFit.cover,
+                                  loadingBuilder: (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return Center(
+                                      child: CircularProgressIndicator(
+                                        value: loadingProgress.expectedTotalBytes != null
+                                            ? loadingProgress.cumulativeBytesLoaded /
+                                                loadingProgress.expectedTotalBytes!
+                                            : null,
+                                        strokeWidth: 2,
+                                      ),
+                                    );
+                                  },
+                                  errorBuilder: (_, __, ___) => const Icon(
+                                    Icons.person,
+                                    color: Colors.grey,
+                                    size: 60,
+                                  ),
+                                )
+                              : const Icon(Icons.person, color: Colors.grey, size: 60),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Name
+                      Text(
+                        barber.name,
+                        style: CutlineTextStyles.title.copyWith(fontSize: 24),
+                      ),
+                      const SizedBox(height: 8),
+                      // Skills
+                      Text(
+                        barber.skills,
+                        style: CutlineTextStyles.subtitle,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+                      // Rating
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: CutlineColors.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star, color: CutlineColors.accent, size: 24),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${barber.rating}',
+                              style: CutlineTextStyles.title.copyWith(fontSize: 20),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      // Availability Status
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: CutlineDecorations.card(
+                          solidColor: Colors.white,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Status',
+                                  style: CutlineTextStyles.caption,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  barber.isAvailable ? 'Available' : 'Unavailable',
+                                  style: TextStyle(
+                                    color: barber.isAvailable ? Colors.green : Colors.redAccent,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (barber.isAvailable)
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    'Waiting',
+                                    style: CutlineTextStyles.caption,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.people_alt_rounded, 
+                                          color: CutlineColors.primary, size: 18),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '${barber.waitingClients}',
+                                        style: CutlineTextStyles.subtitleBold,
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -577,21 +790,22 @@ class SalonGallerySection extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('Salon Gallery', style: CutlineTextStyles.title),
-              TextButton(
-                onPressed: () {
-                  Navigator.pushNamed(
-                    context,
-                    AppRoutes.salonGallery,
-                    arguments: SalonGalleryArgs(
-                      salonName: salonName,
-                      photos: photos,
-                      uploadedCount: photos.length,
-                      totalLimit: 10,
-                    ),
-                  );
-                },
-                child: const Text('See all', style: CutlineTextStyles.link),
-              ),
+              if (photos.isNotEmpty)
+                TextButton(
+                  onPressed: () {
+                    Navigator.pushNamed(
+                      context,
+                      AppRoutes.salonGallery,
+                      arguments: SalonGalleryArgs(
+                        salonName: salonName,
+                        photos: photos,
+                        uploadedCount: photos.length,
+                        totalLimit: 10,
+                      ),
+                    );
+                  },
+                  child: const Text('See all', style: CutlineTextStyles.link),
+                ),
             ],
           ),
           const SizedBox(height: 10),
@@ -625,6 +839,21 @@ class SalonGallerySection extends StatelessWidget {
                   child: Image.network(
                     url,
                     fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        color: Colors.grey.shade200,
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                    loadingProgress.expectedTotalBytes!
+                                : null,
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      );
+                    },
                     errorBuilder: (_, __, ___) => Container(
                       color: Colors.grey.shade300,
                       child: const Icon(Icons.broken_image, color: Colors.grey),
@@ -914,16 +1143,13 @@ class LiveQueueSection extends StatelessWidget {
     final waitLabel = waitMinutes <= 0 ? 'No wait' : '≈ $waitMinutes mins';
     final nowServing = queue.firstWhere(
       (e) => e.isServing,
-      orElse: () => queue.firstWhere(
-        (e) => e.isWaiting,
-        orElse: () => const SalonQueueEntry(
-          id: '',
-          customerName: 'No one is being served',
-          barberName: '',
-          service: '',
-          status: '',
-          waitMinutes: 0,
-        ),
+      orElse: () => const SalonQueueEntry(
+        id: '',
+        customerName: 'No one is being served',
+        barberName: '',
+        service: '',
+        status: '',
+        waitMinutes: 0,
       ),
     );
     final waiting = queue.where((e) => e.isWaiting).toList()

@@ -21,6 +21,8 @@ class OwnerQueueItem {
   final String slotLabel;
   final String customerPhone;
   final String? note;
+  final String customerAvatar;
+  final String customerUid;
 
   const OwnerQueueItem({
     required this.id,
@@ -33,6 +35,8 @@ class OwnerQueueItem {
     required this.slotLabel,
     required this.customerPhone,
     this.note,
+    this.customerAvatar = '',
+    this.customerUid = '',
   });
 
   OwnerQueueItem copyWith({OwnerQueueStatus? status}) {
@@ -47,6 +51,8 @@ class OwnerQueueItem {
       slotLabel: slotLabel,
       customerPhone: customerPhone,
       note: note,
+      customerAvatar: customerAvatar,
+      customerUid: customerUid,
     );
   }
 }
@@ -55,6 +61,7 @@ class OwnerBooking {
   final String id;
   final String customerName;
   final String customerAvatar;
+  final String customerUid;
   final String salonName;
   final String service;
   final int price;
@@ -66,6 +73,7 @@ class OwnerBooking {
     required this.id,
     required this.customerName,
     required this.customerAvatar,
+    required this.customerUid,
     required this.salonName,
     required this.service,
     required this.price,
@@ -230,6 +238,7 @@ final List<OwnerBooking> kOwnerBookings = [
     customerName: 'Ridwan Karim',
     customerAvatar:
         'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=60',
+    customerUid: '',
     salonName: kOwnerSalonName,
     service: 'Premium Grooming',
     price: 720,
@@ -242,6 +251,7 @@ final List<OwnerBooking> kOwnerBookings = [
     customerName: 'Siam Hossain',
     customerAvatar:
         'https://images.unsplash.com/photo-1542206395-9feb3edaa68e?auto=format&fit=crop&w=400&q=60',
+    customerUid: '',
     salonName: kOwnerSalonName,
     service: 'Haircut & Beard',
     price: 480,
@@ -254,6 +264,7 @@ final List<OwnerBooking> kOwnerBookings = [
     customerName: 'Mim Rahman',
     customerAvatar:
         'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=400&q=60',
+    customerUid: '',
     salonName: kOwnerSalonName,
     service: 'Hair Treatment',
     price: 900,
@@ -268,6 +279,7 @@ class OwnerBookingRequest {
   final String customerName;
   final String customerPhone;
   final String customerAvatar;
+  final String customerUid;
   final String barberName;
   final DateTime dateTime;
   final List<String> services;
@@ -280,6 +292,7 @@ class OwnerBookingRequest {
     required this.customerName,
     required this.customerPhone,
     required this.customerAvatar,
+    required this.customerUid,
     required this.barberName,
     required this.dateTime,
     required this.services,
@@ -290,12 +303,14 @@ class OwnerBookingRequest {
 
   OwnerBookingRequest copyWith({
     OwnerBookingRequestStatus? status,
+    String? customerAvatar,
   }) {
     return OwnerBookingRequest(
       id: id,
       customerName: customerName,
       customerPhone: customerPhone,
-      customerAvatar: customerAvatar,
+      customerAvatar: customerAvatar ?? this.customerAvatar,
+      customerUid: customerUid,
       barberName: barberName,
       dateTime: dateTime,
       services: services,
@@ -313,6 +328,7 @@ final List<OwnerBookingRequest> kOwnerBookingRequests = [
     customerPhone: '+880 1700-223344',
     customerAvatar:
         'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=400&q=60',
+    customerUid: '',
     barberName: 'Sara Rahman',
     dateTime: DateTime(2025, 1, 13, 11, 30),
     services: ['Balayage Color', 'Hair Spa'],
@@ -325,6 +341,7 @@ final List<OwnerBookingRequest> kOwnerBookingRequests = [
     customerPhone: '+880 1680-777666',
     customerAvatar:
         'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=60',
+    customerUid: '',
     barberName: 'Tanvir Hasan',
     dateTime: DateTime(2025, 1, 13, 15, 0),
     services: ['Classic Haircut'],
@@ -337,6 +354,7 @@ final List<OwnerBookingRequest> kOwnerBookingRequests = [
     customerPhone: '+880 1715-991122',
     customerAvatar:
         'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=60',
+    customerUid: '',
     barberName: 'Shaila Akter',
     dateTime: DateTime(2025, 1, 14, 10, 45),
     services: ['Premium Grooming', 'Nail Care'],
@@ -349,6 +367,7 @@ final List<OwnerBookingRequest> kOwnerBookingRequests = [
     customerPhone: '+880 1911-334455',
     customerAvatar:
         'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&q=60',
+    customerUid: '',
     barberName: 'Kamrul Huda',
     dateTime: DateTime(2025, 1, 14, 18, 15),
     services: ['Beard Trim', 'Facial'],
@@ -492,6 +511,9 @@ class OwnerBarber {
   final int servedToday;
   final OwnerBarberStatus status;
   final String? nextClient;
+  final String photoUrl;
+  final String uid;
+  final bool isAvailable;
 
   OwnerBarber({
     required this.id,
@@ -504,6 +526,9 @@ class OwnerBarber {
     required this.servedToday,
     required this.status,
     this.nextClient,
+    this.photoUrl = '',
+    this.uid = '',
+    this.isAvailable = true,
   });
 }
 

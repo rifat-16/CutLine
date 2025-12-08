@@ -186,8 +186,18 @@ class WorkHistoryScreen extends StatelessWidget {
         time.year == now.year && time.month == now.month && time.day == now.day;
     final isYesterday =
         time.difference(DateTime(now.year, now.month, now.day)).inDays == -1;
-    final timeLabel =
-        "${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
+    
+    // Convert to 12-hour AM/PM format
+    int hour = time.hour;
+    final minute = time.minute;
+    final period = hour >= 12 ? 'PM' : 'AM';
+    if (hour == 0) {
+      hour = 12;
+    } else if (hour > 12) {
+      hour = hour - 12;
+    }
+    final timeLabel = "$hour:${minute.toString().padLeft(2, '0')} $period";
+    
     if (isToday) return "Today • $timeLabel";
     if (isYesterday) return "Yesterday • $timeLabel";
     return "${time.year}/${time.month.toString().padLeft(2, '0')}/${time.day.toString().padLeft(2, '0')} • $timeLabel";

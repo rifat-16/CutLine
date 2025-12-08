@@ -52,12 +52,17 @@ class OwnerQueueCard extends StatelessWidget {
                             radius: 28,
                             backgroundColor:
                                 OwnerTheme.primary.withValues(alpha: 0.1),
-                            child: Text(
-                              _initials(item.customerName),
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: OwnerTheme.primary),
-                            ),
+                            backgroundImage: item.customerAvatar.isNotEmpty
+                                ? NetworkImage(item.customerAvatar)
+                                : null,
+                            child: item.customerAvatar.isEmpty
+                                ? Text(
+                                    _initials(item.customerName),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: OwnerTheme.primary),
+                                  )
+                                : null,
                           ),
                           const SizedBox(width: 14),
                           Expanded(

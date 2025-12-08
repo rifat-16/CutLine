@@ -360,7 +360,10 @@ class _FeesSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        _FeeRow(label: 'Service Charge', value: '৳$serviceCharge'),
+        _FeeRow(
+          label: 'Platform Fee',
+          value: serviceCharge == 0 ? 'Free' : '৳$serviceCharge',
+        ),
       ],
     );
   }

@@ -93,6 +93,7 @@ class OwnerBarbersScreen extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
       builder: (_) => _BarberDetailSheet(barber: barber),
@@ -130,17 +131,22 @@ class _BarberCard extends StatelessWidget {
               CircleAvatar(
                 radius: 28,
                 backgroundColor: statusColor.withValues(alpha: 0.12),
-                child: Text(
-                  barber.name
-                      .split(' ')
-                      .where((part) => part.isNotEmpty)
-                      .map((part) => part[0])
-                      .take(2)
-                      .join()
-                      .toUpperCase(),
-                  style: TextStyle(
-                      color: statusColor, fontWeight: FontWeight.bold),
-                ),
+                backgroundImage: barber.photoUrl.isNotEmpty
+                    ? NetworkImage(barber.photoUrl)
+                    : null,
+                child: barber.photoUrl.isEmpty
+                    ? Text(
+                        barber.name
+                            .split(' ')
+                            .where((part) => part.isNotEmpty)
+                            .map((part) => part[0])
+                            .take(2)
+                            .join()
+                            .toUpperCase(),
+                        style: TextStyle(
+                            color: statusColor, fontWeight: FontWeight.bold),
+                      )
+                    : null,
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -173,11 +179,6 @@ class _BarberCard extends StatelessWidget {
           const SizedBox(height: 14),
           Row(
             children: [
-              Icon(Icons.star_rounded, color: Colors.amber.shade400, size: 20),
-              const SizedBox(width: 4),
-              Text('${barber.rating}',
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(width: 16),
               const Icon(Icons.check_circle_outline,
                   color: Color(0xFF10B981), size: 18),
               const SizedBox(width: 4),
@@ -197,11 +198,6 @@ class _BarberCard extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
-              IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.chat_bubble_outline)),
-              IconButton(
-                  onPressed: () {}, icon: const Icon(Icons.phone_outlined)),
             ],
           ),
           const SizedBox(height: 6),
@@ -259,55 +255,85 @@ class _BarberDetailSheet extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 44,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: Colors.black12,
-                    borderRadius: BorderRadius.circular(20)),
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 18,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.black12,
+                      borderRadius: BorderRadius.circular(20)),
+                ),
               ),
-            ),
-            const SizedBox(height: 18),
-            Text(barber.name,
-                style:
-                    const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            Text(barber.specialization,
-                style: const TextStyle(color: Colors.black54)),
-            const SizedBox(height: 20),
-            _DetailInfoRow(
-                icon: Icons.email_outlined,
-                label: 'Email',
-                value: barber.email),
-            const SizedBox(height: 12),
-            _DetailInfoRow(
-                icon: Icons.phone_outlined,
-                label: 'Phone',
-                value: barber.phone),
-            const SizedBox(height: 12),
-            _DetailInfoRow(
-                icon: Icons.flag_outlined,
-                label: 'Status',
-                value: _barberStatusLabel(barber.status)),
-            const SizedBox(height: 18),
-            Text(
-                'Rating • ${barber.rating.toStringAsFixed(1)}   |   Served today • ${barber.servedToday}',
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
+              const SizedBox(height: 18),
+              Center(
+                child: CircleAvatar(
+                  radius: 40,
+                  backgroundColor: Colors.grey.shade200,
+                  backgroundImage: barber.photoUrl.isNotEmpty
+                      ? NetworkImage(barber.photoUrl)
+                      : null,
+                  child: barber.photoUrl.isEmpty
+                      ? Text(
+                          barber.name
+                              .split(' ')
+                              .where((part) => part.isNotEmpty)
+                              .map((part) => part[0])
+                              .take(2)
+                              .join()
+                              .toUpperCase(),
+                          style: const TextStyle(
+                              fontSize: 24, fontWeight: FontWeight.bold),
+                        )
+                      : null,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              Text(barber.name,
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(barber.specialization,
+                  style: const TextStyle(color: Colors.black54)),
+              const SizedBox(height: 20),
+              _DetailInfoRow(
+                  icon: Icons.email_outlined,
+                  label: 'Email',
+                  value: barber.email),
+              const SizedBox(height: 12),
+              _DetailInfoRow(
+                  icon: Icons.phone_outlined,
+                  label: 'Phone',
+                  value: barber.phone),
+              const SizedBox(height: 12),
+              _DetailInfoRow(
+                  icon: Icons.flag_outlined,
+                  label: 'Status',
+                  value: _barberStatusLabel(barber.status)),
+              const SizedBox(height: 18),
+              Text(
+                  'Served today • ${barber.servedToday}',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

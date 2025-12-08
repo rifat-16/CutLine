@@ -20,6 +20,63 @@ class BookingsProvider extends ChangeNotifier {
   String? _error;
   List<OwnerBooking> _bookings = [];
 
+  Future<void> _hydrateCustomerAvatars() async {
+    final bookingsNeedingAvatars = _bookings
+        .where((b) => b.customerAvatar.isEmpty && b.customerUid.isNotEmpty)
+        .toList();
+    if (bookingsNeedingAvatars.isEmpty) return;
+
+    final batchSize = 10;
+    for (int i = 0; i < bookingsNeedingAvatars.length; i += batchSize) {
+      final batch = bookingsNeedingAvatars.skip(i).take(batchSize).toList();
+      final uids = batch.map((b) => b.customerUid).toList();
+
+      try {
+        final snap = await _firestore
+            .collection('users')
+            .where(FieldPath.documentId, whereIn: uids)
+            .get();
+
+        final avatarMap = <String, String>{};
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          final photoUrl = (data['photoUrl'] as String?) ??
+              (data['avatarUrl'] as String?) ??
+              (data['customerAvatar'] as String?) ??
+              '';
+          if (photoUrl.isNotEmpty) {
+            avatarMap[doc.id] = photoUrl;
+          }
+        }
+
+        for (int j = 0; j < batch.length; j++) {
+          final booking = batch[j];
+          final avatar = avatarMap[booking.customerUid];
+          if (avatar != null && avatar.isNotEmpty) {
+            final index = _bookings.indexWhere((b) => b.id == booking.id);
+            if (index != -1) {
+              _bookings[index] = OwnerBooking(
+                id: _bookings[index].id,
+                customerName: _bookings[index].customerName,
+                customerAvatar: avatar,
+                customerUid: _bookings[index].customerUid,
+                salonName: _bookings[index].salonName,
+                service: _bookings[index].service,
+                price: _bookings[index].price,
+                dateTime: _bookings[index].dateTime,
+                status: _bookings[index].status,
+                paymentMethod: _bookings[index].paymentMethod,
+              );
+            }
+          }
+        }
+      } catch (_) {
+        // Ignore errors in avatar fetching
+      }
+    }
+    notifyListeners();
+  }
+
   bool get isLoading => _isLoading;
   String? get error => _error;
   List<OwnerBooking> get bookings => _bookings;
@@ -55,6 +112,7 @@ class BookingsProvider extends ChangeNotifier {
             .whereType<OwnerBooking>()
             .toList();
         _bookings = items;
+        _hydrateCustomerAvatars();
         notifyListeners();
         _setLoading(false);
       }, onError: (_) {
@@ -98,7 +156,14 @@ class BookingsProvider extends ChangeNotifier {
     return OwnerBooking(
       id: id,
       customerName: (data['customerName'] as String?) ?? 'Customer',
-      customerAvatar: (data['customerAvatar'] as String?) ?? '',
+      customerAvatar: (data['customerAvatar'] as String?) ??
+          (data['customerPhotoUrl'] as String?) ??
+          (data['photoUrl'] as String?) ??
+          '',
+      customerUid: (data['customerUid'] as String?) ??
+          (data['customerId'] as String?) ??
+          (data['uid'] as String?) ??
+          '',
       salonName: (data['salonName'] as String?) ??
           (data['salon'] as String?) ??
           parentSalonId ??

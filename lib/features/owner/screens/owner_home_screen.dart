@@ -163,10 +163,26 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
           children: [
             GestureDetector(
               onTap: () => _openScreen(const OwnerProfileScreen()),
-              child: CircleAvatar(
-                radius: 18,
-                backgroundColor: const Color(0xFF2563EB),
-                child: const Icon(Icons.person, color: Colors.white, size: 28),
+              child: Builder(
+                builder: (context) {
+                  // Prioritize salon photoUrl, fallback to user profile photo
+                  final salonPhotoUrl = provider.photoUrl;
+                  final userPhotoUrl = context.watch<AuthProvider>().profile?.photoUrl;
+                  final photoUrl = salonPhotoUrl?.isNotEmpty == true
+                      ? salonPhotoUrl
+                      : (userPhotoUrl?.isNotEmpty == true ? userPhotoUrl : null);
+                  
+                  return CircleAvatar(
+                    radius: 18,
+                    backgroundColor: const Color(0xFF2563EB),
+                    backgroundImage: photoUrl != null && photoUrl.isNotEmpty
+                        ? NetworkImage(photoUrl)
+                        : null,
+                    child: photoUrl == null || photoUrl.isEmpty
+                        ? const Icon(Icons.person, color: Colors.white, size: 28)
+                        : null,
+                  );
+                },
               ),
             ),
             const SizedBox(width: 12),

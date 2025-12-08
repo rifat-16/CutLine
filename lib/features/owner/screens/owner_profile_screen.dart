@@ -166,53 +166,47 @@ class _ProfileCard extends StatelessWidget {
                     CircleAvatar(
                       radius: 36,
                       backgroundColor: Colors.white,
-                      backgroundImage:
-                          photoUrl != null && photoUrl!.isNotEmpty ? NetworkImage(photoUrl!) : null,
-                      child: photoUrl == null || photoUrl!.isEmpty
-                          ? const Icon(
-                              Icons.person,
-                              color: Color(0xFF2563EB),
-                              size: 28,
+                      backgroundImage: isUploading
+                          ? null
+                          : (photoUrl != null && photoUrl!.isNotEmpty
+                              ? NetworkImage(photoUrl!)
+                              : null),
+                      child: isUploading
+                          ? const CircularProgressIndicator(
+                              strokeWidth: 3,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  Color(0xFF2563EB)),
                             )
-                          : null,
+                          : (photoUrl == null || photoUrl!.isEmpty
+                              ? const Icon(
+                                  Icons.person,
+                                  color: Color(0xFF2563EB),
+                                  size: 28,
+                                )
+                              : null),
                     ),
-                    Positioned(
-                      bottom: -6,
-                      right: -4,
-                      child: Material(
-                        color: Colors.white,
-                        shape: const CircleBorder(),
-                        elevation: 2,
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: () => _handleUpload(context),
-                          child: const Padding(
-                            padding: EdgeInsets.all(6),
-                            child: Icon(Icons.camera_alt_outlined,
-                                size: 18, color: Color(0xFF2563EB)),
+                    if (!isUploading)
+                      Positioned(
+                        bottom: -6,
+                        right: -4,
+                        child: Material(
+                          color: Colors.white,
+                          shape: const CircleBorder(),
+                          elevation: 2,
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () => _handleUpload(context),
+                            child: const Padding(
+                              padding: EdgeInsets.all(6),
+                              child: Icon(Icons.camera_alt_outlined,
+                                  size: 18, color: Color(0xFF2563EB)),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-              ],
-            ),
-          ),
-          if (isUploading)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Row(
-                children: const [
-                  SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2)),
-                  SizedBox(width: 8),
-                  Text('Uploading photo...',
-                      style: TextStyle(
-                          color: Colors.black54, fontWeight: FontWeight.w600)),
-                ],
+                  ],
+                ),
               ),
-            ),
               const SizedBox(width: 16),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

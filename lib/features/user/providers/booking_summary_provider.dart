@@ -60,7 +60,7 @@ class BookingSummaryProvider extends ChangeNotifier {
           acc + (item.durationMinutes > 0 ? item.durationMinutes : 30),
     );
   }
-  int get serviceCharge => 10;
+  int get serviceCharge => 0;
   int get total => serviceTotal + serviceCharge;
   String get formattedDate => DateFormat('dd MMM yyyy').format(selectedDate);
   String get dateKey => DateFormat('yyyy-MM-dd').format(selectedDate);

@@ -57,6 +57,7 @@ class BarberProfileProvider extends ChangeNotifier {
         specialization: (data['specialization'] as String?) ?? '',
         phone: (data['phone'] as String?) ?? '',
         email: (data['email'] as String?) ?? '',
+        photoUrl: (data['photoUrl'] as String?) ?? '',
       );
     } catch (_) {
       return null;
@@ -118,6 +119,7 @@ class BarberProfile {
   final String specialization;
   final String phone;
   final String email;
+  final String photoUrl;
 
   const BarberProfile({
     required this.uid,
@@ -126,5 +128,6 @@ class BarberProfile {
     required this.specialization,
     required this.phone,
     required this.email,
+    required this.photoUrl,
   });
 }

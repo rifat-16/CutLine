@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -21,6 +22,10 @@ class SalonDetailsProvider extends ChangeNotifier {
   List<SalonBarber> _barbers = [];
   List<SalonQueueEntry> _queue = [];
   bool _isFavorite = false;
+  
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _queueSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _bookingSubscription;
+  String? _currentSalonId;
 
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -40,11 +45,14 @@ class SalonDetailsProvider extends ChangeNotifier {
       } else {
         final waitMinutes = await _estimateWaitMinutes(doc.id);
         _barbers = await _loadBarbers(doc.id);
+        await _hydrateBarberAvatars(_barbers);
         _queue = await _loadQueue(doc.id);
         await _hydrateQueueAvatars(_queue);
         _details =
             _mapSalon(doc.id, doc.data() ?? {}, waitMinutes, _queue);
         await _loadFavorite(doc.id);
+        _currentSalonId = doc.id;
+        _startRealtimeQueueUpdates(doc.id);
       }
     } catch (_) {
       _details = null;
@@ -81,12 +89,27 @@ class SalonDetailsProvider extends ChangeNotifier {
     final topServicesFromServices = services.map((s) => s.name).toList();
     final topServicesField = data['topServices'];
     final topServices = _parseTopServices(topServicesField);
-    final galleryPhotos = (data['galleryPhotos'] as List?)
-            ?.whereType<String>()
-            .map((e) => e.trim())
-            .where((e) => e.isNotEmpty)
-            .toList() ??
-        const [];
+    // Try multiple field names for gallery photos
+    final galleryPhotosRaw = data['galleryPhotos'] ?? 
+        data['gallery'] ?? 
+        data['photos'] ?? 
+        data['galleryImages'];
+    
+    List<String> galleryPhotos = [];
+    if (galleryPhotosRaw is List) {
+      galleryPhotos = galleryPhotosRaw
+          .whereType<String>()
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    } else if (galleryPhotosRaw is Map) {
+      // Handle map format if needed
+      galleryPhotos = galleryPhotosRaw.values
+          .whereType<String>()
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
 
     return SalonDetailsData(
       id: id,
@@ -187,14 +210,20 @@ class SalonDetailsProvider extends ChangeNotifier {
   }
 
   SalonBarber? _mapBarber(String id, Map<String, dynamic> data) {
+    // Try to get uid from data, fallback to id
+    final barberUid = (data['uid'] as String?) ?? 
+        (data['barberUid'] as String?) ??
+        (id.isNotEmpty ? id : null);
     return SalonBarber(
       id: id,
+      uid: barberUid,
       name: (data['name'] as String?) ?? 'Barber',
       skills: _parseSkills(data['skills']),
       rating: (data['rating'] as num?)?.toDouble() ?? 4.5,
       isAvailable: (data['isAvailable'] as bool?) ?? true,
       waitingClients: (data['waitingClients'] as num?)?.toInt() ?? 0,
-      avatarUrl: data['avatarUrl'] as String?,
+      avatarUrl: (data['avatarUrl'] as String?) ??
+          (data['photoUrl'] as String?),
     );
   }
 
@@ -323,33 +352,164 @@ class SalonDetailsProvider extends ChangeNotifier {
 
   Future<List<SalonQueueEntry>> _loadQueue(String salonId) async {
     try {
+      // Only load active queue items (waiting or serving)
       final queueSnap = await _firestore
           .collection('salons')
           .doc(salonId)
           .collection('queue')
+          .where('status', whereIn: ['waiting', 'serving'])
           .get();
       final bookingSnap = await _firestore
           .collection('salons')
           .doc(salonId)
           .collection('bookings')
-          .where('status', whereIn: ['waiting', 'serving', 'completed', 'done'])
+          .where('status', whereIn: ['waiting', 'serving'])
           .get();
 
       final queueEntries = queueSnap.docs
           .map((doc) => _mapQueue(doc.id, doc.data()))
           .whereType<SalonQueueEntry>()
+          .where((e) => e.isWaiting || e.isServing) // Additional filter
           .toList();
       final bookingEntries = bookingSnap.docs
           .map((doc) => _mapBooking(doc.id, doc.data()))
           .whereType<SalonQueueEntry>()
+          .where((e) => e.isWaiting || e.isServing) // Additional filter
           .toList();
 
       final merged = _mergeQueue(queueEntries, bookingEntries)..sort(_queueComparator);
       await _hydrateQueueAvatars(merged);
       return merged;
     } catch (_) {
-      return const [];
+      // Fallback: try without status filter if query fails
+      try {
+        final queueSnap = await _firestore
+            .collection('salons')
+            .doc(salonId)
+            .collection('queue')
+            .get();
+        final bookingSnap = await _firestore
+            .collection('salons')
+            .doc(salonId)
+            .collection('bookings')
+            .get();
+
+        final queueEntries = queueSnap.docs
+            .map((doc) => _mapQueue(doc.id, doc.data()))
+            .whereType<SalonQueueEntry>()
+            .where((e) => e.isWaiting || e.isServing)
+            .toList();
+        final bookingEntries = bookingSnap.docs
+            .map((doc) => _mapBooking(doc.id, doc.data()))
+            .whereType<SalonQueueEntry>()
+            .where((e) => e.isWaiting || e.isServing)
+            .toList();
+
+        final merged = _mergeQueue(queueEntries, bookingEntries)..sort(_queueComparator);
+        await _hydrateQueueAvatars(merged);
+        return merged;
+      } catch (_) {
+        return const [];
+      }
     }
+  }
+
+  void _startRealtimeQueueUpdates(String salonId) {
+    // Cancel existing subscriptions
+    _queueSubscription?.cancel();
+    _bookingSubscription?.cancel();
+
+    // Listen to queue collection - only active items
+    try {
+      _queueSubscription = _firestore
+          .collection('salons')
+          .doc(salonId)
+          .collection('queue')
+          .where('status', whereIn: ['waiting', 'serving'])
+          .snapshots()
+          .listen((snapshot) async {
+        await _updateQueueFromStream(salonId);
+      }, onError: (_) {
+        // Fallback: listen to all queue items and filter
+        _queueSubscription?.cancel();
+        _queueSubscription = _firestore
+            .collection('salons')
+            .doc(salonId)
+            .collection('queue')
+            .snapshots()
+            .listen((snapshot) async {
+          await _updateQueueFromStream(salonId);
+        }, onError: (_) {});
+      });
+    } catch (_) {
+      // Fallback: listen without filter
+      _queueSubscription = _firestore
+          .collection('salons')
+          .doc(salonId)
+          .collection('queue')
+          .snapshots()
+          .listen((snapshot) async {
+        await _updateQueueFromStream(salonId);
+      }, onError: (_) {});
+    }
+
+    // Listen to bookings collection - only active items
+    try {
+      _bookingSubscription = _firestore
+          .collection('salons')
+          .doc(salonId)
+          .collection('bookings')
+          .where('status', whereIn: ['waiting', 'serving'])
+          .snapshots()
+          .listen((snapshot) async {
+        await _updateQueueFromStream(salonId);
+      }, onError: (_) {
+        // Fallback: listen to all bookings and filter
+        _bookingSubscription?.cancel();
+        _bookingSubscription = _firestore
+            .collection('salons')
+            .doc(salonId)
+            .collection('bookings')
+            .snapshots()
+            .listen((snapshot) async {
+          await _updateQueueFromStream(salonId);
+        }, onError: (_) {});
+      });
+    } catch (_) {
+      // Fallback: listen without filter
+      _bookingSubscription = _firestore
+          .collection('salons')
+          .doc(salonId)
+          .collection('bookings')
+          .snapshots()
+          .listen((snapshot) async {
+        await _updateQueueFromStream(salonId);
+      }, onError: (_) {});
+    }
+  }
+
+  Future<void> _updateQueueFromStream(String salonId) async {
+    if (_currentSalonId != salonId) return;
+    try {
+      _queue = await _loadQueue(salonId);
+      if (_details != null) {
+        final waitMinutes = await _estimateWaitMinutes(salonId);
+        _details = _details!.copyWith(
+          waitMinutes: waitMinutes,
+          queue: _queue,
+        );
+      }
+      notifyListeners();
+    } catch (_) {
+      // Ignore errors, will retry on next stream update
+    }
+  }
+
+  @override
+  void dispose() {
+    _queueSubscription?.cancel();
+    _bookingSubscription?.cancel();
+    super.dispose();
   }
 
   int _queueComparator(SalonQueueEntry a, SalonQueueEntry b) {
@@ -381,6 +541,29 @@ class SalonDetailsProvider extends ChangeNotifier {
       map[booking.id] = existing == null ? booking : _combineEntries(existing, booking);
     }
     return map.values.toList();
+  }
+
+  Future<void> _hydrateBarberAvatars(List<SalonBarber> barbers) async {
+    final missing = barbers
+        .where((b) =>
+            (b.avatarUrl == null || b.avatarUrl!.isEmpty) &&
+            (b.uid?.isNotEmpty == true))
+        .map((b) => b.uid!)
+        .whereType<String>()
+        .toSet()
+        .toList();
+    if (missing.isEmpty) return;
+    final photos = await _fetchUserPhotos(missing);
+    if (photos.isEmpty) return;
+    _barbers = barbers
+        .map((b) {
+          if (b.avatarUrl != null && b.avatarUrl!.isNotEmpty) return b;
+          final url = b.uid != null ? photos[b.uid!] : null;
+          if (url == null || url.isEmpty) return b;
+          return b.copyWith(avatarUrl: url);
+        })
+        .toList();
+    notifyListeners();
   }
 
   Future<void> _hydrateQueueAvatars(List<SalonQueueEntry> entries) async {
@@ -645,6 +828,46 @@ class SalonDetailsData {
     }
     return address;
   }
+
+  SalonDetailsData copyWith({
+    String? id,
+    String? name,
+    String? address,
+    String? contact,
+    String? email,
+    double? rating,
+    int? reviews,
+    bool? isOpen,
+    int? waitMinutes,
+    String? coverImageUrl,
+    List<String>? galleryPhotos,
+    List<String>? topServices,
+    List<SalonService>? services,
+    List<SalonCombo>? combos,
+    List<SalonWorkingHour>? workingHours,
+    List<SalonBarber>? barbers,
+    List<SalonQueueEntry>? queue,
+  }) {
+    return SalonDetailsData(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      address: address ?? this.address,
+      contact: contact ?? this.contact,
+      email: email ?? this.email,
+      rating: rating ?? this.rating,
+      reviews: reviews ?? this.reviews,
+      isOpen: isOpen ?? this.isOpen,
+      waitMinutes: waitMinutes ?? this.waitMinutes,
+      coverImageUrl: coverImageUrl ?? this.coverImageUrl,
+      galleryPhotos: galleryPhotos ?? this.galleryPhotos,
+      topServices: topServices ?? this.topServices,
+      services: services ?? this.services,
+      combos: combos ?? this.combos,
+      workingHours: workingHours ?? this.workingHours,
+      barbers: barbers ?? this.barbers,
+      queue: queue ?? this.queue,
+    );
+  }
 }
 
 class SalonService {
@@ -661,6 +884,7 @@ class SalonService {
 
 class SalonBarber {
   final String id;
+  final String? uid;
   final String name;
   final String skills;
   final double rating;
@@ -670,6 +894,7 @@ class SalonBarber {
 
   const SalonBarber({
     required this.id,
+    this.uid,
     required this.name,
     required this.skills,
     required this.rating,
@@ -677,6 +902,28 @@ class SalonBarber {
     required this.waitingClients,
     required this.avatarUrl,
   });
+
+  SalonBarber copyWith({
+    String? id,
+    String? uid,
+    String? name,
+    String? skills,
+    double? rating,
+    bool? isAvailable,
+    int? waitingClients,
+    String? avatarUrl,
+  }) {
+    return SalonBarber(
+      id: id ?? this.id,
+      uid: uid ?? this.uid,
+      name: name ?? this.name,
+      skills: skills ?? this.skills,
+      rating: rating ?? this.rating,
+      isAvailable: isAvailable ?? this.isAvailable,
+      waitingClients: waitingClients ?? this.waitingClients,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+    );
+  }
 }
 
 class SalonQueueEntry {

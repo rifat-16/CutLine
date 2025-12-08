@@ -52,11 +52,58 @@ class BookingRequestsProvider extends ChangeNotifier {
           .map((doc) => _mapRequest(doc.id, doc.data()))
           .whereType<OwnerBookingRequest>()
           .toList();
+
+      await _hydrateCustomerAvatars();
     } catch (_) {
       _setError('Failed to load requests. Pull to refresh.');
     } finally {
       _setLoading(false);
     }
+  }
+
+  Future<void> _hydrateCustomerAvatars() async {
+    final requestsNeedingAvatars = _requests
+        .where((r) => r.customerAvatar.isEmpty && r.customerUid.isNotEmpty)
+        .toList();
+    if (requestsNeedingAvatars.isEmpty) return;
+
+    final batchSize = 10;
+    for (int i = 0; i < requestsNeedingAvatars.length; i += batchSize) {
+      final batch = requestsNeedingAvatars.skip(i).take(batchSize).toList();
+      final uids = batch.map((r) => r.customerUid).toList();
+
+      try {
+        final snap = await _firestore
+            .collection('users')
+            .where(FieldPath.documentId, whereIn: uids)
+            .get();
+
+        final avatarMap = <String, String>{};
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          final photoUrl = (data['photoUrl'] as String?) ??
+              (data['avatarUrl'] as String?) ??
+              (data['customerAvatar'] as String?) ??
+              '';
+          if (photoUrl.isNotEmpty) {
+            avatarMap[doc.id] = photoUrl;
+          }
+        }
+
+        for (final request in batch) {
+          final avatar = avatarMap[request.customerUid];
+          if (avatar != null && avatar.isNotEmpty) {
+            final index = _requests.indexWhere((r) => r.id == request.id);
+            if (index != -1) {
+              _requests[index] = _requests[index].copyWith(customerAvatar: avatar);
+            }
+          }
+        }
+      } catch (_) {
+        // Ignore errors in avatar fetching
+      }
+    }
+    notifyListeners();
   }
 
   OwnerBookingRequest? _mapRequest(String id, Map<String, dynamic> data) {
@@ -73,7 +120,14 @@ class BookingRequestsProvider extends ChangeNotifier {
     return OwnerBookingRequest(
       id: id,
       customerName: (data['customerName'] as String?)?.trim() ?? 'Customer',
-      customerAvatar: (data['customerAvatar'] as String?) ?? '',
+      customerAvatar: (data['customerAvatar'] as String?) ??
+          (data['customerPhotoUrl'] as String?) ??
+          (data['photoUrl'] as String?) ??
+          '',
+      customerUid: (data['customerUid'] as String?) ??
+          (data['customerId'] as String?) ??
+          (data['uid'] as String?) ??
+          '',
       customerPhone: (data['customerPhone'] as String?)?.trim() ?? '',
       barberName: (data['barberName'] as String?)?.trim() ?? 'Any',
       services: services,

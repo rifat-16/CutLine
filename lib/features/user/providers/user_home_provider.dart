@@ -11,11 +11,34 @@ class UserHomeProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   List<UserSalon> _salons = [];
+  List<UserSalon> _allSalons = [];
   Set<String> _favoriteIds = {};
+  String _searchQuery = '';
 
   bool get isLoading => _isLoading;
   String? get error => _error;
-  List<UserSalon> get salons => _salons;
+  List<UserSalon> get salons => _filteredSalons;
+  String get searchQuery => _searchQuery;
+
+  List<UserSalon> get _filteredSalons {
+    if (_searchQuery.trim().isEmpty) {
+      return _allSalons;
+    }
+    final query = _searchQuery.toLowerCase().trim();
+    return _allSalons.where((salon) {
+      final nameMatch = salon.name.toLowerCase().contains(query);
+      final addressMatch = salon.address.toLowerCase().contains(query);
+      final servicesMatch = salon.topServices.any(
+        (service) => service.toLowerCase().contains(query),
+      );
+      return nameMatch || addressMatch || servicesMatch;
+    }).toList();
+  }
+
+  void setSearchQuery(String query) {
+    _searchQuery = query;
+    notifyListeners();
+  }
 
   Future<void> load() async {
     _setLoading(true);
@@ -27,9 +50,9 @@ class UserHomeProvider extends ChangeNotifier {
         snapshot.docs.map((doc) => _mapSalon(doc.id, doc.data())),
       );
       salons.sort((a, b) => a.name.compareTo(b.name));
-      _salons = salons;
+      _allSalons = salons;
     } catch (_) {
-      _salons = [];
+      _allSalons = [];
       _setError('Failed to load salons. Pull to refresh.');
     } finally {
       _setLoading(false);
