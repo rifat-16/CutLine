@@ -72,7 +72,8 @@ class FavoriteSalonProvider extends ChangeNotifier {
         rating: (data['rating'] as num?)?.toDouble() ?? 4.6,
         reviews: (data['reviews'] as num?)?.toInt() ?? 120,
         topServices: _parseTopServices(data['topServices'], data['services']),
-        coverImageUrl: data['coverImageUrl'] as String?,
+        coverImageUrl:
+            (data['coverImageUrl'] as String?) ?? (data['coverPhoto'] as String?),
       );
     } catch (_) {
       return null;

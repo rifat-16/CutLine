@@ -191,6 +191,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                                       isOpen: salon.isOpenNow,
                                       isFavorite: salon.isFavorite,
                                       topServices: salon.topServices,
+                                      coverImageUrl: salon.coverImageUrl,
                                       onTap: () => Navigator.pushNamed(
                                         context,
                                         AppRoutes.salonDetails,

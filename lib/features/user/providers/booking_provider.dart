@@ -23,6 +23,7 @@ class BookingProvider extends ChangeNotifier {
   double _rating = 4.6;
   String _workingHoursLabel = '9:00 AM - 9:00 PM';
   Map<String, dynamic> _workingHours = {};
+  String? _coverImageUrl;
   List<String> _timeSlots = [];
 
   bool get isLoading => _isLoading;
@@ -36,6 +37,7 @@ class BookingProvider extends ChangeNotifier {
   String get address => _address;
   double get rating => _rating;
   String get workingHoursLabel => _workingHoursLabel;
+  String? get coverImageUrl => _coverImageUrl;
 
   Future<void> loadInitial(DateTime date) async {
     _setLoading(true);
@@ -81,6 +83,8 @@ class BookingProvider extends ChangeNotifier {
       _rating = (data['rating'] as num?)?.toDouble() ?? 4.6;
       _workingHours = _normalizeWorkingHours(data['workingHours']);
       _workingHoursLabel = _formatWorkingHours(_workingHours);
+      _coverImageUrl =
+          (data['coverImageUrl'] as String?) ?? (data['coverPhoto'] as String?);
     } catch (_) {
       _services = [];
       _barbers = [];

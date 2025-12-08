@@ -12,7 +12,6 @@ import 'package:cutline/features/owner/screens/owner_profile_screen.dart';
 import 'package:cutline/features/owner/screens/settings_screen.dart';
 import 'package:cutline/features/owner/screens/working_hours_screen.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
-import 'package:cutline/features/owner/widgets/customer_detail_sheet.dart';
 import 'package:cutline/features/owner/widgets/mini_stats_row.dart';
 import 'package:cutline/features/owner/widgets/quick_action_grid.dart';
 import 'package:cutline/features/owner/widgets/queue_list_section.dart';
@@ -142,7 +141,6 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                   onStatusChange: (id, status) =>
                       _handleStatusChange(context, id, status),
                   onViewAll: () => _openScreen(const ManageQueueScreen()),
-                  onOpenCustomer: (item) => _openCustomerDetails(context, item),
                 ),
               ],
             ),
@@ -295,14 +293,6 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
 
   void _openScreen(Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
-  }
-
-  void _openCustomerDetails(BuildContext ctx, OwnerQueueItem item) {
-    showCustomerDetailSheet(
-      context: ctx,
-      item: item,
-      onStatusChange: (status) => _handleStatusChange(ctx, item.id, status),
-    );
   }
 
   Widget _buildAvailabilityToggle(OwnerHomeProvider provider) {

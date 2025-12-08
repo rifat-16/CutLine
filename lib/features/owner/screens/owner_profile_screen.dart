@@ -25,6 +25,8 @@ class OwnerProfileScreen extends StatelessWidget {
         final email = provider.email;
         final phone = provider.phone;
         final address = provider.address;
+        final photoUrl = provider.photoUrl;
+        final uploadingPhoto = provider.isUploadingPhoto;
 
         return Scaffold(
           backgroundColor: const Color(0xFFF4F6FB),
@@ -42,6 +44,8 @@ class OwnerProfileScreen extends StatelessWidget {
                       ownerName: ownerName,
                       salonName: salonName,
                       address: address,
+                      photoUrl: photoUrl,
+                      isUploading: uploadingPhoto,
                     ),
                     const SizedBox(height: 24),
                     const Text('Owner information',
@@ -125,11 +129,15 @@ class _ProfileCard extends StatelessWidget {
     required this.ownerName,
     required this.salonName,
     required this.address,
+    required this.photoUrl,
+    required this.isUploading,
   });
 
   final String ownerName;
   final String salonName;
   final String address;
+  final String? photoUrl;
+  final bool isUploading;
 
   @override
   Widget build(BuildContext context) {
@@ -158,11 +166,15 @@ class _ProfileCard extends StatelessWidget {
                     CircleAvatar(
                       radius: 36,
                       backgroundColor: Colors.white,
-                      child: const Icon(
-                        Icons.person,
-                        color: Color(0xFF2563EB),
-                        size: 28,
-                      ),
+                      backgroundImage:
+                          photoUrl != null && photoUrl!.isNotEmpty ? NetworkImage(photoUrl!) : null,
+                      child: photoUrl == null || photoUrl!.isEmpty
+                          ? const Icon(
+                              Icons.person,
+                              color: Color(0xFF2563EB),
+                              size: 28,
+                            )
+                          : null,
                     ),
                     Positioned(
                       bottom: -6,
@@ -173,7 +185,7 @@ class _ProfileCard extends StatelessWidget {
                         elevation: 2,
                         child: InkWell(
                           customBorder: const CircleBorder(),
-                          onTap: () => _showEditPhotoSheet(context),
+                          onTap: () => _handleUpload(context),
                           child: const Padding(
                             padding: EdgeInsets.all(6),
                             child: Icon(Icons.camera_alt_outlined,
@@ -182,9 +194,25 @@ class _ProfileCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ],
-                ),
+              ],
+            ),
+          ),
+          if (isUploading)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Row(
+                children: const [
+                  SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 8),
+                  Text('Uploading photo...',
+                      style: TextStyle(
+                          color: Colors.black54, fontWeight: FontWeight.w600)),
+                ],
               ),
+            ),
               const SizedBox(width: 16),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -225,22 +253,8 @@ class _ProfileCard extends StatelessWidget {
     );
   }
 
-  void _showEditPhotoSheet(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Coming soon'),
-        content: const Text(
-            'Profile photo upload will arrive in the next update. For now, please keep using the default avatar.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+  void _handleUpload(BuildContext context) {
+    context.read<EditSalonProvider>().uploadProfilePhoto();
   }
 }
 

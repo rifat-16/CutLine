@@ -4,40 +4,28 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 class WaitingListScreen extends StatefulWidget {
-  const WaitingListScreen({super.key});
+  final String? salonId;
+
+  const WaitingListScreen({super.key, this.salonId});
 
   @override
   State<WaitingListScreen> createState() => _WaitingListScreenState();
 }
 
 class _WaitingListScreenState extends State<WaitingListScreen> {
-  bool sortAscending = true;
-
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => WaitingListProvider()..load(),
+      create: (_) => WaitingListProvider(salonId: widget.salonId)..load(),
       builder: (context, _) {
         final provider = context.watch<WaitingListProvider>();
-        final waiting = [...provider.customers]
-          ..sort((a, b) => sortAscending
-              ? a.waitMinutes.compareTo(b.waitMinutes)
-              : b.waitMinutes.compareTo(a.waitMinutes));
+        final waiting = [...provider.customers];
 
         return Scaffold(
           backgroundColor: CutlineColors.secondaryBackground,
           appBar: CutlineAppBar(
             title: 'Waiting for Service',
             centerTitle: true,
-            actions: [
-              IconButton(
-                icon: Icon(
-                  sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
-                ),
-                tooltip: 'Sort by time',
-                onPressed: () => setState(() => sortAscending = !sortAscending),
-              ),
-            ],
           ),
           body: provider.isLoading && waiting.isEmpty
               ? const Center(child: CircularProgressIndicator())
@@ -162,10 +150,21 @@ class _WaitingDetails extends StatelessWidget {
         const SizedBox(height: 6),
         Row(
           children: [
+            const Icon(Icons.calendar_today_outlined,
+                size: 16, color: CutlineColors.primary),
+            const SizedBox(width: 4),
+            Text(item.dateLabel,
+                style: CutlineTextStyles.subtitleBold
+                    .copyWith(color: CutlineColors.primary)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
             const Icon(Icons.access_time,
                 size: 16, color: CutlineColors.primary),
             const SizedBox(width: 4),
-            Text('${item.waitMinutes} min left',
+            Text(item.timeLabel,
                 style: CutlineTextStyles.subtitleBold
                     .copyWith(color: CutlineColors.primary)),
           ],

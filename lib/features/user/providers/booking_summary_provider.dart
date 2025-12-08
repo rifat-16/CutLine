@@ -50,6 +50,16 @@ class BookingSummaryProvider extends ChangeNotifier {
 
   int get serviceTotal =>
       _services.fold(0, (acc, item) => acc + item.price);
+  int get totalDurationMinutes {
+    if (_services.isEmpty && selectedServices.isNotEmpty) {
+      return selectedServices.length * 30;
+    }
+    return _services.fold(
+      0,
+      (acc, item) =>
+          acc + (item.durationMinutes > 0 ? item.durationMinutes : 30),
+    );
+  }
   int get serviceCharge => 10;
   int get total => serviceTotal + serviceCharge;
   String get formattedDate => DateFormat('dd MMM yyyy').format(selectedDate);
@@ -93,13 +103,18 @@ class BookingSummaryProvider extends ChangeNotifier {
         'salonName': salonName,
         'customerUid': customerUid,
         'services': _services
-            .map((s) => {'name': s.name, 'price': s.price})
+            .map((s) => {
+                  'name': s.name,
+                  'price': s.price,
+                  'durationMinutes': s.durationMinutes,
+                })
             .toList(),
         'barberName': selectedBarber,
         'date': dateKey,
         'time': selectedTime,
         'paymentMethod': paymentMethod,
         'total': total,
+        'durationMinutes': totalDurationMinutes,
         'status': 'upcoming',
         'createdAt': FieldValue.serverTimestamp(),
         'serviceCharge': serviceCharge,
@@ -146,21 +161,29 @@ class BookingSummaryProvider extends ChangeNotifier {
   List<BookingSummaryService> _mapServices(
       dynamic servicesField, List<String> selected) {
     final List<BookingSummaryService> mapped = [];
-    Map<String, int> priceLookup = {};
+    final Map<String, int> priceLookup = {};
+    final Map<String, int> durationLookup = {};
     if (servicesField is List) {
       for (final item in servicesField) {
         if (item is Map<String, dynamic>) {
-          final name = (item['name'] as String?) ?? '';
-          final price = (item['price'] as num?)?.toInt() ?? 0;
-          if (name.isNotEmpty) {
-            priceLookup[name] = price;
-          }
+          final name = (item['name'] as String?)?.trim() ?? '';
+          if (name.isEmpty) continue;
+          priceLookup[name] = (item['price'] as num?)?.toInt() ?? 0;
+          durationLookup[name] =
+              (item['durationMinutes'] as num?)?.toInt() ?? 30;
         }
       }
     }
     for (final name in selected) {
-      final price = priceLookup[name] ?? 0;
-      mapped.add(BookingSummaryService(name: name, price: price));
+      final trimmed = name.trim();
+      final price = priceLookup[trimmed] ?? 0;
+      final duration =
+          durationLookup[trimmed] ?? (trimmed.isNotEmpty ? 30 : 0);
+      mapped.add(BookingSummaryService(
+        name: trimmed,
+        price: price,
+        durationMinutes: duration,
+      ));
     }
     return mapped;
   }
@@ -179,6 +202,11 @@ class BookingSummaryProvider extends ChangeNotifier {
 class BookingSummaryService {
   final String name;
   final int price;
+  final int durationMinutes;
 
-  const BookingSummaryService({required this.name, required this.price});
+  const BookingSummaryService({
+    required this.name,
+    required this.price,
+    required this.durationMinutes,
+  });
 }

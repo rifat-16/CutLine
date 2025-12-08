@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/barber/providers/barber_profile_provider.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'dart:io';
 
 class BarberEditProfileProvider extends ChangeNotifier {
   BarberEditProfileProvider({
@@ -12,16 +14,21 @@ class BarberEditProfileProvider extends ChangeNotifier {
 
   final AuthProvider _authProvider;
   final FirebaseFirestore _firestore;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   bool _isLoading = false;
   bool _isSaving = false;
+  bool _isUploadingPhoto = false;
   String? _error;
   BarberProfile? _profile;
+  String? _photoUrl;
 
   bool get isLoading => _isLoading;
   bool get isSaving => _isSaving;
+  bool get isUploadingPhoto => _isUploadingPhoto;
   String? get error => _error;
   BarberProfile? get profile => _profile;
+  String? get photoUrl => _photoUrl;
 
   Future<void> load() async {
     final uid = _authProvider.currentUser?.uid;
@@ -38,6 +45,7 @@ class BarberEditProfileProvider extends ChangeNotifier {
         return;
       }
       final data = snap.data() ?? {};
+      _photoUrl = (data['photoUrl'] as String?)?.trim();
       _profile = BarberProfile(
         uid: uid,
         ownerId: (data['ownerId'] as String?) ?? '',
@@ -92,6 +100,41 @@ class BarberEditProfileProvider extends ChangeNotifier {
     }
   }
 
+  Future<String?> uploadProfilePhoto(File file) async {
+    final uid = _authProvider.currentUser?.uid;
+    if (uid == null) {
+      _setError('Please log in again.');
+      return null;
+    }
+    _setError(null);
+    _isUploadingPhoto = true;
+    notifyListeners();
+    try {
+      final ext = _ext(file.path);
+      final path =
+          'barbers/$uid/profile/profile_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final ref = _storage.ref().child(path);
+      final snap = await ref.putFile(file).whenComplete(() {});
+      final url = await snap.ref.getDownloadURL();
+      await _firestore.collection('users').doc(uid).set(
+        {
+          'photoUrl': url,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      _photoUrl = url;
+      _isUploadingPhoto = false;
+      notifyListeners();
+      return url;
+    } catch (_) {
+      _setError('Could not upload photo. Try again.');
+      _isUploadingPhoto = false;
+      notifyListeners();
+      return null;
+    }
+  }
+
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
@@ -105,5 +148,11 @@ class BarberEditProfileProvider extends ChangeNotifier {
   void _setError(String? message) {
     _error = message;
     notifyListeners();
+  }
+
+  String _ext(String path) {
+    final dot = path.lastIndexOf('.');
+    if (dot == -1 || dot == path.length - 1) return 'jpg';
+    return path.substring(dot + 1);
   }
 }

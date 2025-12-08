@@ -58,6 +58,8 @@ class UserHomeProvider extends ChangeNotifier {
       waitMinutes: waitMinutes,
       topServices: services.take(3).toList(),
       isFavorite: _favoriteIds.contains(id),
+      coverImageUrl:
+          (data['coverImageUrl'] as String?) ?? (data['coverPhoto'] as String?),
     );
   }
 
@@ -140,6 +142,7 @@ class UserSalon {
   final int waitMinutes;
   final List<String> topServices;
   final bool isFavorite;
+  final String? coverImageUrl;
 
   const UserSalon({
     required this.id,
@@ -150,6 +153,7 @@ class UserSalon {
     required this.waitMinutes,
     required this.topServices,
     required this.isFavorite,
+    this.coverImageUrl,
   });
 
   String get locationLabel {

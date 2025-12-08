@@ -10,6 +10,7 @@ class NearbySalonCard extends StatelessWidget {
   final bool isFavorite;
   final List<String> topServices;
   final VoidCallback onTap;
+  final String? coverImageUrl;
 
   const NearbySalonCard({
     super.key,
@@ -20,6 +21,7 @@ class NearbySalonCard extends StatelessWidget {
     this.isFavorite = false,
     required this.topServices,
     required this.onTap,
+    this.coverImageUrl,
   });
 
   @override
@@ -50,13 +52,14 @@ class NearbySalonCard extends StatelessWidget {
                     ),
                     color: Colors.grey.shade300,
                   ),
-                  child: Center(
-                    child: Text(
-                      'Cover image will appear after the next update',
-                      style: CutlineTextStyles.subtitle,
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+                  clipBehavior: Clip.hardEdge,
+                  child: coverImageUrl != null && coverImageUrl!.isNotEmpty
+                      ? Image.network(
+                          coverImageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _placeholder(),
+                        )
+                      : _placeholder(),
                 ),
                 Positioned(
                   right: 12.w,
@@ -163,4 +166,14 @@ class NearbySalonCard extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget _placeholder() {
+  return Center(
+    child: Text(
+      'Cover image will appear after the next update',
+      style: CutlineTextStyles.subtitle,
+      textAlign: TextAlign.center,
+    ),
+  );
 }

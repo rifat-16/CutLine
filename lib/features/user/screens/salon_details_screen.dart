@@ -5,6 +5,7 @@ import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 
 // Root screen wiring together all sections.
 class SalonDetailsScreen extends StatelessWidget {
@@ -89,7 +90,10 @@ class SalonDetailsScreen extends StatelessWidget {
               _mediumGap,
               BarberListSection(barbers: provider.barbers),
               _mediumGap,
-              SalonGallerySection(salonName: details.name),
+              SalonGallerySection(
+                salonName: details.name,
+                photos: details.galleryPhotos,
+              ),
               _mediumGap,
               ComboOfferCard(
                 salonName: details.name,
@@ -106,6 +110,7 @@ class SalonDetailsScreen extends StatelessWidget {
               LiveQueueSection(
                 waitMinutes: details.waitMinutes,
                 queue: details.queue,
+                salonId: details.id,
               ),
             ] else ...[
               const SizedBox(height: 30),
@@ -552,11 +557,17 @@ class _BarberCard extends StatelessWidget {
 // Gallery preview grid.
 class SalonGallerySection extends StatelessWidget {
   final String salonName;
+  final List<String> photos;
 
-  const SalonGallerySection({super.key, required this.salonName});
+  const SalonGallerySection({
+    super.key,
+    required this.salonName,
+    required this.photos,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final display = photos.take(6).toList();
     return Padding(
       padding: CutlineSpacing.section.copyWith(bottom: 8),
       child: Column(
@@ -571,7 +582,12 @@ class SalonGallerySection extends StatelessWidget {
                   Navigator.pushNamed(
                     context,
                     AppRoutes.salonGallery,
-                    arguments: SalonGalleryArgs(salonName: salonName),
+                    arguments: SalonGalleryArgs(
+                      salonName: salonName,
+                      photos: photos,
+                      uploadedCount: photos.length,
+                      totalLimit: 10,
+                    ),
                   );
                 },
                 child: const Text('See all', style: CutlineTextStyles.link),
@@ -579,37 +595,44 @@ class SalonGallerySection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: 3,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemBuilder: (context, index) {
-              return Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade500,
+          if (display.isEmpty)
+            Container(
+              height: 120,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              alignment: Alignment.center,
+              child: const Text(
+                'No gallery photos yet.',
+                style: CutlineTextStyles.subtitle,
+              ),
+            )
+          else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: display.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemBuilder: (context, index) {
+                final url = display[index];
+                return ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                ),
-                alignment: Alignment.center,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(
-                    'Coming soon next update',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
+                  child: Image.network(
+                    url,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: Colors.grey.shade300,
+                      child: const Icon(Icons.broken_image, color: Colors.grey),
                     ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
         ],
       ),
     );
@@ -877,11 +900,13 @@ class ServicesSection extends StatelessWidget {
 class LiveQueueSection extends StatelessWidget {
   final int waitMinutes;
   final List<SalonQueueEntry> queue;
+  final String? salonId;
 
   const LiveQueueSection({
     super.key,
     this.waitMinutes = 0,
     this.queue = const [],
+    this.salonId,
   });
 
   @override
@@ -901,7 +926,8 @@ class LiveQueueSection extends StatelessWidget {
         ),
       ),
     );
-    final waiting = queue.where((e) => e.isWaiting).toList();
+    final waiting = queue.where((e) => e.isWaiting).toList()
+      ..sort(_compareQueueEntries);
     return Padding(
       padding: CutlineSpacing.section,
       child: Column(
@@ -993,7 +1019,11 @@ class LiveQueueSection extends StatelessWidget {
                 const Text('Waiting for Service', style: CutlineTextStyles.subtitleBold),
                 TextButton(
                   onPressed: () {
-                    Navigator.pushNamed(context, AppRoutes.waitingCustomers);
+                    Navigator.pushNamed(
+                      context,
+                      AppRoutes.waitingCustomers,
+                      arguments: salonId,
+                    );
                   },
                   child: const Text('See all', style: CutlineTextStyles.link),
                 ),
@@ -1036,6 +1066,29 @@ class LiveQueueSection extends StatelessWidget {
   }
 }
 
+int _compareQueueEntries(SalonQueueEntry a, SalonQueueEntry b) {
+  final aKey = _scheduleKey(a);
+  final bKey = _scheduleKey(b);
+  if (aKey != null && bKey != null) return aKey.compareTo(bKey);
+  if (aKey != null) return -1;
+  if (bKey != null) return 1;
+  return a.waitMinutes.compareTo(b.waitMinutes);
+}
+
+DateTime? _scheduleKey(SalonQueueEntry entry) {
+  if (entry.dateTime != null) return entry.dateTime;
+  if (entry.date != null && entry.date!.isNotEmpty && entry.time != null && entry.time!.isNotEmpty) {
+    try {
+      final parsedDate = DateTime.parse(entry.date!);
+      final parsedTime = DateFormat.jm().parse(entry.time!);
+      return DateTime(parsedDate.year, parsedDate.month, parsedDate.day, parsedTime.hour, parsedTime.minute);
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
+}
+
 class _QueueCard extends StatelessWidget {
   final SalonQueueEntry entry;
 
@@ -1056,7 +1109,12 @@ class _QueueCard extends StatelessWidget {
               CircleAvatar(
                 radius: 18,
                 backgroundColor: Colors.blueAccent.withValues(alpha: 0.15),
-                child: const Icon(Icons.person, color: Colors.blueAccent, size: 20),
+                backgroundImage: entry.avatarUrl != null && entry.avatarUrl!.isNotEmpty
+                    ? NetworkImage(entry.avatarUrl!)
+                    : null,
+                child: (entry.avatarUrl == null || entry.avatarUrl!.isEmpty)
+                    ? const Icon(Icons.person, color: Colors.blueAccent, size: 20)
+                    : null,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -1089,9 +1147,32 @@ class _QueueCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(
-            entry.waitMinutes > 0 ? '≈ ${entry.waitMinutes} mins' : 'No wait',
-            style: const TextStyle(color: Colors.grey, fontSize: 12),
+          Row(
+            children: [
+              const Icon(Icons.calendar_today_outlined, size: 14, color: Colors.blueAccent),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  entry.dateLabel,
+                  style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(Icons.access_time, size: 14, color: Colors.blueAccent),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  entry.timeLabel,
+                  style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
         ],
       ),

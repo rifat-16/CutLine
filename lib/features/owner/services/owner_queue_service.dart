@@ -72,6 +72,13 @@ class OwnerQueueService {
     required Map<String, dynamic> queueData,
     required Map<String, dynamic> bookingData,
   }) {
+    final String? date =
+        (queueData['date'] as String?) ?? (bookingData['date'] as String?);
+    final String? time =
+        (queueData['time'] as String?) ?? (bookingData['time'] as String?);
+    final Timestamp? dateTimeTs =
+        (queueData['dateTime'] as Timestamp?) ?? (bookingData['dateTime'] as Timestamp?);
+
     final services = (bookingData['services'] as List?)
             ?.map((e) => (e is Map && e['name'] is String) ? e['name'] as String : '')
             .whereType<String>()
@@ -121,6 +128,9 @@ class OwnerQueueService {
       if (customerName != null && customerName.isNotEmpty) 'customerName': customerName,
       if (customerPhone != null && customerPhone.isNotEmpty) 'customerPhone': customerPhone,
       if (slotLabel != null && slotLabel.isNotEmpty) 'slotLabel': slotLabel,
+      if (date != null && date.isNotEmpty) 'date': date,
+      if (time != null && time.isNotEmpty) 'time': time,
+      if (dateTimeTs != null) 'dateTime': dateTimeTs,
       if (durationRaw != null) 'waitMinutes': durationRaw,
       if (price != null) 'price': price,
     };

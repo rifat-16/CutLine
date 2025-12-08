@@ -1,8 +1,12 @@
+import 'dart:io';
+
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/services/barber_service.dart';
 import 'package:cutline/features/owner/services/salon_service.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 enum SetupStep { basics, hours, services, photos, barbers }
 
@@ -54,10 +58,16 @@ class SalonSetupProvider extends ChangeNotifier {
   final AuthProvider _authProvider;
   final SalonService _salonService;
   final BarberService _barberService;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final ImagePicker _picker = ImagePicker();
 
   late Map<String, Map<String, dynamic>> _workingHours;
   late List<OwnerServiceInfo> _services;
   List<BarberInput> _barbers = [];
+  String? _coverPhotoUrl;
+  final List<String> _galleryUrls = [];
+  bool _uploadingCover = false;
+  bool _uploadingGallery = false;
   bool _isSaving = false;
   String? _error;
   SetupStep _currentStep = SetupStep.basics;
@@ -66,6 +76,10 @@ class SalonSetupProvider extends ChangeNotifier {
   Map<String, Map<String, dynamic>> get workingHours => _workingHours;
   List<OwnerServiceInfo> get services => _services;
   List<BarberInput> get barbers => _barbers;
+  String? get coverPhotoUrl => _coverPhotoUrl;
+  List<String> get galleryUrls => List.unmodifiable(_galleryUrls);
+  bool get isUploadingCover => _uploadingCover;
+  bool get isUploadingGallery => _uploadingGallery;
   bool get isSaving => _isSaving;
   String? get error => _error;
   SetupStep get currentStep => _currentStep;
@@ -163,6 +177,8 @@ class SalonSetupProvider extends ChangeNotifier {
         workingHours: _mapWorkingHours(),
         services: _mapServices(),
         barbers: barberData ?? _mapBarbers(),
+        coverPhotoUrl: _coverPhotoUrl,
+        galleryPhotos: _galleryUrls,
       );
       return true;
     } catch (_) {
@@ -200,6 +216,77 @@ class SalonSetupProvider extends ChangeNotifier {
     return _barbers.map((b) => b.toMap()).toList();
   }
 
+  Future<void> uploadCoverPhoto() async {
+    final ownerId = _authProvider.currentUser?.uid;
+    if (ownerId == null) {
+      _setError('Please log in again to upload photos.');
+      return;
+    }
+    final file = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1800,
+    );
+    if (file == null) return;
+
+    _uploadingCover = true;
+    notifyListeners();
+    try {
+      final url = await _uploadFile(
+        ownerId: ownerId,
+        file: file,
+        path:
+            'cover/cover_${DateTime.now().millisecondsSinceEpoch}.${_ext(file.name)}',
+      );
+      _coverPhotoUrl = url;
+    } catch (_) {
+      _setError('Failed to upload cover photo. Try again.');
+    } finally {
+      _uploadingCover = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> uploadGalleryPhotos() async {
+    final ownerId = _authProvider.currentUser?.uid;
+    if (ownerId == null) {
+      _setError('Please log in again to upload photos.');
+      return;
+    }
+    final files = await _picker.pickMultiImage(
+      imageQuality: 80,
+      maxWidth: 1600,
+    );
+    if (files.isEmpty) return;
+
+    final remaining = 10 - _galleryUrls.length;
+    final toUpload =
+        remaining <= 0 ? <XFile>[] : files.take(remaining).toList();
+    if (toUpload.isEmpty) {
+      _setError('You can upload up to 10 gallery photos.');
+      return;
+    }
+
+    _uploadingGallery = true;
+    notifyListeners();
+    try {
+      for (final file in toUpload) {
+        final url = await _uploadFile(
+          ownerId: ownerId,
+          file: file,
+          path:
+              'gallery/gallery_${DateTime.now().millisecondsSinceEpoch}_${file.name.hashCode}.${_ext(file.name)}',
+        );
+        _galleryUrls.add(url);
+      }
+    } catch (_) {
+      _setError('Failed to upload some photos. Try again.');
+    } finally {
+      _uploadingGallery = false;
+      notifyListeners();
+    }
+  }
+
   String _formatTime(TimeOfDay time) {
     final hour = time.hour.toString().padLeft(2, '0');
     final minute = time.minute.toString().padLeft(2, '0');
@@ -222,5 +309,22 @@ class SalonSetupProvider extends ChangeNotifier {
   void _setError(String? message) {
     _error = message;
     notifyListeners();
+  }
+
+  Future<String> _uploadFile({
+    required String ownerId,
+    required XFile file,
+    required String path,
+  }) async {
+    final ref = _storage.ref().child('salons').child(ownerId).child(path);
+    final uploadTask = ref.putFile(File(file.path));
+    final snap = await uploadTask.whenComplete(() {});
+    return snap.ref.getDownloadURL();
+  }
+
+  String _ext(String name) {
+    final dot = name.lastIndexOf('.');
+    if (dot == -1 || dot == name.length - 1) return 'jpg';
+    return name.substring(dot + 1);
   }
 }

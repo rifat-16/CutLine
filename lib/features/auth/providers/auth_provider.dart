@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cutline/features/auth/models/user_model.dart';
 import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cutline/features/auth/services/auth_service.dart';
 import 'package:cutline/features/auth/services/user_profile_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 class AuthProvider extends ChangeNotifier {
   AuthProvider({
@@ -24,17 +27,21 @@ class AuthProvider extends ChangeNotifier {
   final AuthService _authService;
   final UserProfileService _userProfileService;
   StreamSubscription<User?>? _authSubscription;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final ImagePicker _picker = ImagePicker();
 
   User? _currentUser;
   CutlineUser? _profile;
   bool _isLoading = false;
   String? _lastError;
+  bool _uploadingPhoto = false;
 
   User? get currentUser => _currentUser;
   CutlineUser? get profile => _profile;
   bool get isAuthenticated => _currentUser != null;
   bool get isLoading => _isLoading;
   String? get lastError => _lastError;
+  bool get isUploadingPhoto => _uploadingPhoto;
 
   Future<bool> signIn({
     required String email,
@@ -122,6 +129,7 @@ class AuthProvider extends ChangeNotifier {
     String? name,
     String? email,
     String? phone,
+    String? photoUrl,
   }) async {
     final uid = _currentUser?.uid;
     if (uid == null) return;
@@ -132,16 +140,79 @@ class AuthProvider extends ChangeNotifier {
         name: name,
         email: email,
         phone: phone,
+        photoUrl: photoUrl,
       );
       // Update displayName locally for quick UI reflection.
       if (name != null && name.trim().isNotEmpty) {
         await _currentUser?.updateDisplayName(name.trim());
+      }
+      if (photoUrl != null && photoUrl.trim().isNotEmpty) {
+        await _currentUser?.updatePhotoURL(photoUrl.trim());
       }
       await _loadProfile();
     } catch (e) {
       _setError('Failed to update profile. Please try again.');
     } finally {
       _setLoading(false);
+    }
+  }
+
+  Future<void> uploadProfilePhoto() async {
+    final uid = _currentUser?.uid;
+    if (uid == null) {
+      _setError('Please sign in again.');
+      return;
+    }
+    final previousUrl = _profile?.photoUrl ?? _currentUser?.photoURL;
+    final picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1200,
+    );
+    if (picked == null) return;
+    _uploadingPhoto = true;
+    notifyListeners();
+    try {
+      final url = await _uploadFile(
+        uid: uid,
+        file: picked,
+        path: 'users/$uid/profile/profile_${DateTime.now().millisecondsSinceEpoch}.${_ext(picked.name)}',
+      );
+      await updateProfile(photoUrl: url);
+      if (previousUrl != null && previousUrl != url) {
+        await _deleteOldPhoto(previousUrl);
+      }
+    } catch (_) {
+      _setError('Could not upload photo. Try again.');
+    } finally {
+      _uploadingPhoto = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String> _uploadFile({
+    required String uid,
+    required XFile file,
+    required String path,
+  }) async {
+    final ref = _storage.ref().child(path);
+    final uploadTask = ref.putFile(File(file.path));
+    final snap = await uploadTask.whenComplete(() {});
+    return snap.ref.getDownloadURL();
+  }
+
+  String _ext(String name) {
+    final dot = name.lastIndexOf('.');
+    if (dot == -1 || dot == name.length - 1) return 'jpg';
+    return name.substring(dot + 1);
+  }
+
+  Future<void> _deleteOldPhoto(String url) async {
+    try {
+      final ref = _storage.refFromURL(url);
+      await ref.delete();
+    } catch (_) {
+      // Ignore cleanup failures.
     }
   }
 

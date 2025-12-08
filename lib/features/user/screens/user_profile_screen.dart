@@ -20,6 +20,10 @@ class UserProfileScreen extends StatelessWidget {
         : (user != null && user.displayName?.trim().isNotEmpty == true
             ? user.displayName!
             : 'Guest');
+    final photoUrl = profile?.photoUrl?.trim().isNotEmpty == true
+        ? profile!.photoUrl
+        : (user?.photoURL?.trim().isNotEmpty == true ? user!.photoURL : null);
+    final isUploadingPhoto = auth.isUploadingPhoto;
     final profilePhone = profile?.phone?.trim();
     final phone = (profilePhone != null && profilePhone.isNotEmpty)
         ? profilePhone
@@ -34,47 +38,54 @@ class UserProfileScreen extends StatelessWidget {
       backgroundColor: CutlineColors.secondaryBackground,
       body: auth.isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: () => auth.refreshCurrentUser(),
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: CutlineSpacing.section.copyWith(bottom: 24),
-                children: [
-          _ProfileHeaderCard(
-            name: name,
-            email: email,
-            phone: phone,
-            onEdit: () => Navigator.pushNamed(
-              context,
-              AppRoutes.userEditProfile,
-            ),
-            onAvatarTap: () => _showComingSoon(context),
-          ),
-                  const SizedBox(height: CutlineSpacing.md),
-                  const _LoyaltyCardComingSoon(),
-                  const SizedBox(height: CutlineSpacing.md),
-                  _InfoCard(
-                    title: 'Personal Info',
-                    rows: [
-                      _InfoRow(icon: Icons.person_outline, label: 'Name', value: name),
-                      _InfoRow(icon: Icons.phone_outlined, label: 'Phone', value: phone),
-                      _InfoRow(icon: Icons.email_outlined, label: 'Email', value: email),
-                    ],
+          : ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: CutlineSpacing.section.copyWith(bottom: 24),
+              children: [
+                _ProfileHeaderCard(
+                  name: name,
+                  email: email,
+                  phone: phone,
+                  photoUrl: photoUrl,
+                  isUploading: isUploadingPhoto,
+                  onEdit: () => Navigator.pushNamed(
+                    context,
+                    AppRoutes.userEditProfile,
                   ),
-                  const SizedBox(height: CutlineSpacing.md),
-                  _SupportCard(
-                    onSupport: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ContactSupportScreen(),
-                      ),
+                  onAvatarTap: () =>
+                      context.read<AuthProvider>().uploadProfilePhoto(),
+                ),
+                const SizedBox(height: CutlineSpacing.md),
+                const _LoyaltyCardComingSoon(),
+                const SizedBox(height: CutlineSpacing.md),
+                _InfoCard(
+                  title: 'Personal Info',
+                  rows: [
+                    _InfoRow(
+                        icon: Icons.person_outline, label: 'Name', value: name),
+                    _InfoRow(
+                        icon: Icons.phone_outlined,
+                        label: 'Phone',
+                        value: phone),
+                    _InfoRow(
+                        icon: Icons.email_outlined,
+                        label: 'Email',
+                        value: email),
+                  ],
+                ),
+                const SizedBox(height: CutlineSpacing.md),
+                _SupportCard(
+                  onSupport: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ContactSupportScreen(),
                     ),
-                    onPrivacy: () => _showPrivacySheet(context),
                   ),
-                  const SizedBox(height: CutlineSpacing.lg),
-                  _LogoutButton(onPressed: () => _confirmLogout(context)),
-                ],
-              ),
+                  onPrivacy: () => _showPrivacySheet(context),
+                ),
+                const SizedBox(height: CutlineSpacing.lg),
+                _LogoutButton(onPressed: () => _confirmLogout(context)),
+              ],
             ),
     );
   }
@@ -133,19 +144,14 @@ class UserProfileScreen extends StatelessWidget {
       ),
     );
   }
-  static void _showComingSoon(BuildContext context) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: Text('Profile photo upload coming soon.')),
-      );
-  }
 }
 
 class _ProfileHeaderCard extends StatelessWidget {
   final String name;
   final String email;
   final String phone;
+  final String? photoUrl;
+  final bool isUploading;
   final VoidCallback? onEdit;
   final VoidCallback? onAvatarTap;
 
@@ -153,6 +159,8 @@ class _ProfileHeaderCard extends StatelessWidget {
     required this.name,
     required this.email,
     required this.phone,
+    this.photoUrl,
+    this.isUploading = false,
     this.onEdit,
     this.onAvatarTap,
   });
@@ -182,13 +190,37 @@ class _ProfileHeaderCard extends StatelessWidget {
                 child: CircleAvatar(
                   radius: 32,
                   backgroundColor: CutlineColors.primary.withValues(alpha: 0.15),
-                  child: Text(
-                    _initials,
-                    style: CutlineTextStyles.title
-                        .copyWith(fontSize: 22, color: CutlineColors.primary),
-                  ),
+                  backgroundImage: photoUrl != null && photoUrl!.isNotEmpty
+                      ? NetworkImage(photoUrl!)
+                      : null,
+                  child: (photoUrl == null || photoUrl!.isEmpty)
+                      ? Text(
+                          _initials,
+                          style: CutlineTextStyles.title
+                              .copyWith(fontSize: 22, color: CutlineColors.primary),
+                        )
+                      : null,
                 ),
               ),
+              if (isUploading)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(CutlineColors.primary),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               Positioned(
                 right: -4,
                 bottom: -4,

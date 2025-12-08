@@ -393,6 +393,7 @@ class _QueueCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = _statusColor(item.status);
+    final actionButton = _buildActionButton();
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -444,8 +445,10 @@ class _QueueCard extends StatelessWidget {
                       color: statusColor, fontWeight: FontWeight.w600),
                 ),
               ),
-              const Spacer(),
-              _buildActionButton(),
+              if (actionButton != null) ...[
+                const Spacer(),
+                actionButton,
+              ],
             ],
           ),
         ],
@@ -453,48 +456,42 @@ class _QueueCard extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButton() {
+  Widget? _buildActionButton() {
     if (onStartServing != null) {
-      return ElevatedButton(
+      return ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          elevation: 0,
+          backgroundColor: Colors.blueAccent,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          shape: const StadiumBorder(),
         ),
         onPressed: onStartServing,
-        child: const Text(
+        icon: const Icon(Icons.play_arrow_rounded, size: 20),
+        label: const Text(
           "Start Serving",
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
         ),
       );
     }
     if (onMarkDone != null) {
-      return ElevatedButton(
+      return ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          elevation: 0,
+          backgroundColor: Colors.green.shade600,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          shape: const StadiumBorder(),
         ),
         onPressed: onMarkDone,
-        child: const Text(
+        icon: const Icon(Icons.check_circle_rounded, size: 20),
+        label: const Text(
           "Mark Completed",
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
         ),
       );
     }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.green.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: const Text(
-        "Completed",
-        style: TextStyle(
-            color: Colors.green, fontWeight: FontWeight.w700, fontSize: 14),
-      ),
-    );
+    return null;
   }
 }
 

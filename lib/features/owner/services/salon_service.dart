@@ -15,6 +15,8 @@ class SalonService {
     required Map<String, dynamic> workingHours,
     required List<Map<String, dynamic>> services,
     List<Map<String, dynamic>>? barbers,
+    String? coverPhotoUrl,
+    List<String>? galleryPhotos,
   }) async {
     final now = FieldValue.serverTimestamp();
     final salonRef = _firestore.collection('salons').doc(ownerId);
@@ -29,6 +31,10 @@ class SalonService {
         'workingHours': workingHours,
         'services': services,
         if (barbers != null) 'barbers': barbers,
+        if (coverPhotoUrl != null && coverPhotoUrl.isNotEmpty)
+          'coverImageUrl': coverPhotoUrl,
+        if (galleryPhotos != null && galleryPhotos.isNotEmpty)
+          'galleryPhotos': galleryPhotos,
         'updatedAt': now,
         'createdAt': now,
       },

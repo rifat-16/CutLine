@@ -1,3 +1,4 @@
+import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/user/providers/my_booking_provider.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
@@ -9,8 +10,18 @@ class MyBookingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.read<AuthProvider>();
+    final user = auth.currentUser;
+    final profile = auth.profile;
+    final userId = user?.uid ?? '';
+    final userEmail = (user?.email ?? '').trim();
+    final userPhone = (profile?.phone ?? user?.phoneNumber ?? '').trim();
     return ChangeNotifierProvider(
-      create: (_) => MyBookingProvider()..load(),
+      create: (_) => MyBookingProvider(
+        userId: userId,
+        userEmail: userEmail,
+        userPhone: userPhone,
+      )..load(),
       builder: (context, _) {
         final provider = context.watch<MyBookingProvider>();
     return PopScope(
@@ -233,15 +244,18 @@ class _BookingCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 70,
-                height: 70,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(Icons.store, color: Colors.grey),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: booking.coverImageUrl != null &&
+                        booking.coverImageUrl!.isNotEmpty
+                    ? Image.network(
+                        booking.coverImageUrl!,
+                        width: 70,
+                        height: 70,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _placeholder(),
+                      )
+                    : _placeholder(),
               ),
               const SizedBox(width: CutlineSpacing.md),
               Expanded(
@@ -294,4 +308,17 @@ class _BookingCard extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget _placeholder() {
+  return Container(
+    width: 70,
+    height: 70,
+    decoration: BoxDecoration(
+      color: Colors.grey.shade200,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    alignment: Alignment.center,
+    child: const Icon(Icons.store, color: Colors.grey),
+  );
 }

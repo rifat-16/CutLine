@@ -77,19 +77,16 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
                         child: Stack(
                           alignment: Alignment.bottomRight,
                           children: [
-                            InkWell(
-                              onTap: _pickImage,
-                              child: CircleAvatar(
-                                radius: 50,
-                                backgroundColor: Colors.grey.shade300,
-                                backgroundImage: _imageFile != null
-                                    ? FileImage(_imageFile!)
-                                    : null,
-                                child: _imageFile == null
-                                    ? const Icon(Icons.person,
-                                        size: 60, color: Colors.white)
-                                    : null,
-                              ),
+                            CircleAvatar(
+                              radius: 50,
+                              backgroundColor: Colors.grey.shade300,
+                              backgroundImage: _imageFile != null
+                                  ? FileImage(_imageFile!)
+                                  : null,
+                              child: _imageFile == null
+                                  ? const Icon(Icons.person,
+                                      size: 60, color: Colors.white)
+                                  : null,
                             ),
                           ],
                         ),

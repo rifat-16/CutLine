@@ -187,6 +187,9 @@ class BookingRequestsProvider extends ChangeNotifier {
         'waitMinutes': request.durationMinutes,
         'slotLabel': DateFormat('h:mm a').format(request.dateTime),
         'customerPhone': request.customerPhone,
+        'date': DateFormat('yyyy-MM-dd').format(request.dateTime),
+        'time': DateFormat('h:mm a').format(request.dateTime),
+        'dateTime': Timestamp.fromDate(request.dateTime),
       };
       try {
         await _firestore

@@ -60,7 +60,7 @@ class _BookingScreenState extends State<BookingScreen> {
                               : 'Location unavailable',
                           rating: provider.rating,
                           workingHours: provider.workingHoursLabel,
-                          imageUrl:
+                          imageUrl: provider.coverImageUrl ??
                               'https://images.unsplash.com/photo-1600891964093-3b40cc0d2c7e',
                         ),
                       ),

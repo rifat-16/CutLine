@@ -7,6 +7,7 @@ class CutlineUser {
   final String? phone;
   final UserRole role;
   final bool profileComplete;
+  final String? photoUrl;
 
   const CutlineUser({
     required this.uid,
@@ -15,6 +16,7 @@ class CutlineUser {
     required this.role,
     this.phone,
     this.profileComplete = false,
+    this.photoUrl,
   });
 
   factory CutlineUser.fromMap(Map<String, dynamic> data) {
@@ -25,6 +27,7 @@ class CutlineUser {
       phone: data['phone'] as String?,
       role: UserRoleKey.fromKey((data['role'] as String?) ?? 'customer'),
       profileComplete: data['profileComplete'] == true,
+      photoUrl: (data['photoUrl'] as String?) ?? (data['avatarUrl'] as String?),
     );
   }
 
@@ -36,6 +39,7 @@ class CutlineUser {
       'phone': phone,
       'role': role.key,
       'profileComplete': profileComplete,
+      if (photoUrl != null) 'photoUrl': photoUrl,
     };
   }
 
@@ -45,6 +49,7 @@ class CutlineUser {
     String? phone,
     UserRole? role,
     bool? profileComplete,
+    String? photoUrl,
   }) {
     return CutlineUser(
       uid: uid,
@@ -53,6 +58,7 @@ class CutlineUser {
       phone: phone ?? this.phone,
       role: role ?? this.role,
       profileComplete: profileComplete ?? this.profileComplete,
+      photoUrl: photoUrl ?? this.photoUrl,
     );
   }
 }

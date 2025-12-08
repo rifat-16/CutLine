@@ -47,25 +47,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  Future<void> pickImage() async {
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Coming soon'),
-        content: const Text(
-          'Changing your profile picture will be available in the next update.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
@@ -104,19 +85,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         child: Stack(
                           alignment: Alignment.bottomRight,
                           children: [
-                            CircleAvatar(
-                              radius: 50,
-                              backgroundColor: Colors.grey.shade300,
-                              backgroundImage: _imageFile != null
-                                  ? FileImage(_imageFile!)
-                                  : null,
-                              child: _imageFile == null
-                                  ? const Icon(Icons.person,
-                                      size: 60, color: Colors.white)
-                                  : null,
+                            _Avatar(
+                              imageFile: _imageFile,
+                              photoUrl: provider.photoUrl,
+                              isUploading: provider.isUploadingPhoto,
                             ),
                             InkWell(
-                              onTap: pickImage,
+                              onTap: provider.isUploadingPhoto
+                                  ? null
+                                  : () => _pickImage(provider),
                               borderRadius: BorderRadius.circular(18),
                               child: Container(
                                 padding: const EdgeInsets.all(6),
@@ -150,7 +127,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             disabledBackgroundColor: Colors.grey.shade300,
                             disabledForegroundColor: Colors.grey.shade600,
                           ),
-                          onPressed: provider.isSaving || !_hasChanges
+                          onPressed: provider.isSaving ||
+                                  provider.isUploadingPhoto ||
+                                  !_hasChanges
                               ? null
                               : () => _save(provider),
                           child: provider.isSaving
@@ -224,6 +203,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _prefilled = true;
   }
 
+  Future<void> _pickImage(BarberEditProfileProvider provider) async {
+    final picker = ImagePicker();
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1200,
+    );
+    if (picked == null) return;
+    final file = File(picked.path);
+    setState(() {
+      _imageFile = file;
+    });
+    final url = await provider.uploadProfilePhoto(file);
+    if (!mounted) return;
+    if (url == null && provider.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(provider.error!)),
+      );
+    }
+  }
+
   Future<void> _save(BarberEditProfileProvider provider) async {
     final success = await provider.save(
       name: nameCtrl.text,
@@ -254,5 +254,58 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _hasChanges = changed;
       });
     }
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  final File? imageFile;
+  final String? photoUrl;
+  final bool isUploading;
+
+  const _Avatar({
+    required this.imageFile,
+    required this.photoUrl,
+    required this.isUploading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ImageProvider? avatarImage;
+    if (imageFile != null) {
+      avatarImage = FileImage(imageFile!);
+    } else if (photoUrl != null && photoUrl!.isNotEmpty) {
+      avatarImage = NetworkImage(photoUrl!);
+    }
+    return Stack(
+      children: [
+        CircleAvatar(
+          radius: 50,
+          backgroundColor: Colors.grey.shade300,
+          backgroundImage: avatarImage,
+          child: avatarImage == null
+              ? const Icon(Icons.person, size: 60, color: Colors.white)
+              : null,
+        ),
+        if (isUploading)
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.25),
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: SizedBox(
+                  height: 22,
+                  width: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }

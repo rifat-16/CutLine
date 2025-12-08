@@ -42,6 +42,7 @@ class UserProfileService {
     String? name,
     String? email,
     String? phone,
+    String? photoUrl,
   }) async {
     final now = FieldValue.serverTimestamp();
     final data = <String, dynamic>{
@@ -50,6 +51,7 @@ class UserProfileService {
     if (name != null) data['name'] = name.trim();
     if (email != null) data['email'] = email.trim();
     if (phone != null) data['phone'] = phone.trim();
+    if (photoUrl != null) data['photoUrl'] = photoUrl.trim();
 
     await _firestore
         .collection('users')

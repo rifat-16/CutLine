@@ -3,10 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class MyBookingProvider extends ChangeNotifier {
-  MyBookingProvider({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+  MyBookingProvider({
+    required this.userId,
+    this.userEmail = '',
+    this.userPhone = '',
+    FirebaseFirestore? firestore,
+  }) : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _firestore;
+  final String userId;
+  final String userEmail;
+  final String userPhone;
 
   bool _isLoading = false;
   String? _error;
@@ -21,20 +28,23 @@ class MyBookingProvider extends ChangeNotifier {
   List<UserBooking> get cancelled => _cancelled;
 
   Future<void> load() async {
-    _setLoading(true);
-    _setError(null);
-    try {
-      final snap = await _firestore.collectionGroup('bookings').get();
-      final items = snap.docs.map(_mapBooking).whereType<UserBooking>().toList();
-      _categorize(items);
-    } catch (_) {
-      _setError('Failed to load bookings. Pull to refresh.');
+    if (userId.isEmpty) {
+      _setError('Please sign in to view your bookings.');
       _upcoming = [];
       _completed = [];
       _cancelled = [];
-    } finally {
       _setLoading(false);
+      return;
     }
+    _setLoading(true);
+    _setError(null);
+    try {
+      await _loadWithFilter();
+    } catch (_) {
+      // fall back to client-side filter to avoid missing index issues
+      await _loadWithFallback();
+    }
+    _setLoading(false);
   }
 
   Future<void> cancelBooking(UserBooking booking) async {
@@ -52,7 +62,8 @@ class MyBookingProvider extends ChangeNotifier {
   }
 
   UserBooking? _mapBooking(
-      QueryDocumentSnapshot<Map<String, dynamic>> snapshot) {
+      QueryDocumentSnapshot<Map<String, dynamic>> snapshot,
+      Map<String, String?> coverCache) {
     final data = snapshot.data();
     final parent = snapshot.reference.parent.parent;
     final salonId = parent?.id ?? '';
@@ -60,10 +71,18 @@ class MyBookingProvider extends ChangeNotifier {
     final timeStr = (data['time'] as String?) ?? '';
     final dateTime = _parseDateTime(dateStr, timeStr);
     if (dateTime == null) return null;
+    final salonCover =
+        (data['coverImageUrl'] as String?) ??
+            (data['coverPhoto'] as String?) ??
+            coverCache[salonId];
     return UserBooking(
       id: snapshot.id,
       salonId: salonId,
       salonName: (data['salonName'] as String?) ?? 'Salon',
+      customerUid: (data['customerUid'] as String?) ?? '',
+      customerEmail: (data['customerEmail'] as String?) ?? '',
+      customerPhone: (data['customerPhone'] as String?) ?? '',
+      coverImageUrl: salonCover,
       services: (data['services'] as List?)
               ?.map((e) => (e is Map && e['name'] is String) ? e['name'] as String : '')
               .where((e) => e.isNotEmpty)
@@ -131,12 +150,89 @@ class MyBookingProvider extends ChangeNotifier {
     _error = message;
     notifyListeners();
   }
+
+  Future<void> _loadWithFilter() async {
+    final snap = await _firestore
+        .collectionGroup('bookings')
+        .where('customerUid', isEqualTo: userId)
+        .get();
+    final coverCache = await _loadCoverCache(snap.docs);
+    final items = snap.docs
+        .map((doc) => _mapBooking(doc, coverCache))
+        .whereType<UserBooking>()
+        .where(_isCurrentUser)
+        .toList();
+    _categorize(items);
+  }
+
+  Future<void> _loadWithFallback() async {
+    try {
+      final snap = await _firestore.collectionGroup('bookings').get();
+      final coverCache = await _loadCoverCache(snap.docs);
+      final items = snap.docs
+          .map((doc) => _mapBooking(doc, coverCache))
+          .whereType<UserBooking>()
+          .where(_isCurrentUser)
+          .toList();
+      _categorize(items);
+      if (items.isEmpty) {
+        _setError('No bookings found for this account.');
+      }
+    } catch (_) {
+      _setError('Failed to load bookings. Pull to refresh.');
+      _upcoming = [];
+      _completed = [];
+      _cancelled = [];
+    }
+  }
+
+  bool _isCurrentUser(UserBooking booking) {
+    if (booking.customerUid == userId) return true;
+    if (userEmail.isNotEmpty &&
+        booking.customerEmail.isNotEmpty &&
+        booking.customerEmail.toLowerCase() == userEmail.toLowerCase()) {
+      return true;
+    }
+    if (userPhone.isNotEmpty &&
+        booking.customerPhone.isNotEmpty &&
+        booking.customerPhone == userPhone) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<Map<String, String?>> _loadCoverCache(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
+    final ids = docs
+        .map((doc) => doc.reference.parent.parent?.id)
+        .whereType<String>()
+        .toSet()
+        .toList();
+    final Map<String, String?> cache = {};
+    for (final id in ids) {
+      try {
+        final snap = await _firestore.collection('salons').doc(id).get();
+        final data = snap.data();
+        if (data != null) {
+          cache[id] = (data['coverImageUrl'] as String?) ??
+              (data['coverPhoto'] as String?);
+        }
+      } catch (_) {
+        // ignore
+      }
+    }
+    return cache;
+  }
 }
 
 class UserBooking {
   final String id;
   final String salonId;
   final String salonName;
+  final String customerUid;
+  final String customerEmail;
+  final String customerPhone;
+  final String? coverImageUrl;
   final List<String> services;
   final String barberName;
   final DateTime dateTime;
@@ -146,6 +242,10 @@ class UserBooking {
     required this.id,
     required this.salonId,
     required this.salonName,
+    required this.customerUid,
+    required this.customerEmail,
+    required this.customerPhone,
+    required this.coverImageUrl,
     required this.services,
     required this.barberName,
     required this.dateTime,
@@ -160,6 +260,10 @@ class UserBooking {
       id: id,
       salonId: salonId,
       salonName: salonName,
+      customerUid: customerUid,
+      customerEmail: customerEmail,
+      customerPhone: customerPhone,
+      coverImageUrl: coverImageUrl,
       services: services,
       barberName: barberName,
       dateTime: dateTime,

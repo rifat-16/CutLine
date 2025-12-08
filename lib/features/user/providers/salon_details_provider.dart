@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 class SalonDetailsProvider extends ChangeNotifier {
   SalonDetailsProvider({
@@ -40,6 +41,7 @@ class SalonDetailsProvider extends ChangeNotifier {
         final waitMinutes = await _estimateWaitMinutes(doc.id);
         _barbers = await _loadBarbers(doc.id);
         _queue = await _loadQueue(doc.id);
+        await _hydrateQueueAvatars(_queue);
         _details =
             _mapSalon(doc.id, doc.data() ?? {}, waitMinutes, _queue);
         await _loadFavorite(doc.id);
@@ -79,6 +81,12 @@ class SalonDetailsProvider extends ChangeNotifier {
     final topServicesFromServices = services.map((s) => s.name).toList();
     final topServicesField = data['topServices'];
     final topServices = _parseTopServices(topServicesField);
+    final galleryPhotos = (data['galleryPhotos'] as List?)
+            ?.whereType<String>()
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList() ??
+        const [];
 
     return SalonDetailsData(
       id: id,
@@ -90,7 +98,9 @@ class SalonDetailsProvider extends ChangeNotifier {
       reviews: (data['reviews'] as num?)?.toInt() ?? 120,
       isOpen: (data['isOpen'] as bool?) ?? true,
       waitMinutes: waitMinutes,
-      coverImageUrl: data['coverImageUrl'] as String?,
+      coverImageUrl: (data['coverImageUrl'] as String?) ??
+          (data['coverPhoto'] as String?),
+      galleryPhotos: galleryPhotos,
       services: services,
       combos: combos,
       workingHours: workingHours,
@@ -313,36 +323,269 @@ class SalonDetailsProvider extends ChangeNotifier {
 
   Future<List<SalonQueueEntry>> _loadQueue(String salonId) async {
     try {
-      final snap = await _firestore
+      final queueSnap = await _firestore
           .collection('salons')
           .doc(salonId)
           .collection('queue')
           .get();
-      final entries = snap.docs.map((doc) {
-        final data = doc.data();
-        return _mapQueue(doc.id, data);
-      }).whereType<SalonQueueEntry>().toList();
-      entries.sort((a, b) {
-        const order = {'serving': 0, 'waiting': 1, 'done': 2};
-        return (order[a.status] ?? 9).compareTo(order[b.status] ?? 9);
-      });
-      return entries;
+      final bookingSnap = await _firestore
+          .collection('salons')
+          .doc(salonId)
+          .collection('bookings')
+          .where('status', whereIn: ['waiting', 'serving', 'completed', 'done'])
+          .get();
+
+      final queueEntries = queueSnap.docs
+          .map((doc) => _mapQueue(doc.id, doc.data()))
+          .whereType<SalonQueueEntry>()
+          .toList();
+      final bookingEntries = bookingSnap.docs
+          .map((doc) => _mapBooking(doc.id, doc.data()))
+          .whereType<SalonQueueEntry>()
+          .toList();
+
+      final merged = _mergeQueue(queueEntries, bookingEntries)..sort(_queueComparator);
+      await _hydrateQueueAvatars(merged);
+      return merged;
     } catch (_) {
       return const [];
     }
   }
 
+  int _queueComparator(SalonQueueEntry a, SalonQueueEntry b) {
+    const order = {'serving': 0, 'waiting': 1, 'done': 2};
+    final statusCompare = (order[a.status] ?? 9).compareTo(order[b.status] ?? 9);
+    if (statusCompare != 0) return statusCompare;
+    final aKey = _scheduleKey(a);
+    final bKey = _scheduleKey(b);
+    if (aKey != null && bKey != null) return aKey.compareTo(bKey);
+    if (aKey != null) return -1;
+    if (bKey != null) return 1;
+    return a.waitMinutes.compareTo(b.waitMinutes);
+  }
+
+  DateTime? _scheduleKey(SalonQueueEntry entry) {
+    if (entry.dateTime != null) return entry.dateTime;
+    return _combineDateAndTime(entry.date, entry.time);
+  }
+
+  List<SalonQueueEntry> _mergeQueue(
+    List<SalonQueueEntry> queue,
+    List<SalonQueueEntry> bookings,
+  ) {
+    final Map<String, SalonQueueEntry> map = {
+      for (final item in queue) item.id: item
+    };
+    for (final booking in bookings) {
+      final existing = map[booking.id];
+      map[booking.id] = existing == null ? booking : _combineEntries(existing, booking);
+    }
+    return map.values.toList();
+  }
+
+  Future<void> _hydrateQueueAvatars(List<SalonQueueEntry> entries) async {
+    final missing = entries
+        .where((e) =>
+            (e.avatarUrl == null || e.avatarUrl!.isEmpty) &&
+            (e.customerUid?.isNotEmpty == true))
+        .map((e) => e.customerUid!)
+        .toSet()
+        .toList();
+    if (missing.isEmpty) return;
+    final photos = await _fetchUserPhotos(missing);
+    if (photos.isEmpty) return;
+    _queue = entries
+        .map((e) {
+          if (e.avatarUrl != null && e.avatarUrl!.isNotEmpty) return e;
+          final url = e.customerUid != null ? photos[e.customerUid!] : null;
+          if (url == null || url.isEmpty) return e;
+          return e.copyWith(avatarUrl: url);
+        })
+        .toList()
+      ..sort(_queueComparator);
+    notifyListeners();
+  }
+
+  Future<Map<String, String>> _fetchUserPhotos(List<String> uids) async {
+    final Map<String, String> result = {};
+    const int chunkSize = 10;
+    for (var i = 0; i < uids.length; i += chunkSize) {
+      final chunk = uids.skip(i).take(chunkSize).toList();
+      try {
+        final snap = await _firestore
+            .collection('users')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          final url = (data['photoUrl'] as String?) ??
+              (data['avatarUrl'] as String?) ??
+              (data['coverPhoto'] as String?);
+          if (url != null && url.isNotEmpty) {
+            result[doc.id] = url;
+          }
+        }
+      } catch (_) {
+        // ignore partial failures
+      }
+    }
+    return result;
+  }
+
+  SalonQueueEntry _combineEntries(SalonQueueEntry primary, SalonQueueEntry fallback) {
+    return primary.copyWith(
+      customerName: primary.customerName.isNotEmpty
+          ? primary.customerName
+          : fallback.customerName,
+      barberName: primary.barberName.isNotEmpty
+          ? primary.barberName
+          : fallback.barberName,
+      service: primary.service.isNotEmpty ? primary.service : fallback.service,
+      status: primary.status.isNotEmpty ? primary.status : fallback.status,
+      waitMinutes: primary.waitMinutes != 0 ? primary.waitMinutes : fallback.waitMinutes,
+      date: primary.date ?? fallback.date,
+      time: primary.time ?? fallback.time,
+      dateTime: primary.dateTime ?? fallback.dateTime,
+      avatarUrl: primary.avatarUrl ?? fallback.avatarUrl,
+      customerUid: primary.customerUid ?? fallback.customerUid,
+    );
+  }
+
   SalonQueueEntry? _mapQueue(String id, Map<String, dynamic> data) {
-    final status = (data['status'] as String?) ?? 'waiting';
+    final status = _normalizeStatus((data['status'] as String?) ?? 'waiting');
     final wait = (data['waitMinutes'] as num?)?.toInt() ?? 0;
+    final date =
+        _extractDateString(data['date'] ?? data['bookingDate']);
+    final time =
+        _extractTimeString(data['time'] ?? data['bookingTime'] ?? data['slotLabel']);
+    final dateTime = _parseDateTime(data['dateTime']) ??
+        _combineDateAndTime(date, time) ??
+        _parseDateTime(data['createdAt']);
+    final serviceLabel = _serviceFrom(data);
+    final avatarUrl = (data['customerAvatar'] as String?) ??
+        (data['avatar'] as String?) ??
+        (data['photoUrl'] as String?);
+    final customerUid = (data['customerUid'] as String?)?.trim();
     return SalonQueueEntry(
       id: id,
       customerName: (data['customerName'] as String?) ?? 'Customer',
       barberName: (data['barberName'] as String?) ?? 'Barber',
-      service: (data['service'] as String?) ?? 'Service',
+      service: serviceLabel,
       status: status,
       waitMinutes: wait,
+      date: date,
+      time: time,
+      dateTime: dateTime,
+      avatarUrl: avatarUrl,
+      customerUid: customerUid,
     );
+  }
+
+  SalonQueueEntry? _mapBooking(String id, Map<String, dynamic> data) {
+    final status = _normalizeStatus((data['status'] as String?) ?? 'waiting');
+    final wait = (data['durationMinutes'] as num?)?.toInt() ??
+        (data['waitMinutes'] as num?)?.toInt() ??
+        0;
+    final date =
+        _extractDateString(data['date'] ?? data['bookingDate']);
+    final time =
+        _extractTimeString(data['time'] ?? data['bookingTime'] ?? data['slotLabel']);
+    final dateTime = _parseDateTime(data['dateTime']) ??
+        _combineDateAndTime(date, time) ??
+        _parseDateTime(data['createdAt']);
+    final serviceLabel = _serviceFrom(data);
+    final avatarUrl = (data['customerAvatar'] as String?) ??
+        (data['avatar'] as String?) ??
+        (data['photoUrl'] as String?);
+    final customerUid = (data['customerUid'] as String?)?.trim();
+    return SalonQueueEntry(
+      id: id,
+      customerName: (data['customerName'] as String?) ?? 'Customer',
+      barberName: (data['barberName'] as String?) ?? 'Barber',
+      service: serviceLabel,
+      status: status,
+      waitMinutes: wait,
+      date: date,
+      time: time,
+      dateTime: dateTime,
+      avatarUrl: avatarUrl,
+      customerUid: customerUid,
+    );
+  }
+
+  String _normalizeStatus(String value) {
+    final lower = value.toLowerCase();
+    if (lower.contains('serv')) return 'serving';
+    if (lower.contains('wait')) return 'waiting';
+    // Treat completed/done as waiting for display so cards still show.
+    return 'waiting';
+  }
+
+  String _serviceFrom(Map<String, dynamic> data) {
+    final service = (data['service'] as String?)?.trim();
+    if (service != null && service.isNotEmpty) return service;
+    final services = data['services'];
+    if (services is List) {
+      final names = services
+          .map((e) {
+            if (e is Map<String, dynamic>) {
+              final name = (e['name'] as String?)?.trim();
+              if (name != null && name.isNotEmpty) return name;
+            } else if (e is String && e.trim().isNotEmpty) {
+              return e.trim();
+            }
+            return null;
+          })
+          .whereType<String>()
+          .toList();
+      if (names.isNotEmpty) return names.join(', ');
+    }
+    return 'Service';
+  }
+
+  String? _extractDateString(dynamic value) {
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+    if (value is Timestamp) {
+      return DateFormat('yyyy-MM-dd').format(value.toDate());
+    }
+    return null;
+  }
+
+  String? _extractTimeString(dynamic value) {
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+    if (value is Timestamp) {
+      return DateFormat('h:mm a').format(value.toDate());
+    }
+    return null;
+  }
+
+  DateTime? _parseDateTime(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is String && value.isNotEmpty) {
+      try {
+        return DateTime.parse(value);
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  DateTime? _combineDateAndTime(String? date, String? time) {
+    if (date == null ||
+        date.isEmpty ||
+        time == null ||
+        time.isEmpty) {
+      return null;
+    }
+    try {
+      final parsedDate = DateTime.parse(date);
+      final parsedTime = DateFormat.jm().parse(time);
+      return DateTime(parsedDate.year, parsedDate.month, parsedDate.day,
+          parsedTime.hour, parsedTime.minute);
+    } catch (_) {
+      return null;
+    }
   }
 
   void _setLoading(bool value) {
@@ -367,6 +610,7 @@ class SalonDetailsData {
   final bool isOpen;
   final int waitMinutes;
   final String? coverImageUrl;
+  final List<String> galleryPhotos;
   final List<String> topServices;
   final List<SalonService> services;
   final List<SalonCombo> combos;
@@ -385,6 +629,7 @@ class SalonDetailsData {
     required this.isOpen,
     required this.waitMinutes,
     required this.coverImageUrl,
+    required this.galleryPhotos,
     required this.topServices,
     required this.services,
     required this.combos,
@@ -441,6 +686,11 @@ class SalonQueueEntry {
   final String service;
   final String status;
   final int waitMinutes;
+  final String? date;
+  final String? time;
+  final DateTime? dateTime;
+  final String? avatarUrl;
+  final String? customerUid;
 
   const SalonQueueEntry({
     required this.id,
@@ -449,10 +699,60 @@ class SalonQueueEntry {
     required this.service,
     required this.status,
     required this.waitMinutes,
+    this.date,
+    this.time,
+    this.dateTime,
+    this.avatarUrl,
+    this.customerUid,
   });
 
   bool get isWaiting => status == 'waiting';
   bool get isServing => status == 'serving';
+
+  String? get _formattedDate {
+    final raw = date?.trim();
+    if (raw != null && raw.isNotEmpty) return raw;
+    if (dateTime != null) return DateFormat('yyyy-MM-dd').format(dateTime!);
+    return null;
+  }
+
+  String? get _formattedTime {
+    final raw = time?.trim();
+    if (raw != null && raw.isNotEmpty) return raw;
+    if (dateTime != null) return DateFormat('h:mm a').format(dateTime!);
+    return null;
+  }
+
+  String get dateLabel => _formattedDate ?? 'Date not set';
+
+  String get timeLabel => _formattedTime ?? 'Time not set';
+
+  SalonQueueEntry copyWith({
+    String? customerName,
+    String? barberName,
+    String? service,
+    String? status,
+    int? waitMinutes,
+    String? date,
+    String? time,
+    DateTime? dateTime,
+    String? avatarUrl,
+    String? customerUid,
+  }) {
+    return SalonQueueEntry(
+      id: id,
+      customerName: customerName ?? this.customerName,
+      barberName: barberName ?? this.barberName,
+      service: service ?? this.service,
+      status: status ?? this.status,
+      waitMinutes: waitMinutes ?? this.waitMinutes,
+      date: date ?? this.date,
+      time: time ?? this.time,
+      dateTime: dateTime ?? this.dateTime,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      customerUid: customerUid ?? this.customerUid,
+    );
+  }
 }
 
 class SalonCombo {

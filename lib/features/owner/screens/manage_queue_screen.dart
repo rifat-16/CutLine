@@ -1,7 +1,6 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/providers/manage_queue_provider.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
-import 'package:cutline/features/owner/widgets/customer_detail_sheet.dart';
 import 'package:cutline/features/owner/widgets/queue_card.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -80,8 +79,7 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
                                     item: item,
                                     onStatusChange: (next) =>
                                         provider.updateStatus(item.id, next),
-                                    onTap: () =>
-                                        _openCustomerDetail(context, item),
+                                    onTap: null,
                                   );
                                 },
                               ),
@@ -113,16 +111,6 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
     final barbers = queue.map((item) => item.barberName).toSet().toList()
       ..sort();
     return ['All', ...barbers];
-  }
-
-  void _openCustomerDetail(BuildContext context, OwnerQueueItem item) {
-    showCustomerDetailSheet(
-      context: context,
-      item: item,
-      onStatusChange: (status) {
-        context.read<ManageQueueProvider>().updateStatus(item.id, status);
-      },
-    );
   }
 
   String _statusLabel(OwnerQueueStatus status) {

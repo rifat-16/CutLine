@@ -208,12 +208,20 @@ class BarberHomeProvider extends ChangeNotifier {
     final profile = _profile;
     if (profile == null) return;
     try {
+      final statusString =
+          status == BarberQueueStatus.done ? 'completed' : status.name;
       await _firestore
           .collection('salons')
           .doc(profile.ownerId)
           .collection('queue')
           .doc(id)
           .set({'status': status.name}, SetOptions(merge: true));
+      await _firestore
+          .collection('salons')
+          .doc(profile.ownerId)
+          .collection('bookings')
+          .doc(id)
+          .set({'status': statusString}, SetOptions(merge: true));
     } catch (_) {
       // ignore write failures for now
     }

@@ -23,9 +23,9 @@ import 'package:cutline/features/owner/screens/owner_profile_screen.dart';
 import 'package:cutline/features/owner/screens/salon_setup_screen.dart';
 import 'package:cutline/features/owner/screens/settings_screen.dart';
 import 'package:cutline/features/owner/screens/working_hours_screen.dart';
-import 'package:cutline/features/user/screens/booking_receipt_screen.dart'
+import 'package:cutline/features/user/screens/user_booking_receipt_screen.dart'
     as user_booking;
-import 'package:cutline/features/user/screens/booking_screen.dart';
+import 'package:cutline/features/user/screens/user_booking_screen.dart';
 import 'package:cutline/features/user/screens/booking_summary_screen.dart';
 import 'package:cutline/features/user/screens/chats_screen.dart';
 import 'package:cutline/features/user/screens/favorite_salon_screen.dart';
@@ -214,11 +214,14 @@ class AppRouter {
             salonName: parsedArgs?.salonName ?? (args is String ? args : ''),
             uploadedCount: parsedArgs?.uploadedCount ?? 0,
             totalLimit: parsedArgs?.totalLimit ?? 10,
+            photos: parsedArgs?.photos ?? const [],
           ),
           settings,
         );
       case AppRoutes.waitingCustomers:
-        return _page(const WaitingListScreen(), settings);
+        final salonIdArg = settings.arguments;
+        final salonId = salonIdArg is String ? salonIdArg : null;
+        return _page(WaitingListScreen(salonId: salonId), settings);
       case AppRoutes.myBookings:
         return _page(const MyBookingScreen(), settings);
       case AppRoutes.userChats:
@@ -353,11 +356,13 @@ class ViewAllServicesArgs {
 
 class SalonGalleryArgs {
   final String salonName;
+  final List<String> photos;
   final int uploadedCount;
   final int totalLimit;
 
   const SalonGalleryArgs({
     required this.salonName,
+    this.photos = const [],
     this.uploadedCount = 7,
     this.totalLimit = 10,
   });
