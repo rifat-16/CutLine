@@ -5,6 +5,8 @@ import 'package:cutline/features/auth/models/user_model.dart';
 import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cutline/features/auth/services/auth_service.dart';
 import 'package:cutline/features/auth/services/user_profile_service.dart';
+import 'package:cutline/shared/services/fcm_token_service.dart';
+import 'package:cutline/shared/services/notification_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
@@ -20,12 +22,16 @@ class AuthProvider extends ChangeNotifier {
     _authSubscription = _authService.authStateChanges.listen((user) {
       _currentUser = user;
       _loadProfile();
+      if (user != null) {
+        _saveFcmToken(user.uid);
+      }
       notifyListeners();
     });
   }
 
   final AuthService _authService;
   final UserProfileService _userProfileService;
+  final FcmTokenService _fcmTokenService = FcmTokenService();
   StreamSubscription<User?>? _authSubscription;
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final ImagePicker _picker = ImagePicker();
@@ -49,6 +55,10 @@ class AuthProvider extends ChangeNotifier {
   }) async {
     return _runAuthFlow(() async {
       await _authService.signIn(email: email.trim(), password: password);
+      final user = _authService.currentUser;
+      if (user != null) {
+        await _saveFcmToken(user.uid);
+      }
     });
   }
 
@@ -76,6 +86,7 @@ class AuthProvider extends ChangeNotifier {
           phone: phone,
           role: role,
         );
+        await _saveFcmToken(uid);
       }
     });
   }
@@ -220,13 +231,18 @@ class AuthProvider extends ChangeNotifier {
     final uid = _currentUser?.uid;
     if (uid == null) {
       _profile = null;
+      notificationService.setUserRole(null);
       return;
     }
     final data = await fetchUserProfile(uid);
     if (data != null) {
       _profile = CutlineUser.fromMap(data);
+      // Update notification service with user role
+      final role = _profile?.role ?? UserRole.customer;
+      notificationService.setUserRole(role);
     } else {
       _profile = null;
+      notificationService.setUserRole(null);
     }
   }
 
@@ -284,6 +300,23 @@ class AuthProvider extends ChangeNotifier {
   void _setError(String? message) {
     _lastError = message;
     notifyListeners();
+  }
+
+  /// Save FCM token for the current user
+  Future<void> _saveFcmToken(String userId) async {
+    try {
+      final token = await _fcmTokenService.initializeToken();
+      if (token != null) {
+        await _fcmTokenService.saveToken(userId, token);
+        // Listen for token refresh
+        _fcmTokenService.listenToTokenRefresh(userId, (newToken) {
+          debugPrint('FCM token refreshed for user $userId');
+        });
+      }
+    } catch (e) {
+      debugPrint('Error saving FCM token: $e');
+      // Don't throw - token saving is best effort
+    }
   }
 
   @override

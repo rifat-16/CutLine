@@ -64,23 +64,31 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildStatusCard(
-                      "Waiting",
-                      provider.waitingCount,
-                      "clients",
-                      Colors.orange,
+                    Expanded(
+                      child: _buildStatusCard(
+                        "Waiting",
+                        provider.waitingCount,
+                        "clients",
+                        Colors.orange,
+                      ),
                     ),
-                    _buildStatusCard(
-                      "Serving",
-                      provider.servingCount,
-                      "in chairs",
-                      Colors.blue,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildStatusCard(
+                        "Serving",
+                        provider.servingCount,
+                        "in chairs",
+                        Colors.blue,
+                      ),
                     ),
-                    _buildStatusCard(
-                      "Completed",
-                      provider.completedCount,
-                      "today",
-                      Colors.green,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildStatusCard(
+                        "Completed",
+                        provider.completedCount,
+                        "today",
+                        Colors.green,
+                      ),
                     ),
                   ],
                 ),
@@ -237,17 +245,20 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
   }
 
   Widget _buildQueueTabs() {
-    return Row(
-      children: BarberQueueStatus.values.map((status) {
-        final isSelected = _selectedStatus == status;
-        return GestureDetector(
-          onTap: () => setState(() => _selectedStatus = status),
-          child: Padding(
-            padding: const EdgeInsets.only(right: 10),
-            child: _queueTab(_statusLabel(status), isSelected),
-          ),
-        );
-      }).toList(),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: BarberQueueStatus.values.map((status) {
+          final isSelected = _selectedStatus == status;
+          return GestureDetector(
+            onTap: () => setState(() => _selectedStatus = status),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: _queueTab(_statusLabel(status), isSelected),
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 
@@ -262,8 +273,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
 
 Widget _buildStatusCard(String title, int count, String label, Color color) {
   return Container(
-    width: 110,
-    padding: const EdgeInsets.all(14),
+    padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
       gradient: LinearGradient(
         colors: [Colors.white, Colors.grey.shade100],

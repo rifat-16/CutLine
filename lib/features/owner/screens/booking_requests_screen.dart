@@ -218,7 +218,7 @@ class _BookingRequestCard extends StatelessWidget {
                 Expanded(
                   child: _DecisionButton(
                     label: 'Reject',
-                    onTap: () => onDecision(OwnerBookingRequestStatus.rejected),
+                    onTap: () => _showRejectConfirmation(context),
                     isPrimary: false,
                   ),
                 ),
@@ -248,6 +248,55 @@ class _BookingRequestCard extends StatelessWidget {
     final first = parts[0].substring(0, 1).toUpperCase();
     final second = parts.length > 1 ? parts[1].substring(0, 1).toUpperCase() : '';
     return '$first$second';
+  }
+
+  void _showRejectConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            'Confirm Rejection',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          content: const Text(
+            'Are you sure you want to reject this booking request?',
+            style: TextStyle(fontSize: 15),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                onDecision(OwnerBookingRequestStatus.rejected);
+              },
+              child: const Text(
+                'Reject',
+                style: TextStyle(
+                  color: Color(0xFFE53935),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 

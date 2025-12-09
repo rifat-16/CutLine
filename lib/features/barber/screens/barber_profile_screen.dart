@@ -126,16 +126,6 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
 
                       const SizedBox(height: 30),
 
-                      // STATS
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _statCard("Clients", provider.clientsServed),
-                        ],
-                      ),
-
-                      const SizedBox(height: 30),
-
                       // SETTINGS
                       _settingTile(
                         icon: Icons.edit,
@@ -180,34 +170,6 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
           ),
         );
       },
-    );
-  }
-
-  Widget _statCard(String title, int value) {
-    return Container(
-      width: 100,
-      padding: const EdgeInsets.symmetric(vertical: 18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.grey.shade300),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3)),
-        ],
-      ),
-      child: Column(
-        children: [
-          Text(
-            '$value',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-          ),
-        ],
-      ),
     );
   }
 

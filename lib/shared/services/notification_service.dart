@@ -1,0 +1,305 @@
+import 'dart:async';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:cutline/shared/models/notification_payload.dart';
+import 'package:cutline/routes/app_router.dart';
+import 'package:cutline/firebase_options.dart';
+import 'package:cutline/features/auth/models/user_role.dart';
+import 'package:flutter/material.dart';
+
+/// Top-level background message handler
+/// Must be a top-level function
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Ensure Firebase is initialized
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  debugPrint('Handling background message: ${message.messageId}');
+  // Additional background processing can be added here
+}
+
+/// Service for handling FCM notifications
+class NotificationService {
+  NotificationService() {
+    _initializeLocalNotifications();
+  }
+
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
+
+  StreamSubscription<RemoteMessage>? _foregroundSubscription;
+  Function(NotificationPayload)? _onNotificationTapped;
+  UserRole? _currentUserRole;
+
+  /// Initialize local notifications for foreground display
+  Future<void> _initializeLocalNotifications() async {
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    const initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+
+    await _localNotifications.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: _onNotificationTappedLocal,
+    );
+
+    // Create notification channel for Android
+    const androidChannel = AndroidNotificationChannel(
+      'cutline_notifications',
+      'CutLine Notifications',
+      description: 'Notifications for booking updates',
+      importance: Importance.high,
+      playSound: true,
+    );
+
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(androidChannel);
+  }
+
+  /// Handle local notification tap
+  void _onNotificationTappedLocal(NotificationResponse response) {
+    if (response.payload != null) {
+      try {
+        // Parse payload if it's JSON
+        // For now, we'll handle navigation in the foreground handler
+        debugPrint('Local notification tapped: ${response.payload}');
+      } catch (e) {
+        debugPrint('Error parsing notification payload: $e');
+      }
+    }
+  }
+
+  /// Set current user role for filtering notifications
+  void setUserRole(UserRole? role) {
+    _currentUserRole = role;
+  }
+
+  /// Initialize FCM notification handling
+  /// Call this in main.dart after Firebase initialization
+  Future<void> initialize({
+    BuildContext? context,
+    Function(NotificationPayload)? onNotificationTapped,
+    UserRole? userRole,
+  }) async {
+    _currentUserRole = userRole;
+    _onNotificationTapped = onNotificationTapped;
+
+    // Set up background message handler
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+    // Request permission
+    final settings = await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      announcement: false,
+      badge: true,
+      carPlay: false,
+      criticalAlert: false,
+      provisional: false,
+      sound: true,
+    );
+
+    if (settings.authorizationStatus != AuthorizationStatus.authorized &&
+        settings.authorizationStatus != AuthorizationStatus.provisional) {
+      debugPrint('User declined notification permission');
+      return;
+    }
+
+    // Handle foreground messages
+    _foregroundSubscription =
+        FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+
+    // Handle notification tap when app is in background
+    FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
+
+    // Handle notification tap when app is terminated
+    final initialMessage =
+        await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      _handleNotificationTap(initialMessage);
+    }
+  }
+
+  /// Handle foreground messages (app is open)
+  Future<void> _handleForegroundMessage(RemoteMessage message) async {
+    debugPrint('Foreground message received: ${message.messageId}');
+
+    final notification = message.notification;
+    final data = message.data;
+
+    if (data.isNotEmpty) {
+      final payload = NotificationPayload.fromMap(data);
+      
+      // Filter notifications based on user role
+      if (!_shouldShowNotification(payload)) {
+        debugPrint('Notification filtered out for current user role');
+        return;
+      }
+
+      if (notification != null) {
+        // Show local notification only if it's relevant to current user
+        await _showLocalNotification(
+          title: notification.title ?? 'CutLine',
+          body: notification.body ?? '',
+          data: data,
+        );
+      }
+
+      // You can trigger UI updates here if needed
+      debugPrint('Notification payload: ${payload.type} - ${payload.bookingId}');
+    }
+  }
+
+  /// Handle notification tap (background or terminated)
+  void _handleNotificationTap(RemoteMessage message) {
+    debugPrint('Notification tapped: ${message.messageId}');
+
+    final data = message.data;
+    if (data.isNotEmpty) {
+      final payload = NotificationPayload.fromMap(data);
+      
+      // Filter notifications based on user role
+      if (!_shouldShowNotification(payload)) {
+        debugPrint('Notification filtered out for current user role');
+        return;
+      }
+      
+      _navigateToScreen(payload);
+    }
+  }
+
+  /// Check if notification should be shown based on user role
+  bool _shouldShowNotification(NotificationPayload payload) {
+    final type = NotificationTypeExtension.fromString(payload.type);
+    
+    // If no user role is set, show all notifications (fallback)
+    if (_currentUserRole == null) {
+      return true;
+    }
+
+    switch (type) {
+      case NotificationType.bookingRequest:
+        // Only show to owners
+        return _currentUserRole == UserRole.owner;
+      
+      case NotificationType.bookingAccepted:
+        // Only show to customers/users
+        return _currentUserRole == UserRole.customer;
+      
+      case NotificationType.barberWaiting:
+        // Only show to barbers
+        return _currentUserRole == UserRole.barber;
+      
+      case NotificationType.unknown:
+        // Show unknown notifications to all
+        return true;
+    }
+  }
+
+  /// Show local notification for foreground messages
+  Future<void> _showLocalNotification({
+    required String title,
+    required String body,
+    required Map<String, dynamic> data,
+  }) async {
+    const androidDetails = AndroidNotificationDetails(
+      'cutline_notifications',
+      'CutLine Notifications',
+      channelDescription: 'Notifications for booking updates',
+      importance: Importance.high,
+      priority: Priority.high,
+      showWhen: true,
+      playSound: true,
+    );
+
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
+    const notificationDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch % 100000,
+      title,
+      body,
+      notificationDetails,
+      payload: data.toString(), // Can be used for navigation
+    );
+  }
+
+  /// Navigate to appropriate screen based on notification type
+  void _navigateToScreen(NotificationPayload payload) {
+    // Use callback if provided
+    if (_onNotificationTapped != null) {
+      _onNotificationTapped!(payload);
+      return;
+    }
+
+    // Default navigation logic using navigator key
+    final navigatorKey = AppRouter.navigatorKey;
+    if (navigatorKey.currentContext == null) {
+      debugPrint('Navigator key not available');
+      return;
+    }
+
+    final context = navigatorKey.currentContext!;
+    final type = NotificationTypeExtension.fromString(payload.type);
+
+    switch (type) {
+      case NotificationType.bookingRequest:
+        // Navigate to booking requests screen for owner
+        Navigator.of(context).pushNamed(AppRoutes.ownerBookingRequests);
+        break;
+
+      case NotificationType.bookingAccepted:
+        // Navigate to booking details for user
+        if (payload.salonId != null && payload.bookingId.isNotEmpty) {
+          Navigator.of(context).pushNamed(
+            AppRoutes.bookingReceipt,
+            arguments: BookingReceiptArgs(
+              salonId: payload.salonId!,
+              bookingId: payload.bookingId,
+            ),
+          );
+        } else {
+          Navigator.of(context).pushNamed(AppRoutes.myBookings);
+        }
+        break;
+
+      case NotificationType.barberWaiting:
+        // Navigate to barber home (queue screen)
+        Navigator.of(context).pushNamed(AppRoutes.barberHome);
+        break;
+
+      case NotificationType.unknown:
+        // Navigate to notifications screen
+        Navigator.of(context).pushNamed(AppRoutes.userNotifications);
+        break;
+    }
+  }
+
+  /// Dispose resources
+  void dispose() {
+    _foregroundSubscription?.cancel();
+    _onNotificationTapped = null;
+  }
+}
+
+/// Global notification service instance
+final notificationService = NotificationService();
+

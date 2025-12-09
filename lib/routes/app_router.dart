@@ -92,6 +92,9 @@ class AppRoutes {
 }
 
 class AppRouter {
+  // Global navigator key for navigation from anywhere in the app
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
       case AppRoutes.splash:

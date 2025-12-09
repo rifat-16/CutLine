@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -84,45 +85,134 @@ class BookingsProvider extends ChangeNotifier {
   Future<void> load() async {
     final ownerId = _authProvider.currentUser?.uid;
     if (ownerId == null) {
+      debugPrint('BookingsProvider: ownerId is null');
       _setError('Please log in again.');
       return;
     }
+    
     _subscription?.cancel();
     _setLoading(true);
     _setError(null);
+    
     try {
+      debugPrint('BookingsProvider: Loading bookings for ownerId: $ownerId');
+      
+      // Try collectionGroup first
+      try {
+        debugPrint('BookingsProvider: Trying collectionGroup query');
+        _subscription = _firestore
+            .collectionGroup('bookings')
+            .snapshots()
+            .listen((snap) {
+          debugPrint('BookingsProvider: Received ${snap.docs.length} booking documents from collectionGroup');
+          
+          final items = snap.docs
+              .where((doc) {
+                final parentId = doc.reference.parent.parent?.id;
+                final data = doc.data();
+                final salonId = (data['salonId'] as String?) ??
+                    (data['salon'] as String?) ??
+                    parentId;
+                final matches = salonId == ownerId;
+                if (matches) {
+                  debugPrint('BookingsProvider: Found matching booking: ${doc.id} from salon: $salonId');
+                }
+                return matches;
+              })
+              .map((doc) => _mapBooking(
+                    doc.id,
+                    doc.data(),
+                    doc.reference.parent.parent?.id,
+                  ))
+              .whereType<OwnerBooking>()
+              .toList();
+          
+          debugPrint('BookingsProvider: Mapped ${items.length} bookings for owner');
+          _bookings = items;
+          _hydrateCustomerAvatars();
+          notifyListeners();
+          _setLoading(false);
+        }, onError: (e) {
+          debugPrint('BookingsProvider: Error in collectionGroup listener: $e');
+          debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
+          // Fallback to direct salon collection query
+          _loadFromSalonCollection(ownerId);
+        });
+      } catch (e) {
+        debugPrint('BookingsProvider: Error setting up collectionGroup listener: $e');
+        debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
+        // Fallback to direct salon collection query
+        _loadFromSalonCollection(ownerId);
+      }
+    } catch (e, stackTrace) {
+      debugPrint('BookingsProvider: Fatal error in load: $e');
+      debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
+      debugPrint('Stack trace: $stackTrace');
+      _bookings = [];
+      String errorMessage = 'Failed to load bookings. Pull to refresh.';
+      if (e is FirebaseException) {
+        if (e.code == 'permission-denied') {
+          errorMessage = 'Permission denied. Please check Firestore rules are deployed.';
+        } else if (e.code == 'unavailable') {
+          errorMessage = 'Network error. Check your connection.';
+        } else {
+          errorMessage = 'Firebase error: ${e.message ?? e.code}';
+        }
+      }
+      _setError(errorMessage);
+      _setLoading(false);
+    }
+  }
+
+  Future<void> _loadFromSalonCollection(String ownerId) async {
+    try {
+      debugPrint('BookingsProvider: Loading bookings directly from salon collection');
+      _subscription?.cancel();
+      
       _subscription = _firestore
-          .collectionGroup('bookings')
+          .collection('salons')
+          .doc(ownerId)
+          .collection('bookings')
           .snapshots()
           .listen((snap) {
+        debugPrint('BookingsProvider: Received ${snap.docs.length} booking documents from salon collection');
+        
         final items = snap.docs
-            .where((doc) {
-              final parentId = doc.reference.parent.parent?.id;
-              final data = doc.data();
-              final salonId = (data['salonId'] as String?) ??
-                  (data['salon'] as String?) ??
-                  parentId;
-              return salonId == ownerId;
-            })
             .map((doc) => _mapBooking(
                   doc.id,
                   doc.data(),
-                  doc.reference.parent.parent?.id,
+                  ownerId,
                 ))
             .whereType<OwnerBooking>()
             .toList();
+        
+        debugPrint('BookingsProvider: Mapped ${items.length} bookings from salon collection');
         _bookings = items;
         _hydrateCustomerAvatars();
         notifyListeners();
         _setLoading(false);
-      }, onError: (_) {
-        _bookings = List.of(kOwnerBookings);
-        _setError('Showing cached data. Pull to refresh.');
+      }, onError: (e) {
+        debugPrint('BookingsProvider: Error in salon collection listener: $e');
+        debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
+        _bookings = [];
+        String errorMessage = 'Failed to load bookings. Pull to refresh.';
+        if (e is FirebaseException) {
+          if (e.code == 'permission-denied') {
+            errorMessage = 'Permission denied. Please check Firestore rules are deployed.';
+          } else if (e.code == 'unavailable') {
+            errorMessage = 'Network error. Check your connection.';
+          } else {
+            errorMessage = 'Firebase error: ${e.message ?? e.code}';
+          }
+        }
+        _setError(errorMessage);
         _setLoading(false);
       });
-    } catch (_) {
-      _bookings = List.of(kOwnerBookings);
-      _setError('Showing cached data. Pull to refresh.');
+    } catch (e, stackTrace) {
+      debugPrint('BookingsProvider: Error in _loadFromSalonCollection: $e');
+      debugPrint('Stack trace: $stackTrace');
+      _bookings = [];
+      _setError('Failed to load bookings. Pull to refresh.');
       _setLoading(false);
     }
   }
@@ -140,44 +230,68 @@ class BookingsProvider extends ChangeNotifier {
     Map<String, dynamic> data,
     String? parentSalonId,
   ) {
-    final statusString = (data['status'] as String?) ?? 'upcoming';
-    final status = _statusFromString(statusString);
-    final dateTime = _parseDateTime(data);
-    if (dateTime == null) return null;
-    final services = (data['services'] as List?)
-            ?.map((e) =>
-                (e is Map && e['name'] is String) ? e['name'] as String : '')
-            .whereType<String>()
-            .where((e) => e.isNotEmpty)
-            .toList() ??
-        const [];
-    final serviceLabel =
-        services.isNotEmpty ? services.join(', ') : (data['service'] as String?);
-    return OwnerBooking(
-      id: id,
-      customerName: (data['customerName'] as String?) ?? 'Customer',
-      customerAvatar: (data['customerAvatar'] as String?) ??
-          (data['customerPhotoUrl'] as String?) ??
-          (data['photoUrl'] as String?) ??
-          '',
-      customerUid: (data['customerUid'] as String?) ??
-          (data['customerId'] as String?) ??
-          (data['uid'] as String?) ??
-          '',
-      salonName: (data['salonName'] as String?) ??
-          (data['salon'] as String?) ??
-          parentSalonId ??
-          'Salon',
-      service: serviceLabel ?? 'Service',
-      price: (data['price'] as num?)?.toInt() ??
-          (data['total'] as num?)?.toInt() ??
-          0,
-      dateTime: dateTime,
-      status: status,
-      paymentMethod: (data['paymentMethod'] as String?) ??
-          (data['payment'] as String?) ??
-          'Cash',
-    );
+    try {
+      debugPrint('_mapBooking: Mapping booking $id, data keys: ${data.keys.toList()}');
+      
+      final statusString = (data['status'] as String?)?.trim() ?? 'upcoming';
+      final status = _statusFromString(statusString);
+      
+      final dateTime = _parseDateTime(data);
+      if (dateTime == null) {
+        debugPrint('_mapBooking: Failed to parse dateTime for booking $id');
+        return null;
+      }
+      
+      final services = (data['services'] as List?)
+              ?.map((e) {
+                if (e is Map && e['name'] is String) {
+                  return (e['name'] as String).trim();
+                }
+                if (e is String) return e.trim();
+                return '';
+              })
+              .whereType<String>()
+              .where((e) => e.isNotEmpty)
+              .toList() ??
+          const [];
+      
+      final serviceLabel =
+          services.isNotEmpty ? services.join(', ') : (data['service'] as String?)?.trim();
+      
+      final booking = OwnerBooking(
+        id: id,
+        customerName: (data['customerName'] as String?)?.trim() ?? 'Customer',
+        customerAvatar: (data['customerAvatar'] as String?)?.trim() ??
+            (data['customerPhotoUrl'] as String?)?.trim() ??
+            (data['photoUrl'] as String?)?.trim() ??
+            '',
+        customerUid: (data['customerUid'] as String?)?.trim() ??
+            (data['customerId'] as String?)?.trim() ??
+            (data['userId'] as String?)?.trim() ??
+            (data['uid'] as String?)?.trim() ??
+            '',
+        salonName: (data['salonName'] as String?)?.trim() ??
+            (data['salon'] as String?)?.trim() ??
+            parentSalonId ??
+            'Salon',
+        service: serviceLabel ?? 'Service',
+        price: (data['price'] as num?)?.toInt() ??
+            (data['total'] as num?)?.toInt() ??
+            0,
+        dateTime: dateTime,
+        status: status,
+        paymentMethod: (data['paymentMethod'] as String?)?.trim() ??
+            (data['payment'] as String?)?.trim() ??
+            'Cash',
+      );
+      
+      debugPrint('_mapBooking: Successfully mapped booking: ${booking.customerName} - ${booking.service}');
+      return booking;
+    } catch (e, stackTrace) {
+      debugPrint('_mapBooking: Error mapping booking $id: $e');
+      debugPrint('Stack trace: $stackTrace');
+      return null;
+    }
   }
 
   OwnerBookingStatus _statusFromString(String status) {

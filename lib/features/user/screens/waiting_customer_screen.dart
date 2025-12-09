@@ -108,11 +108,11 @@ class _WaitingDetails extends StatelessWidget {
   String _statusLabel(WaitingStatus status) {
     switch (status) {
       case WaitingStatus.servingSoon:
-        return 'Serving soon';
+        return 'Serving';
       case WaitingStatus.done:
         return 'Completed';
       case WaitingStatus.waiting:
-        return 'In queue';
+        return 'Waiting';
     }
   }
 

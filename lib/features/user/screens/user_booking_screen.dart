@@ -339,14 +339,15 @@ class _BarberGrid extends StatelessWidget {
                   ? [CutlineColors.primary.withValues(alpha: 0.7), CutlineColors.primary]
                   : [CutlineColors.background, CutlineColors.secondaryBackground],
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 ClipOval(
                   child: Container(
-                    width: 44,
-                    height: 44,
+                    width: 40,
+                    height: 40,
                     color: Colors.grey.shade200,
                     child: barber.avatarUrl != null && barber.avatarUrl!.isNotEmpty
                         ? Image.network(
@@ -367,24 +368,38 @@ class _BarberGrid extends StatelessWidget {
                             errorBuilder: (_, __, ___) => const Icon(
                               Icons.person,
                               color: Colors.grey,
-                              size: 22,
+                              size: 20,
                             ),
                           )
-                        : const Icon(Icons.person, color: Colors.grey, size: 22),
+                        : const Icon(Icons.person, color: Colors.grey, size: 20),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  barber.name,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : CutlineColors.primary,
-                    fontWeight: FontWeight.w600,
+                const SizedBox(height: 6),
+                Flexible(
+                  child: Text(
+                    barber.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : CutlineColors.primary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '⭐ ${barber.rating} • Hair Specialist',
-                  style: TextStyle(color: isSelected ? Colors.white70 : Colors.black54, fontSize: 12),
+                const SizedBox(height: 3),
+                Flexible(
+                  child: Text(
+                    '⭐ ${barber.rating} • Specialist',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white70 : Colors.black54,
+                      fontSize: 11,
+                    ),
+                  ),
                 ),
               ],
             ),

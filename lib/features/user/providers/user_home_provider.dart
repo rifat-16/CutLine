@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class UserHomeProvider extends ChangeNotifier {
@@ -44,46 +45,109 @@ class UserHomeProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-      _favoriteIds = await _loadFavoriteIds();
+      debugPrint('UserHomeProvider: Starting to load salons');
+      
+      // Load favorites first
+      try {
+        _favoriteIds = await _loadFavoriteIds();
+        debugPrint('UserHomeProvider: Loaded ${_favoriteIds.length} favorites');
+      } catch (e) {
+        debugPrint('UserHomeProvider: Error loading favorites: $e');
+        _favoriteIds = {}; // Continue without favorites
+      }
+      
+      // Load salons collection
       final snapshot = await _firestore.collection('salons').get();
+      debugPrint('UserHomeProvider: Found ${snapshot.docs.length} salon documents');
+      
+      if (snapshot.docs.isEmpty) {
+        debugPrint('UserHomeProvider: No salons found in database');
+        _allSalons = [];
+        _setError(null); // No error, just empty list
+        return;
+      }
+      
       final salons = await Future.wait(
         snapshot.docs.map((doc) => _mapSalon(doc.id, doc.data())),
       );
       salons.sort((a, b) => a.name.compareTo(b.name));
       _allSalons = salons;
-    } catch (_) {
+      debugPrint('UserHomeProvider: Successfully loaded ${_allSalons.length} salons');
+    } catch (e, stackTrace) {
+      debugPrint('UserHomeProvider: Error loading salons: $e');
+      debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
+      debugPrint('Stack trace: $stackTrace');
       _allSalons = [];
-      _setError('Failed to load salons. Pull to refresh.');
+      
+      String errorMessage = 'Failed to load salons. Pull to refresh.';
+      if (e is FirebaseException) {
+        if (e.code == 'permission-denied') {
+          errorMessage = 'Permission denied. Please check Firestore rules are deployed.';
+        } else if (e.code == 'unavailable') {
+          errorMessage = 'Network error. Check your connection.';
+        } else {
+          errorMessage = 'Firebase error: ${e.message ?? e.code}';
+        }
+      }
+      _setError(errorMessage);
     } finally {
       _setLoading(false);
     }
   }
 
   Future<UserSalon> _mapSalon(String id, Map<String, dynamic> data) async {
-    final servicesField = data['services'];
-    final services = servicesField is List
-        ? servicesField
-            .map((item) => _parseServiceName(item))
-            .where((name) => name.isNotEmpty)
-            .toList()
-        : <String>[];
+    try {
+      debugPrint('_mapSalon: Mapping salon $id');
+      final servicesField = data['services'];
+      final services = servicesField is List
+          ? servicesField
+              .map((item) => _parseServiceName(item))
+              .where((name) => name.isNotEmpty)
+              .toList()
+          : <String>[];
 
-    final isOpenFlag = data['isOpen'];
-    final bool isOpenNow = isOpenFlag is bool ? isOpenFlag : false;
-    final waitMinutes = await _estimateWaitMinutes(id);
+      final isOpenFlag = data['isOpen'];
+      final bool isOpenNow = isOpenFlag is bool ? isOpenFlag : false;
+      
+      // Estimate wait time (this may fail due to permissions, but shouldn't break salon loading)
+      int waitMinutes = 0;
+      try {
+        waitMinutes = await _estimateWaitMinutes(id);
+      } catch (e) {
+        debugPrint('_mapSalon: Error estimating wait time for $id: $e');
+        // Continue without wait time
+      }
 
-    return UserSalon(
-      id: id,
-      name: (data['name'] as String?) ?? 'Salon',
-      address: (data['address'] as String?) ?? 'Address unavailable',
-      contact: (data['contact'] as String?) ?? '',
-      isOpenNow: isOpenNow,
-      waitMinutes: waitMinutes,
-      topServices: services.take(3).toList(),
-      isFavorite: _favoriteIds.contains(id),
-      coverImageUrl:
-          (data['coverImageUrl'] as String?) ?? (data['coverPhoto'] as String?),
-    );
+      final salon = UserSalon(
+        id: id,
+        name: (data['name'] as String?) ?? 'Salon',
+        address: (data['address'] as String?) ?? 'Address unavailable',
+        contact: (data['contact'] as String?) ?? '',
+        isOpenNow: isOpenNow,
+        waitMinutes: waitMinutes,
+        topServices: services.take(3).toList(),
+        isFavorite: _favoriteIds.contains(id),
+        coverImageUrl:
+            (data['coverImageUrl'] as String?) ?? (data['coverPhoto'] as String?),
+      );
+      
+      debugPrint('_mapSalon: Successfully mapped salon ${salon.name}');
+      return salon;
+    } catch (e) {
+      debugPrint('_mapSalon: Error mapping salon $id: $e');
+      // Return a default salon rather than failing completely
+      return UserSalon(
+        id: id,
+        name: (data['name'] as String?) ?? 'Salon',
+        address: (data['address'] as String?) ?? 'Address unavailable',
+        contact: (data['contact'] as String?) ?? '',
+        isOpenNow: false,
+        waitMinutes: 0,
+        topServices: <String>[],
+        isFavorite: _favoriteIds.contains(id),
+        coverImageUrl: null,
+      );
+    }
   }
 
   String _parseServiceName(dynamic item) {
@@ -99,14 +163,20 @@ class UserHomeProvider extends ChangeNotifier {
 
   Future<int> _estimateWaitMinutes(String salonId) async {
     try {
+      debugPrint('_estimateWaitMinutes: Estimating wait time for salonId: $salonId');
       final snap = await _firestore
           .collection('salons')
           .doc(salonId)
           .collection('queue')
           .where('status', isEqualTo: 'waiting')
           .get();
-      if (snap.docs.isEmpty) return 0;
+      
+      if (snap.docs.isEmpty) {
+        debugPrint('_estimateWaitMinutes: No waiting queue items found');
+        return 0;
+      }
 
+      debugPrint('_estimateWaitMinutes: Found ${snap.docs.length} waiting items');
       var collected = 0;
       var items = 0;
       for (final doc in snap.docs) {
@@ -116,22 +186,35 @@ class UserHomeProvider extends ChangeNotifier {
           items++;
         }
       }
-      if (items > 0) return (collected / items).ceil();
-      return snap.size * 10; // fallback estimate
-    } catch (_) {
+      if (items > 0) {
+        final avg = (collected / items).ceil();
+        debugPrint('_estimateWaitMinutes: Average wait time: $avg minutes');
+        return avg;
+      }
+      final fallback = snap.size * 10;
+      debugPrint('_estimateWaitMinutes: Using fallback estimate: $fallback minutes');
+      return fallback;
+    } catch (e) {
+      debugPrint('_estimateWaitMinutes: Error estimating wait time: $e');
+      debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
+      // Return 0 if queue read fails - users can still see salons without wait time
       return 0;
     }
   }
 
   Future<Set<String>> _loadFavoriteIds() async {
-    if (userId.isEmpty) return {};
+    if (userId.isEmpty) {
+      debugPrint('_loadFavoriteIds: userId is empty, returning empty set');
+      return {};
+    }
     try {
+      debugPrint('_loadFavoriteIds: Loading favorites for userId: $userId');
       final snap = await _firestore
           .collection('users')
           .doc(userId)
           .collection('favorites')
           .get();
-      return snap.docs
+      final favorites = snap.docs
           .map((doc) {
             final data = doc.data();
             final salonId = data['salonId'];
@@ -140,7 +223,11 @@ class UserHomeProvider extends ChangeNotifier {
           })
           .where((id) => id.isNotEmpty)
           .toSet();
-    } catch (_) {
+      debugPrint('_loadFavoriteIds: Loaded ${favorites.length} favorites');
+      return favorites;
+    } catch (e) {
+      debugPrint('_loadFavoriteIds: Error loading favorites: $e');
+      debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
       return {};
     }
   }

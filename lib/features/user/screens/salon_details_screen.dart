@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/user/providers/salon_details_provider.dart';
 import 'package:cutline/routes/app_router.dart';
@@ -566,15 +567,6 @@ class _BarberCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(barber.skills, style: CutlineTextStyles.caption),
-          const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.star, color: CutlineColors.accent, size: 16),
-              const SizedBox(width: 4),
-              Text('${barber.rating}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-            ],
-          ),
           const SizedBox(height: 10),
           Text(
             barber.isAvailable ? 'Available' : 'Unavailable',
@@ -584,17 +576,15 @@ class _BarberCard extends StatelessWidget {
               fontSize: 13,
             ),
           ),
-          if (barber.isAvailable) ...[
-            const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.people_alt_rounded, color: CutlineColors.primary, size: 14),
-                const SizedBox(width: 4),
-                Text('${barber.waitingClients} waiting', style: CutlineTextStyles.caption),
-              ],
-            ),
-          ],
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.people_alt_rounded, color: CutlineColors.primary, size: 14),
+              const SizedBox(width: 4),
+              Text('${barber.waitingClients} waiting', style: CutlineTextStyles.caption),
+            ],
+          ),
         ],
       ),
       ),
@@ -682,26 +672,6 @@ class _BarberProfileSheet extends StatelessWidget {
                         style: CutlineTextStyles.subtitle,
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 20),
-                      // Rating
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: CutlineColors.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.star, color: CutlineColors.accent, size: 24),
-                            const SizedBox(width: 8),
-                            Text(
-                              '${barber.rating}',
-                              style: CutlineTextStyles.title.copyWith(fontSize: 20),
-                            ),
-                          ],
-                        ),
-                      ),
                       const SizedBox(height: 24),
                       // Availability Status
                       Container(
@@ -730,28 +700,27 @@ class _BarberProfileSheet extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            if (barber.isAvailable)
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    'Waiting',
-                                    style: CutlineTextStyles.caption,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.people_alt_rounded, 
-                                          color: CutlineColors.primary, size: 18),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '${barber.waitingClients}',
-                                        style: CutlineTextStyles.subtitleBold,
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  'Waiting',
+                                  style: CutlineTextStyles.caption,
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.people_alt_rounded, 
+                                        color: CutlineColors.primary, size: 18),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${barber.waitingClients}',
+                                      style: CutlineTextStyles.subtitleBold,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
@@ -957,7 +926,7 @@ class ComboOfferCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${displayCombo.emoji} ${displayCombo.name}',
+                      displayCombo.name,
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -969,17 +938,6 @@ class ComboOfferCard extends StatelessWidget {
                       displayCombo.services,
                       style: const TextStyle(
                           color: Colors.white70, fontSize: 14),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      displayCombo.highlight.isNotEmpty
-                          ? displayCombo.highlight
-                          : 'Special offer',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
                     ),
                   ],
                 ),
@@ -1126,7 +1084,7 @@ class ServicesSection extends StatelessWidget {
 }
 
 // Live queue + animated cards.
-class LiveQueueSection extends StatelessWidget {
+class LiveQueueSection extends StatefulWidget {
   final int waitMinutes;
   final List<SalonQueueEntry> queue;
   final String? salonId;
@@ -1139,9 +1097,116 @@ class LiveQueueSection extends StatelessWidget {
   });
 
   @override
+  State<LiveQueueSection> createState() => _LiveQueueSectionState();
+}
+
+class _LiveQueueSectionState extends State<LiveQueueSection> {
+  @override
   Widget build(BuildContext context) {
-    final waitLabel = waitMinutes <= 0 ? 'No wait' : '≈ $waitMinutes mins';
-    final nowServing = queue.firstWhere(
+    return _LiveQueueContent(
+      waitMinutes: widget.waitMinutes,
+      queue: widget.queue,
+      salonId: widget.salonId,
+    );
+  }
+}
+
+class _LiveQueueContent extends StatefulWidget {
+  final int waitMinutes;
+  final List<SalonQueueEntry> queue;
+  final String? salonId;
+
+  const _LiveQueueContent({
+    required this.waitMinutes,
+    required this.queue,
+    this.salonId,
+  });
+
+  @override
+  State<_LiveQueueContent> createState() => _LiveQueueContentState();
+}
+
+class _LiveQueueContentState extends State<_LiveQueueContent> {
+  Timer? _progressTimer;
+  double _progress = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _startProgressTimer();
+  }
+
+  @override
+  void didUpdateWidget(_LiveQueueContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.queue != widget.queue) {
+      _updateProgress();
+    }
+  }
+
+  @override
+  void dispose() {
+    _progressTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startProgressTimer() {
+    _progressTimer?.cancel();
+    _updateProgress();
+    _progressTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        _updateProgress();
+      }
+    });
+  }
+
+  void _updateProgress() {
+    final nowServing = widget.queue.firstWhere(
+      (e) => e.isServing,
+      orElse: () => const SalonQueueEntry(
+        id: '',
+        customerName: '',
+        barberName: '',
+        service: '',
+        status: '',
+        waitMinutes: 0,
+      ),
+    );
+
+    if (!nowServing.isServing || nowServing.customerName.isEmpty) {
+      if (_progress != 0.0) {
+        setState(() => _progress = 0.0);
+      }
+      return;
+    }
+
+    // Calculate progress based on service duration and elapsed time
+    final serviceDuration = nowServing.waitMinutes > 0 
+        ? nowServing.waitMinutes 
+        : 30; // Default 30 minutes if duration not available
+    
+    double newProgress = 0.0;
+    
+    if (nowServing.dateTime != null) {
+      final startTime = nowServing.dateTime!;
+      final now = DateTime.now();
+      final elapsed = now.difference(startTime).inMinutes;
+      newProgress = (elapsed / serviceDuration).clamp(0.0, 1.0);
+    } else {
+      // If no start time, use a default progress based on waitMinutes
+      // Assume service started recently and show minimal progress
+      newProgress = 0.1;
+    }
+
+    if ((newProgress - _progress).abs() > 0.01) {
+      setState(() => _progress = newProgress);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final waitLabel = widget.waitMinutes <= 0 ? 'No wait' : '≈ ${widget.waitMinutes} mins';
+    final nowServing = widget.queue.firstWhere(
       (e) => e.isServing,
       orElse: () => const SalonQueueEntry(
         id: '',
@@ -1152,7 +1217,7 @@ class LiveQueueSection extends StatelessWidget {
         waitMinutes: 0,
       ),
     );
-    final waiting = queue.where((e) => e.isWaiting).toList()
+    final waiting = widget.queue.where((e) => e.isWaiting).toList()
       ..sort(_compareQueueEntries);
     return Padding(
       padding: CutlineSpacing.section,
@@ -1220,8 +1285,8 @@ class LiveQueueSection extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 8),
-                const LinearProgressIndicator(
-                  value: 0.65,
+                LinearProgressIndicator(
+                  value: nowServing.isServing && nowServing.customerName.isNotEmpty ? _progress : 0.0,
                   backgroundColor: Colors.white24,
                   color: Colors.white,
                   minHeight: 6,
@@ -1243,12 +1308,12 @@ class LiveQueueSection extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('Waiting for Service', style: CutlineTextStyles.subtitleBold),
-                TextButton(
+                  TextButton(
                   onPressed: () {
                     Navigator.pushNamed(
                       context,
                       AppRoutes.waitingCustomers,
-                      arguments: salonId,
+                      arguments: widget.salonId,
                     );
                   },
                   child: const Text('See all', style: CutlineTextStyles.link),

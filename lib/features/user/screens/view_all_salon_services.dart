@@ -191,11 +191,6 @@ class _ComboOfferCard extends StatelessWidget {
               Text(offer.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 6),
               Text(offer.details, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-              if (offer.discountLabel.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(offer.discountLabel,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
-              ],
             ],
           ),
           Column(

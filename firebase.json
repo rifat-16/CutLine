@@ -1,1 +1,52 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"cutline-526aa","appId":"1:766335706711:android:c677e50e1d598778b06512","fileOutput":"android/app/google-services.json"}},"ios":{"default":{"projectId":"cutline-526aa","appId":"1:766335706711:ios:89abe79810720f1cb06512","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}},"dart":{"lib/firebase_options.dart":{"projectId":"cutline-526aa","configurations":{"android":"1:766335706711:android:c677e50e1d598778b06512","ios":"1:766335706711:ios:89abe79810720f1cb06512","web":"1:766335706711:web:aa1ab9c695932fc9b06512"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "cutline-526aa",
+          "appId": "1:766335706711:android:c677e50e1d598778b06512",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "cutline-526aa",
+          "appId": "1:766335706711:ios:89abe79810720f1cb06512",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "cutline-526aa",
+          "configurations": {
+            "android": "1:766335706711:android:c677e50e1d598778b06512",
+            "ios": "1:766335706711:ios:89abe79810720f1cb06512",
+            "web": "1:766335706711:web:aa1ab9c695932fc9b06512"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
+      ]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}

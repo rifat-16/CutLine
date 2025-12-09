@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart';
 
 /// Centralized queue fetching/merging logic shared by owner home and manage queue.
 class OwnerQueueService {
@@ -17,66 +18,90 @@ class OwnerQueueService {
   Future<List<OwnerQueueItem>> loadQueue(String ownerId) async {
     final queue = await _loadQueueCollection(ownerId);
     final bookings = await _loadBookingBackfill(ownerId);
+    final completed = await _loadCompletedToday(ownerId);
     final merged = _mergeQueue(queue, bookings);
-    await _hydrateCustomerAvatars(merged);
-    return merged;
+    // Merge completed items
+    final allMerged = _mergeQueue(merged, completed);
+    // Load avatars - this will update the items in place
+    await _hydrateCustomerAvatars(allMerged);
+    return allMerged;
   }
 
   Future<void> _hydrateCustomerAvatars(List<OwnerQueueItem> items) async {
     final itemsNeedingAvatars = items
         .where((item) => item.customerAvatar.isEmpty && item.customerUid.isNotEmpty)
         .toList();
-    if (itemsNeedingAvatars.isEmpty) return;
+    if (itemsNeedingAvatars.isEmpty) {
+      debugPrint('_hydrateCustomerAvatars: No items need avatars');
+      return;
+    }
 
-    final batchSize = 10;
-    for (int i = 0; i < itemsNeedingAvatars.length; i += batchSize) {
-      final batch = itemsNeedingAvatars.skip(i).take(batchSize).toList();
-      final uids = batch.map((item) => item.customerUid).toList();
+    debugPrint('_hydrateCustomerAvatars: Loading avatars for ${itemsNeedingAvatars.length} items');
 
+    // Use individual document reads instead of whereIn query to work with current rules
+    // This is more compatible with Firestore security rules
+    final uniqueUids = itemsNeedingAvatars
+        .map((item) => item.customerUid)
+        .where((uid) => uid.isNotEmpty)
+        .toSet()
+        .toList();
+
+    debugPrint('_hydrateCustomerAvatars: Fetching avatars for ${uniqueUids.length} unique UIDs');
+
+    final avatarMap = <String, String>{};
+    
+    // Read documents individually - this works better with Firestore rules
+    for (final uid in uniqueUids) {
       try {
-        final snap = await _firestore
-            .collection('users')
-            .where(FieldPath.documentId, whereIn: uids)
-            .get();
-
-        final avatarMap = <String, String>{};
-        for (final doc in snap.docs) {
-          final data = doc.data();
+        final doc = await _firestore.collection('users').doc(uid).get();
+        if (doc.exists) {
+          final data = doc.data() ?? {};
           final photoUrl = (data['photoUrl'] as String?) ??
               (data['avatarUrl'] as String?) ??
               (data['customerAvatar'] as String?) ??
               '';
           if (photoUrl.isNotEmpty) {
-            avatarMap[doc.id] = photoUrl;
+            avatarMap[uid] = photoUrl;
+            debugPrint('_hydrateCustomerAvatars: Found avatar for $uid: $photoUrl');
+          } else {
+            debugPrint('_hydrateCustomerAvatars: No avatar found for $uid');
           }
+        } else {
+          debugPrint('_hydrateCustomerAvatars: User document does not exist for $uid');
         }
-
-        for (final item in batch) {
-          final avatar = avatarMap[item.customerUid];
-          if (avatar != null && avatar.isNotEmpty) {
-            final index = items.indexWhere((i) => i.id == item.id);
-            if (index != -1) {
-              items[index] = OwnerQueueItem(
-                id: items[index].id,
-                customerName: items[index].customerName,
-                service: items[index].service,
-                barberName: items[index].barberName,
-                price: items[index].price,
-                status: items[index].status,
-                waitMinutes: items[index].waitMinutes,
-                slotLabel: items[index].slotLabel,
-                customerPhone: items[index].customerPhone,
-                note: items[index].note,
-                customerAvatar: avatar,
-                customerUid: items[index].customerUid,
-              );
-            }
-          }
-        }
-      } catch (_) {
-        // Ignore errors in avatar fetching
+      } catch (e) {
+        debugPrint('_hydrateCustomerAvatars: Error fetching avatar for $uid: $e');
+        // Continue with other UIDs
       }
     }
+
+    // Update items with avatars
+    int updatedCount = 0;
+    for (final item in itemsNeedingAvatars) {
+      final avatar = avatarMap[item.customerUid];
+      if (avatar != null && avatar.isNotEmpty) {
+        final index = items.indexWhere((i) => i.id == item.id);
+        if (index != -1) {
+          items[index] = OwnerQueueItem(
+            id: items[index].id,
+            customerName: items[index].customerName,
+            service: items[index].service,
+            barberName: items[index].barberName,
+            price: items[index].price,
+            status: items[index].status,
+            waitMinutes: items[index].waitMinutes,
+            slotLabel: items[index].slotLabel,
+            customerPhone: items[index].customerPhone,
+            note: items[index].note,
+            customerAvatar: avatar,
+            customerUid: items[index].customerUid,
+          );
+          updatedCount++;
+        }
+      }
+    }
+    debugPrint('_hydrateCustomerAvatars: Updated $updatedCount items with avatars');
+    debugPrint('_hydrateCustomerAvatars: Completed');
   }
 
   Future<void> updateStatus({
@@ -206,15 +231,22 @@ class OwnerQueueService {
             .collection('queue')
             .where('status', whereIn: ['waiting', 'serving'])
             .get();
-      } catch (_) {
+      } catch (e) {
+        debugPrint('Error loading queue with whereIn: $e');
         // Fallback: load all and filter
-        snap = await _firestore
-            .collection('salons')
-            .doc(ownerId)
-            .collection('queue')
-            .get();
+        try {
+          snap = await _firestore
+              .collection('salons')
+              .doc(ownerId)
+              .collection('queue')
+              .get();
+        } catch (e2) {
+          debugPrint('Error loading queue collection: $e2');
+          rethrow; // Re-throw to be caught by outer catch
+        }
       }
     } catch (_) {
+      // Fallback to top-level queue collection (for backward compatibility)
       try {
         snap = await _firestore
             .collection('queue')
@@ -242,7 +274,8 @@ class OwnerQueueService {
             .collection('bookings')
             .where('status', whereIn: ['waiting', 'serving'])
             .get();
-      } catch (_) {
+      } catch (e) {
+        debugPrint('Error loading bookings with whereIn: $e');
         // Fallback: try loading all and filter
         try {
           snap = await _firestore
@@ -250,7 +283,8 @@ class OwnerQueueService {
               .doc(ownerId)
               .collection('bookings')
               .get();
-        } catch (_) {
+        } catch (e2) {
+          debugPrint('Error loading bookings collection: $e2');
           return const [];
         }
       }
@@ -259,9 +293,135 @@ class OwnerQueueService {
           .whereType<OwnerQueueItem>()
           .where((item) => item.status != OwnerQueueStatus.done) // Filter out completed items
           .toList();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Error in _loadBookingBackfill: $e');
       return const [];
     }
+  }
+
+  /// Load today's completed queue items and bookings
+  Future<List<OwnerQueueItem>> _loadCompletedToday(String ownerId) async {
+    final today = DateTime.now();
+    final todayStart = DateTime(today.year, today.month, today.day);
+    final todayEnd = todayStart.add(const Duration(days: 1));
+    final todayStartTimestamp = Timestamp.fromDate(todayStart);
+    final todayEndTimestamp = Timestamp.fromDate(todayEnd);
+    final todayStr = DateFormat('yyyy-MM-dd').format(today);
+
+    final completedItems = <OwnerQueueItem>[];
+
+    try {
+      // Load completed items from queue collection
+      QuerySnapshot<Map<String, dynamic>> queueSnap;
+      try {
+        queueSnap = await _firestore
+            .collection('salons')
+            .doc(ownerId)
+            .collection('queue')
+            .where('status', whereIn: ['done', 'completed'])
+            .get();
+      } catch (e) {
+        debugPrint('Error loading completed queue with whereIn: $e');
+        // Fallback: load all and filter
+        try {
+          queueSnap = await _firestore
+              .collection('salons')
+              .doc(ownerId)
+              .collection('queue')
+              .get();
+        } catch (e2) {
+          debugPrint('Error loading queue collection for completed: $e2');
+          queueSnap = await _firestore.collection('queue').get();
+        }
+      }
+
+      for (final doc in queueSnap.docs) {
+        final data = doc.data();
+        final status = (data['status'] as String?) ?? '';
+        if (status != 'done' && status != 'completed') continue;
+
+        // Check if completed today
+        bool isToday = false;
+        final completedAt = data['completedAt'];
+        final updatedAt = data['updatedAt'];
+        final date = data['date'] as String?;
+
+        if (completedAt != null && completedAt is Timestamp) {
+          final completedDate = completedAt.toDate();
+          isToday = completedDate.isAfter(todayStart) && completedDate.isBefore(todayEnd);
+        } else if (date != null && date == todayStr) {
+          isToday = true;
+        } else if (updatedAt != null && updatedAt is Timestamp) {
+          final updatedDate = updatedAt.toDate();
+          isToday = updatedDate.isAfter(todayStart) && updatedDate.isBefore(todayEnd);
+        }
+
+        if (isToday) {
+          final item = _mapQueue(doc.id, data);
+          if (item != null) {
+            completedItems.add(item);
+          }
+        }
+      }
+
+      // Load completed items from bookings collection
+      QuerySnapshot<Map<String, dynamic>> bookingSnap;
+      try {
+        bookingSnap = await _firestore
+            .collection('salons')
+            .doc(ownerId)
+            .collection('bookings')
+            .where('status', whereIn: ['completed', 'done'])
+            .get();
+      } catch (e) {
+        debugPrint('Error loading completed bookings with whereIn: $e');
+        // Fallback: load all and filter
+        bookingSnap = await _firestore
+            .collection('salons')
+            .doc(ownerId)
+            .collection('bookings')
+            .get();
+      }
+
+      for (final doc in bookingSnap.docs) {
+        final data = doc.data();
+        final status = (data['status'] as String?) ?? '';
+        if (status != 'completed' && status != 'done') continue;
+
+        // Check if completed today
+        bool isToday = false;
+        final completedAt = data['completedAt'];
+        final dateTime = data['dateTime'];
+        final updatedAt = data['updatedAt'];
+        final date = data['date'] as String?;
+
+        if (completedAt != null && completedAt is Timestamp) {
+          final completedDate = completedAt.toDate();
+          isToday = completedDate.isAfter(todayStart) && completedDate.isBefore(todayEnd);
+        } else if (dateTime != null && dateTime is Timestamp) {
+          final bookingDate = dateTime.toDate();
+          isToday = bookingDate.isAfter(todayStart) && bookingDate.isBefore(todayEnd);
+        } else if (date != null && date == todayStr) {
+          isToday = true;
+        } else if (updatedAt != null && updatedAt is Timestamp) {
+          final updatedDate = updatedAt.toDate();
+          isToday = updatedDate.isAfter(todayStart) && updatedDate.isBefore(todayEnd);
+        }
+
+        if (isToday) {
+          final item = _mapBooking(doc.id, data);
+          if (item != null && item.status == OwnerQueueStatus.done) {
+            completedItems.add(item);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error in _loadCompletedToday: $e');
+      // Return whatever we've collected so far
+    }
+
+    debugPrint('_loadCompletedToday: Loaded ${completedItems.length} completed items for today');
+    return completedItems;
   }
 
   List<OwnerQueueItem> _mergeQueue(
@@ -294,6 +454,7 @@ class OwnerQueueService {
           (data['photoUrl'] as String?) ??
           '',
       customerUid: (data['customerUid'] as String?) ??
+          (data['userId'] as String?) ??
           (data['customerId'] as String?) ??
           (data['uid'] as String?) ??
           '',
@@ -340,6 +501,7 @@ class OwnerQueueService {
           (data['photoUrl'] as String?) ??
           '',
       customerUid: (data['customerUid'] as String?) ??
+          (data['userId'] as String?) ??
           (data['customerId'] as String?) ??
           (data['uid'] as String?) ??
           '',
