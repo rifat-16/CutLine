@@ -134,19 +134,32 @@ class OwnerQueueService {
         bookingData: bookingData,
       );
 
+      // Set completedAt timestamp when status is set to done
+      if (status == OwnerQueueStatus.done) {
+        merged['completedAt'] = FieldValue.serverTimestamp();
+      }
+
       await queueRef.set(merged, SetOptions(merge: true));
     } catch (_) {
       // best-effort status update even if merge fails
-      await queueRef.set({'status': queueStatus}, SetOptions(merge: true));
+      final updateData = <String, dynamic>{'status': queueStatus};
+      if (status == OwnerQueueStatus.done) {
+        updateData['completedAt'] = FieldValue.serverTimestamp();
+      }
+      await queueRef.set(updateData, SetOptions(merge: true));
     }
 
     // Mirror to bookings if the id matches a booking doc.
+    final bookingUpdateData = <String, dynamic>{'status': bookingStatus};
+    if (status == OwnerQueueStatus.done) {
+      bookingUpdateData['completedAt'] = FieldValue.serverTimestamp();
+    }
     await _firestore
         .collection('salons')
         .doc(ownerId)
         .collection('bookings')
         .doc(id)
-        .set({'status': bookingStatus}, SetOptions(merge: true));
+        .set(bookingUpdateData, SetOptions(merge: true));
 
     _queueUpdates.add(null);
   }
@@ -229,7 +242,7 @@ class OwnerQueueService {
             .collection('salons')
             .doc(ownerId)
             .collection('queue')
-            .where('status', whereIn: ['waiting', 'serving'])
+            .where('status', whereIn: ['waiting', 'turn_ready', 'arrived', 'serving'])
             .get();
       } catch (e) {
         debugPrint('Error loading queue with whereIn: $e');
@@ -259,7 +272,7 @@ class OwnerQueueService {
     return snap.docs
         .map((doc) => _mapQueue(doc.id, doc.data()))
         .whereType<OwnerQueueItem>()
-        .where((item) => item.status != OwnerQueueStatus.done) // Filter out completed items
+        .where((item) => item.status != OwnerQueueStatus.done && item.status != OwnerQueueStatus.noShow) // Filter out completed and no-show items
         .toList();
   }
 
@@ -272,7 +285,7 @@ class OwnerQueueService {
             .collection('salons')
             .doc(ownerId)
             .collection('bookings')
-            .where('status', whereIn: ['waiting', 'serving'])
+            .where('status', whereIn: ['waiting', 'turn_ready', 'arrived', 'serving'])
             .get();
       } catch (e) {
         debugPrint('Error loading bookings with whereIn: $e');
@@ -291,7 +304,7 @@ class OwnerQueueService {
       return snap.docs
           .map((doc) => _mapBooking(doc.id, doc.data()))
           .whereType<OwnerQueueItem>()
-          .where((item) => item.status != OwnerQueueStatus.done) // Filter out completed items
+          .where((item) => item.status != OwnerQueueStatus.done && item.status != OwnerQueueStatus.noShow) // Filter out completed and no-show items
           .toList();
     } catch (e) {
       debugPrint('Error in _loadBookingBackfill: $e');
@@ -348,12 +361,13 @@ class OwnerQueueService {
 
         if (completedAt != null && completedAt is Timestamp) {
           final completedDate = completedAt.toDate();
-          isToday = completedDate.isAfter(todayStart) && completedDate.isBefore(todayEnd);
+          isToday = !completedDate.isBefore(todayStart) && completedDate.isBefore(todayEnd);
         } else if (date != null && date == todayStr) {
           isToday = true;
         } else if (updatedAt != null && updatedAt is Timestamp) {
           final updatedDate = updatedAt.toDate();
-          isToday = updatedDate.isAfter(todayStart) && updatedDate.isBefore(todayEnd);
+          // If updatedAt is today and status is completed, assume it was completed today
+          isToday = !updatedDate.isBefore(todayStart) && updatedDate.isBefore(todayEnd);
         }
 
         if (isToday) {
@@ -397,15 +411,17 @@ class OwnerQueueService {
 
         if (completedAt != null && completedAt is Timestamp) {
           final completedDate = completedAt.toDate();
-          isToday = completedDate.isAfter(todayStart) && completedDate.isBefore(todayEnd);
+          isToday = !completedDate.isBefore(todayStart) && completedDate.isBefore(todayEnd);
         } else if (dateTime != null && dateTime is Timestamp) {
           final bookingDate = dateTime.toDate();
-          isToday = bookingDate.isAfter(todayStart) && bookingDate.isBefore(todayEnd);
+          // If booking dateTime is today and status is completed, include it
+          isToday = !bookingDate.isBefore(todayStart) && bookingDate.isBefore(todayEnd);
         } else if (date != null && date == todayStr) {
           isToday = true;
         } else if (updatedAt != null && updatedAt is Timestamp) {
           final updatedDate = updatedAt.toDate();
-          isToday = updatedDate.isAfter(todayStart) && updatedDate.isBefore(todayEnd);
+          // If updatedAt is today and status is completed, assume it was completed today
+          isToday = !updatedDate.isBefore(todayStart) && updatedDate.isBefore(todayEnd);
         }
 
         if (isToday) {
@@ -510,11 +526,17 @@ class OwnerQueueService {
 
   OwnerQueueStatus _statusFromString(String status) {
     switch (status) {
+      case 'turn_ready':
+        return OwnerQueueStatus.turnReady;
+      case 'arrived':
+        return OwnerQueueStatus.arrived;
       case 'serving':
         return OwnerQueueStatus.serving;
       case 'done':
       case 'completed':
         return OwnerQueueStatus.done;
+      case 'no_show':
+        return OwnerQueueStatus.noShow;
       default:
         return OwnerQueueStatus.waiting;
     }
@@ -522,10 +544,16 @@ class OwnerQueueService {
 
   String _bookingStatusString(OwnerQueueStatus status) {
     switch (status) {
+      case OwnerQueueStatus.turnReady:
+        return 'turn_ready';
+      case OwnerQueueStatus.arrived:
+        return 'arrived';
       case OwnerQueueStatus.serving:
         return 'serving';
       case OwnerQueueStatus.done:
         return 'completed';
+      case OwnerQueueStatus.noShow:
+        return 'no_show';
       case OwnerQueueStatus.waiting:
         return 'waiting';
     }

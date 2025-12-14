@@ -117,10 +117,16 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
     switch (status) {
       case OwnerQueueStatus.waiting:
         return 'Waiting';
+      case OwnerQueueStatus.turnReady:
+        return 'Turn Ready';
+      case OwnerQueueStatus.arrived:
+        return 'Arrived';
       case OwnerQueueStatus.serving:
         return 'Serving';
       case OwnerQueueStatus.done:
         return 'Completed';
+      case OwnerQueueStatus.noShow:
+        return 'No Show';
     }
   }
 }

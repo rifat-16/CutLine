@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:cutline/shared/services/booking_reminder_service.dart';
 
 class MyBookingProvider extends ChangeNotifier {
   MyBookingProvider({
@@ -15,6 +16,7 @@ class MyBookingProvider extends ChangeNotifier {
   final String userId;
   final String userEmail;
   final String userPhone;
+  final BookingReminderService _reminderService = BookingReminderService();
 
   bool _isLoading = false;
   String? _error;
@@ -73,6 +75,9 @@ class MyBookingProvider extends ChangeNotifier {
           .collection('bookings')
           .doc(booking.id)
           .set({'status': 'cancelled'}, SetOptions(merge: true));
+      
+      // Cancel the reminder notification for this booking
+      await _reminderService.cancelReminder(booking.id);
     } catch (_) {
       _setError('Could not cancel booking.');
     }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum OwnerQueueStatus { waiting, serving, done }
+enum OwnerQueueStatus { waiting, turnReady, arrived, serving, done, noShow }
 
 enum OwnerBookingStatus { upcoming, completed, cancelled }
 
@@ -68,6 +68,7 @@ class OwnerBooking {
   final DateTime dateTime;
   final OwnerBookingStatus status;
   final String paymentMethod;
+  final String barberName;
 
   const OwnerBooking({
     required this.id,
@@ -80,6 +81,7 @@ class OwnerBooking {
     required this.dateTime,
     required this.status,
     required this.paymentMethod,
+    this.barberName = '',
   });
 }
 
@@ -245,6 +247,7 @@ final List<OwnerBooking> kOwnerBookings = [
     dateTime: DateTime(2025, 1, 12, 14, 30),
     status: OwnerBookingStatus.upcoming,
     paymentMethod: 'Cash',
+    barberName: 'Alex',
   ),
   OwnerBooking(
     id: 'B2',
@@ -258,6 +261,7 @@ final List<OwnerBooking> kOwnerBookings = [
     dateTime: DateTime(2025, 1, 11, 16, 0),
     status: OwnerBookingStatus.completed,
     paymentMethod: 'Card',
+    barberName: 'Alex',
   ),
   OwnerBooking(
     id: 'B3',
@@ -271,6 +275,7 @@ final List<OwnerBooking> kOwnerBookings = [
     dateTime: DateTime(2025, 1, 10, 11, 0),
     status: OwnerBookingStatus.cancelled,
     paymentMethod: 'bKash',
+    barberName: 'Sara',
   ),
 ];
 

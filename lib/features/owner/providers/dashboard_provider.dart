@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/providers/dashboard_period.dart';
+import 'package:cutline/features/owner/services/owner_queue_service.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -10,11 +11,14 @@ class DashboardProvider extends ChangeNotifier {
   DashboardProvider({
     required AuthProvider authProvider,
     FirebaseFirestore? firestore,
+    OwnerQueueService? queueService,
   })  : _authProvider = authProvider,
-        _firestore = firestore ?? FirebaseFirestore.instance;
+        _firestore = firestore ?? FirebaseFirestore.instance,
+        _queueService = queueService ?? OwnerQueueService(firestore: firestore);
 
   final AuthProvider _authProvider;
   final FirebaseFirestore _firestore;
+  final OwnerQueueService _queueService;
 
   bool _isLoading = false;
   String? _error;
@@ -39,7 +43,8 @@ class DashboardProvider extends ChangeNotifier {
   void setPeriod(DashboardPeriod period) {
     if (_period == period) return;
     _period = period;
-    notifyListeners();
+    // Reload data when period changes
+    load();
   }
 
   Future<void> load() async {
@@ -81,39 +86,36 @@ class DashboardProvider extends ChangeNotifier {
         // Continue with empty bookings
       }
       
-      // Load queue
+      // Load queue using OwnerQueueService (includes completed items)
       List<OwnerQueueItem> queue = [];
       try {
-        debugPrint('DashboardProvider: Loading queue from salon collection');
-        final queueSnap = await _firestore
-            .collection('salons')
-            .doc(ownerId)
-            .collection('queue')
-            .get();
-        
-        debugPrint('DashboardProvider: Found ${queueSnap.docs.length} queue documents');
-        
-        queue = queueSnap.docs.map((d) => _mapQueue(d.data())).toList();
-        
-        debugPrint('DashboardProvider: Successfully mapped ${queue.length} queue items');
+        debugPrint('DashboardProvider: Loading queue using OwnerQueueService');
+        queue = await _queueService.loadQueue(ownerId);
+        debugPrint('DashboardProvider: Successfully loaded ${queue.length} queue items');
       } catch (e) {
         debugPrint('DashboardProvider: Error loading queue: $e');
         debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
         // Continue with empty queue
       }
 
-      _bookings = bookings;
+      // Filter bookings and queue by selected period BEFORE computing metrics
+      final periodFilter = _getPeriodFilter(_period);
+      final filteredBookings = _filterBookingsByPeriod(bookings, periodFilter);
+      final filteredQueue = _filterQueueByPeriod(queue, periodFilter);
       
-      // Compute metrics and performance data
+      _bookings = filteredBookings;
+      
+      // Compute metrics and performance data using FILTERED data
       try {
-        _computeMetrics(bookings, queue);
-        _services = _computeServicePerformance(bookings);
-        _barbers = _computeBarberPerformance(queue);
-        _bookingStatusCounts = _countBookings(bookings);
-        _queueStatusCounts = _countQueue(queue);
+        _computeMetrics(filteredBookings, filteredQueue);
+        _services = _computeServicePerformance(filteredBookings);
+        _barbers = _computeBarberPerformance(filteredBookings);
+        _bookingStatusCounts = _countBookings(filteredBookings);
+        _queueStatusCounts = _countQueue(filteredQueue);
         
         debugPrint('DashboardProvider: Successfully computed metrics');
         debugPrint('DashboardProvider: Total revenue: ${_metrics.totalRevenue}, Total bookings: ${_metrics.totalBookings}');
+        debugPrint('DashboardProvider: Barber performance - ${_barbers.length} barbers found');
       } catch (e, stackTrace) {
         debugPrint('DashboardProvider: Error computing metrics: $e');
         debugPrint('Stack trace: $stackTrace');
@@ -186,6 +188,7 @@ class DashboardProvider extends ChangeNotifier {
         paymentMethod: (data['paymentMethod'] as String?)?.trim() ??
             (data['payment'] as String?)?.trim() ??
             'Cash',
+        barberName: (data['barberName'] as String?)?.trim() ?? '',
       );
     } catch (e, stackTrace) {
       debugPrint('_mapBooking: Error mapping booking $id: $e');
@@ -194,29 +197,63 @@ class DashboardProvider extends ChangeNotifier {
     }
   }
 
-  OwnerQueueItem _mapQueue(Map<String, dynamic> data) {
-    final statusString = (data['status'] as String?) ?? 'waiting';
-    final status = _queueStatusFromString(statusString);
-    return OwnerQueueItem(
-      id: (data['id'] as String?) ?? '',
-      customerName: (data['customerName'] as String?) ?? 'Customer',
-      service: (data['service'] as String?) ?? 'Service',
-      barberName: (data['barberName'] as String?) ?? 'Barber',
-      price: (data['price'] as num?)?.toInt() ?? 0,
-      status: status,
-      waitMinutes: (data['waitMinutes'] as num?)?.toInt() ?? 0,
-      slotLabel: (data['slotLabel'] as String?) ?? '',
-      customerPhone: (data['customerPhone'] as String?) ?? '',
-      note: data['note'] as String?,
-      customerAvatar: (data['customerAvatar'] as String?) ??
-          (data['customerPhotoUrl'] as String?) ??
-          (data['photoUrl'] as String?) ??
-          '',
-      customerUid: (data['customerUid'] as String?) ??
-          (data['customerId'] as String?) ??
-          (data['uid'] as String?) ??
-          '',
-    );
+  /// Filter bookings by the selected period
+  List<OwnerBooking> _filterBookingsByPeriod(
+      List<OwnerBooking> bookings, PeriodFilter filter) {
+    return bookings.where((booking) {
+      return booking.dateTime.isAfter(filter.start) &&
+          booking.dateTime.isBefore(filter.end);
+    }).toList();
+  }
+
+  /// Filter queue items by the selected period
+  /// Note: Active queue items (waiting/serving) are always shown as they represent current state
+  /// Completed items are filtered - OwnerQueueService currently only loads today's completed items
+  /// For other periods, completed queue items will be limited to today only
+  List<OwnerQueueItem> _filterQueueByPeriod(
+      List<OwnerQueueItem> queue, PeriodFilter filter) {
+    // For active items (waiting/serving), always include them as they're current state
+    // For completed items, OwnerQueueService._loadCompletedToday only loads today's items
+    // So if period is today, include all completed items; otherwise, exclude them
+    if (_period == DashboardPeriod.today) {
+      return queue; // Include all items including today's completed
+    } else {
+      // For other periods, only show active queue items
+      // (Completed items are only available for today due to service limitation)
+      return queue.where((item) => 
+        item.status != OwnerQueueStatus.done
+      ).toList();
+    }
+  }
+
+  /// Get date range filter based on selected period
+  PeriodFilter _getPeriodFilter(DashboardPeriod period) {
+    final now = DateTime.now();
+    DateTime start;
+    DateTime end;
+
+    switch (period) {
+      case DashboardPeriod.today:
+        start = DateTime(now.year, now.month, now.day);
+        end = start.add(const Duration(days: 1));
+        break;
+      case DashboardPeriod.week:
+        final weekday = now.weekday;
+        start = DateTime(now.year, now.month, now.day)
+            .subtract(Duration(days: weekday - 1));
+        end = start.add(const Duration(days: 7));
+        break;
+      case DashboardPeriod.month:
+        start = DateTime(now.year, now.month, 1);
+        end = DateTime(now.year, now.month + 1, 1);
+        break;
+      case DashboardPeriod.year:
+        start = DateTime(now.year, 1, 1);
+        end = DateTime(now.year + 1, 1, 1);
+        break;
+    }
+
+    return PeriodFilter(start: start, end: end);
   }
 
   void _computeMetrics(
@@ -297,18 +334,27 @@ class DashboardProvider extends ChangeNotifier {
   }
 
   List<BarberPerformance> _computeBarberPerformance(
-      List<OwnerQueueItem> queue) {
+      List<OwnerBooking> bookings) {
     final counts = <String, int>{};
-    for (final q in queue) {
-      counts[q.barberName] = (counts[q.barberName] ?? 0) + 1;
+    // Count completed bookings per barber
+    for (final booking in bookings) {
+      if (booking.status == OwnerBookingStatus.completed && 
+          booking.barberName.isNotEmpty) {
+        counts[booking.barberName] = (counts[booking.barberName] ?? 0) + 1;
+      }
     }
-    return counts.entries
+    
+    final barberList = counts.entries
         .map((e) => BarberPerformance(
               name: e.key,
               served: e.value,
               satisfaction: '—',
             ))
-        .toList();
+        .toList()
+      ..sort((a, b) => b.served.compareTo(a.served)); // Sort by served count descending
+      
+    debugPrint('_computeBarberPerformance: Found ${barberList.length} barbers with completed bookings');
+    return barberList;
   }
 
   OwnerBookingStatus _statusFromString(String status) {
@@ -366,6 +412,14 @@ class DashboardProvider extends ChangeNotifier {
     _error = message;
     notifyListeners();
   }
+}
+
+/// Helper class for period filtering
+class PeriodFilter {
+  final DateTime start;
+  final DateTime end;
+
+  PeriodFilter({required this.start, required this.end});
 }
 
 class DashboardMetrics {

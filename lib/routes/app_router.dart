@@ -38,6 +38,7 @@ import 'package:cutline/features/user/screens/user_edit_profile_screen.dart';
 import 'package:cutline/features/user/screens/user_profile_screen.dart';
 import 'package:cutline/features/user/screens/view_all_salon_services.dart';
 import 'package:cutline/features/user/screens/waiting_customer_screen.dart';
+import 'package:cutline/features/user/screens/turn_ready_screen.dart';
 import 'package:flutter/material.dart';
 
 import '../features/owner/screens/owner_chats_screen.dart';
@@ -65,6 +66,7 @@ class AppRoutes {
   static const viewAllServices = '/view-all-services';
   static const salonGallery = '/salon-gallery';
   static const waitingCustomers = '/waiting-customers';
+  static const turnReady = '/turn-ready';
   static const myBookings = '/my-bookings';
   static const userChats = '/user-chats';
   static const userProfile = '/user-profile';
@@ -225,6 +227,17 @@ class AppRouter {
         final salonIdArg = settings.arguments;
         final salonId = salonIdArg is String ? salonIdArg : null;
         return _page(WaitingListScreen(salonId: salonId), settings);
+      case AppRoutes.turnReady:
+        final args = settings.arguments;
+        final parsedArgs = args is TurnReadyArgs ? args : null;
+        return _page(
+          TurnReadyScreen(
+            bookingId: parsedArgs?.bookingId ?? '',
+            salonId: parsedArgs?.salonId ?? '',
+            salonName: parsedArgs?.salonName ?? 'Salon',
+          ),
+          settings,
+        );
       case AppRoutes.myBookings:
         return _page(const MyBookingScreen(), settings);
       case AppRoutes.userChats:
@@ -368,5 +381,17 @@ class SalonGalleryArgs {
     this.photos = const [],
     this.uploadedCount = 7,
     this.totalLimit = 10,
+  });
+}
+
+class TurnReadyArgs {
+  final String bookingId;
+  final String salonId;
+  final String salonName;
+
+  const TurnReadyArgs({
+    required this.bookingId,
+    required this.salonId,
+    required this.salonName,
   });
 }

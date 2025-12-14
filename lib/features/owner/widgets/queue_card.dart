@@ -166,24 +166,34 @@ class OwnerQueueCard extends StatelessWidget {
     switch (status) {
       case OwnerQueueStatus.waiting:
         return Colors.amber;
+      case OwnerQueueStatus.turnReady:
+        return Colors.orange;
+      case OwnerQueueStatus.arrived:
+        return Colors.blue;
       case OwnerQueueStatus.serving:
         return OwnerTheme.primary;
       case OwnerQueueStatus.done:
         return Colors.green;
+      case OwnerQueueStatus.noShow:
+        return Colors.red;
     }
-    return Colors.blueGrey;
   }
 
   String _statusLabel(OwnerQueueStatus status) {
     switch (status) {
       case OwnerQueueStatus.waiting:
         return 'Waiting';
+      case OwnerQueueStatus.turnReady:
+        return 'Turn Ready';
+      case OwnerQueueStatus.arrived:
+        return 'Arrived';
       case OwnerQueueStatus.serving:
         return 'Serving';
       case OwnerQueueStatus.done:
         return 'Completed';
+      case OwnerQueueStatus.noShow:
+        return 'No Show';
     }
-    return 'In queue';
   }
 
   String _initials(String input) {

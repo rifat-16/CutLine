@@ -3,9 +3,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cutline/shared/models/notification_payload.dart';
+import 'package:cutline/shared/services/booking_reminder_service.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/firebase_options.dart';
 import 'package:cutline/features/auth/models/user_role.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 /// Top-level background message handler
@@ -28,6 +30,8 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
+  final BookingReminderService _reminderService = BookingReminderService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   StreamSubscription<RemoteMessage>? _foregroundSubscription;
   Function(NotificationPayload)? _onNotificationTapped;
@@ -157,6 +161,64 @@ class NotificationService {
 
       // You can trigger UI updates here if needed
       debugPrint('Notification payload: ${payload.type} - ${payload.bookingId}');
+      
+      // Schedule reminder for booking_accepted notifications
+      final type = NotificationTypeExtension.fromString(payload.type);
+      if (type == NotificationType.bookingAccepted && 
+          payload.bookingId.isNotEmpty && 
+          payload.salonId != null) {
+        _scheduleBookingReminder(payload.salonId!, payload.bookingId);
+      }
+    }
+  }
+  
+  /// Schedule a reminder notification 30 minutes before booking time
+  Future<void> _scheduleBookingReminder(String salonId, String bookingId) async {
+    try {
+      // Fetch booking details from Firestore
+      final bookingDoc = await _firestore
+          .collection('salons')
+          .doc(salonId)
+          .collection('bookings')
+          .doc(bookingId)
+          .get();
+      
+      if (!bookingDoc.exists) {
+        debugPrint('NotificationService: Booking $bookingId not found');
+        return;
+      }
+      
+      final bookingData = bookingDoc.data();
+      if (bookingData == null) {
+        debugPrint('NotificationService: Booking data is null');
+        return;
+      }
+      
+      final date = (bookingData['date'] as String?)?.trim() ?? '';
+      final time = (bookingData['time'] as String?)?.trim() ?? '';
+      final salonName = (bookingData['salonName'] as String?)?.trim() ?? 'Salon';
+      
+      if (date.isEmpty || time.isEmpty) {
+        debugPrint('NotificationService: Missing date or time in booking data');
+        return;
+      }
+      
+      // Schedule the reminder
+      final scheduled = await _reminderService.scheduleReminder(
+        bookingId: bookingId,
+        salonName: salonName,
+        date: date,
+        time: time,
+        salonId: salonId,
+      );
+      
+      if (scheduled) {
+        debugPrint('NotificationService: Successfully scheduled reminder for booking $bookingId');
+      } else {
+        debugPrint('NotificationService: Failed to schedule reminder for booking $bookingId');
+      }
+    } catch (e) {
+      debugPrint('NotificationService: Error scheduling reminder: $e');
     }
   }
 
@@ -172,6 +234,14 @@ class NotificationService {
       if (!_shouldShowNotification(payload)) {
         debugPrint('Notification filtered out for current user role');
         return;
+      }
+      
+      // Schedule reminder for booking_accepted notifications
+      final type = NotificationTypeExtension.fromString(payload.type);
+      if (type == NotificationType.bookingAccepted && 
+          payload.bookingId.isNotEmpty && 
+          payload.salonId != null) {
+        _scheduleBookingReminder(payload.salonId!, payload.bookingId);
       }
       
       _navigateToScreen(payload);
@@ -199,6 +269,10 @@ class NotificationService {
       case NotificationType.barberWaiting:
         // Only show to barbers
         return _currentUserRole == UserRole.barber;
+      
+      case NotificationType.turnReady:
+        // Only show to customers/users
+        return _currentUserRole == UserRole.customer;
       
       case NotificationType.unknown:
         // Show unknown notifications to all
@@ -284,6 +358,23 @@ class NotificationService {
       case NotificationType.barberWaiting:
         // Navigate to barber home (queue screen)
         Navigator.of(context).pushNamed(AppRoutes.barberHome);
+        break;
+
+      case NotificationType.turnReady:
+        // Navigate to turn ready screen for customer
+        if (payload.salonId != null && payload.bookingId.isNotEmpty) {
+          final salonName = payload.salonName ?? 'Salon';
+          Navigator.of(context).pushNamed(
+            AppRoutes.turnReady,
+            arguments: TurnReadyArgs(
+              bookingId: payload.bookingId,
+              salonId: payload.salonId!,
+              salonName: salonName,
+            ),
+          );
+        } else {
+          Navigator.of(context).pushNamed(AppRoutes.myBookings);
+        }
         break;
 
       case NotificationType.unknown:

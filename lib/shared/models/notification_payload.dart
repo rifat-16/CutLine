@@ -4,12 +4,14 @@ class NotificationPayload {
   final String bookingId;
   final String? salonId;
   final String? customerName;
+  final String? salonName;
 
   const NotificationPayload({
     required this.type,
     required this.bookingId,
     this.salonId,
     this.customerName,
+    this.salonName,
   });
 
   factory NotificationPayload.fromMap(Map<String, dynamic> data) {
@@ -18,6 +20,7 @@ class NotificationPayload {
       bookingId: data['bookingId'] as String? ?? '',
       salonId: data['salonId'] as String?,
       customerName: data['customerName'] as String?,
+      salonName: data['salonName'] as String?,
     );
   }
 
@@ -27,6 +30,7 @@ class NotificationPayload {
       'bookingId': bookingId,
       if (salonId != null) 'salonId': salonId,
       if (customerName != null) 'customerName': customerName,
+      if (salonName != null) 'salonName': salonName,
     };
   }
 }
@@ -36,6 +40,7 @@ enum NotificationType {
   bookingRequest,
   bookingAccepted,
   barberWaiting,
+  turnReady,
   unknown,
 }
 
@@ -48,6 +53,8 @@ extension NotificationTypeExtension on NotificationType {
         return 'booking_accepted';
       case NotificationType.barberWaiting:
         return 'barber_waiting';
+      case NotificationType.turnReady:
+        return 'turn_ready';
       case NotificationType.unknown:
         return 'unknown';
     }
@@ -61,6 +68,8 @@ extension NotificationTypeExtension on NotificationType {
         return NotificationType.bookingAccepted;
       case 'barber_waiting':
         return NotificationType.barberWaiting;
+      case 'turn_ready':
+        return NotificationType.turnReady;
       default:
         return NotificationType.unknown;
     }

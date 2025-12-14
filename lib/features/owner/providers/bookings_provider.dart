@@ -67,6 +67,7 @@ class BookingsProvider extends ChangeNotifier {
                 dateTime: _bookings[index].dateTime,
                 status: _bookings[index].status,
                 paymentMethod: _bookings[index].paymentMethod,
+                barberName: _bookings[index].barberName,
               );
             }
           }
@@ -283,6 +284,7 @@ class BookingsProvider extends ChangeNotifier {
         paymentMethod: (data['paymentMethod'] as String?)?.trim() ??
             (data['payment'] as String?)?.trim() ??
             'Cash',
+        barberName: (data['barberName'] as String?)?.trim() ?? '',
       );
       
       debugPrint('_mapBooking: Successfully mapped booking: ${booking.customerName} - ${booking.service}');
