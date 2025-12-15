@@ -1,5 +1,6 @@
 import 'package:cutline/features/user/providers/waiting_list_provider.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -63,14 +64,10 @@ class _WaitingListScreenState extends State<WaitingListScreen> {
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    CircleAvatar(
-                                      backgroundImage: item.avatar.isNotEmpty
-                                          ? NetworkImage(item.avatar)
-                                          : null,
+                                    CachedProfileImage(
+                                      imageUrl: item.avatar.isNotEmpty ? item.avatar : null,
                                       radius: 28,
-                                      child: item.avatar.isEmpty
-                                          ? const Icon(Icons.person)
-                                          : null,
+                                      errorWidget: const Icon(Icons.person),
                                     ),
                                     const SizedBox(width: CutlineSpacing.md),
                                     Expanded(

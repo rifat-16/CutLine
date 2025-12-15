@@ -1,4 +1,6 @@
 import 'package:cutline/shared/theme/cutline_theme.dart';
+import 'package:cutline/shared/widgets/web_safe_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -54,10 +56,18 @@ class NearbySalonCard extends StatelessWidget {
                   ),
                   clipBehavior: Clip.hardEdge,
                   child: coverImageUrl != null && coverImageUrl!.isNotEmpty
-                      ? Image.network(
-                          coverImageUrl!,
+                      ? WebSafeImage(
+                          imageUrl: coverImageUrl!,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _placeholder(),
+                          width: double.infinity,
+                          height: double.infinity,
+                          placeholder: Container(
+                            color: Colors.grey.shade300,
+                            child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                          errorWidget: _placeholder(),
                         )
                       : _placeholder(),
                 ),

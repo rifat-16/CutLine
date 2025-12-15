@@ -3,6 +3,9 @@ import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/user/providers/salon_details_provider.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
+import 'package:cutline/shared/widgets/web_safe_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
@@ -173,32 +176,46 @@ class CoverPhotoSection extends StatelessWidget {
     return Container(
       height: 220,
       width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.grey[300],
-        image: hasImage
-            ? DecorationImage(
-                image: NetworkImage(coverImageUrl!),
-                fit: BoxFit.cover,
-              )
-            : null,
-      ),
+      color: Colors.grey[300],
       child: hasImage
-          ? Align(
-              alignment: Alignment.bottomCenter,
-              child: Container(
-                height: 80,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0),
-                      Colors.black.withValues(alpha: 0.08),
-                      Colors.black.withValues(alpha: 0.15),
-                    ],
+          ? Stack(
+              fit: StackFit.expand,
+              children: [
+                WebSafeImage(
+                  imageUrl: coverImageUrl!,
+                  fit: BoxFit.cover,
+                  placeholder: Container(
+                    color: Colors.grey[300],
+                    child: const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                  errorWidget: const Center(
+                    child: Text(
+                      'Cover image will appear after the next update',
+                      style: TextStyle(color: Colors.grey),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
-              ),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Container(
+                    height: 80,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0),
+                          Colors.black.withValues(alpha: 0.08),
+                          Colors.black.withValues(alpha: 0.15),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             )
           : const Center(
               child: Text(
@@ -1397,15 +1414,11 @@ class _QueueCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
+              CachedProfileImage(
+                imageUrl: entry.avatarUrl,
                 radius: 18,
                 backgroundColor: Colors.blueAccent.withValues(alpha: 0.15),
-                backgroundImage: entry.avatarUrl != null && entry.avatarUrl!.isNotEmpty
-                    ? NetworkImage(entry.avatarUrl!)
-                    : null,
-                child: (entry.avatarUrl == null || entry.avatarUrl!.isEmpty)
-                    ? const Icon(Icons.person, color: Colors.blueAccent, size: 20)
-                    : null,
+                errorWidget: const Icon(Icons.person, color: Colors.blueAccent, size: 20),
               ),
               const SizedBox(width: 8),
               Expanded(

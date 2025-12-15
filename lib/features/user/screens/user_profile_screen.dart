@@ -1,6 +1,7 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cutline/features/owner/screens/contact_support_screen.dart';
@@ -187,20 +188,26 @@ class _ProfileHeaderCard extends StatelessWidget {
               CircleAvatar(
                 radius: 36,
                 backgroundColor: Colors.white,
-                child: CircleAvatar(
-                  radius: 32,
-                  backgroundColor: CutlineColors.primary.withValues(alpha: 0.15),
-                  backgroundImage: photoUrl != null && photoUrl!.isNotEmpty
-                      ? NetworkImage(photoUrl!)
-                      : null,
-                  child: (photoUrl == null || photoUrl!.isEmpty)
-                      ? Text(
+                child: photoUrl != null && photoUrl!.isNotEmpty
+                    ? CachedProfileImage(
+                        imageUrl: photoUrl,
+                        radius: 32,
+                        backgroundColor: CutlineColors.primary.withValues(alpha: 0.15),
+                        errorWidget: Text(
                           _initials,
                           style: CutlineTextStyles.title
                               .copyWith(fontSize: 22, color: CutlineColors.primary),
-                        )
-                      : null,
-                ),
+                        ),
+                      )
+                    : CircleAvatar(
+                        radius: 32,
+                        backgroundColor: CutlineColors.primary.withValues(alpha: 0.15),
+                        child: Text(
+                          _initials,
+                          style: CutlineTextStyles.title
+                              .copyWith(fontSize: 22, color: CutlineColors.primary),
+                        ),
+                      ),
               ),
               if (isUploading)
                 Positioned.fill(
