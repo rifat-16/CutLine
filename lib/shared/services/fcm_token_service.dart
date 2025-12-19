@@ -54,7 +54,6 @@ class FcmTokenService {
         }, SetOptions(merge: true));
       }
     } catch (e) {
-      print('Error saving FCM token: $e');
       rethrow;
     }
   }
@@ -87,7 +86,6 @@ class FcmTokenService {
         }
       }
     } catch (e) {
-      print('Error removing FCM token: $e');
       // Don't rethrow - token removal is best effort
     }
   }
@@ -113,11 +111,9 @@ class FcmTokenService {
         final token = await FirebaseMessaging.instance.getToken();
         return token;
       } else {
-        print('User declined or has not accepted permission');
         return null;
       }
     } catch (e) {
-      print('Error getting FCM token: $e');
       return null;
     }
   }
@@ -129,7 +125,6 @@ class FcmTokenService {
         await saveToken(userId, newToken);
         onTokenSaved(newToken);
       } catch (e) {
-        print('Error saving refreshed token: $e');
       }
     });
   }

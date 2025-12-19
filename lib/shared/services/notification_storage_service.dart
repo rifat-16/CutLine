@@ -32,7 +32,6 @@ class NotificationStorageService {
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      debugPrint('Error saving notification: $e');
     }
   }
 
@@ -56,7 +55,6 @@ class NotificationStorageService {
         'isRead': true,
       });
     } catch (e) {
-      debugPrint('Error marking notification as read: $e');
     }
   }
 
@@ -76,7 +74,6 @@ class NotificationStorageService {
 
       await batch.commit();
     } catch (e) {
-      debugPrint('Error marking all notifications as read: $e');
     }
   }
 
@@ -95,7 +92,6 @@ class NotificationStorageService {
     try {
       await _firestore.collection('notifications').doc(notificationId).delete();
     } catch (e) {
-      debugPrint('Error deleting notification: $e');
     }
   }
 }

@@ -310,11 +310,9 @@ class AuthProvider extends ChangeNotifier {
         await _fcmTokenService.saveToken(userId, token);
         // Listen for token refresh
         _fcmTokenService.listenToTokenRefresh(userId, (newToken) {
-          debugPrint('FCM token refreshed for user $userId');
         });
       }
     } catch (e) {
-      debugPrint('Error saving FCM token: $e');
       // Don't throw - token saving is best effort
     }
   }

@@ -6,6 +6,8 @@ import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/features/owner/services/salon_lookup_service.dart';
+import 'package:cutline/shared/screens/update_required_screen.dart';
+import 'package:cutline/shared/services/update_gate_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -33,6 +35,21 @@ class _SplashScreenState extends State<SplashScreen> {
     // Keep a short splash experience before resolving auth state.
     await Future<void>.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
+
+    final updateResult = await UpdateGateService().checkForUpdate();
+    if (!mounted) return;
+    if (updateResult.isRequired) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => UpdateRequiredScreen(
+            message: updateResult.message,
+          ),
+        ),
+      );
+      return;
+    }
+
     final auth = context.read<AuthProvider>();
     await auth.refreshCurrentUser();
 

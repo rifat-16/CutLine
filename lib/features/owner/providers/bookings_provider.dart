@@ -86,7 +86,6 @@ class BookingsProvider extends ChangeNotifier {
   Future<void> load() async {
     final ownerId = _authProvider.currentUser?.uid;
     if (ownerId == null) {
-      debugPrint('BookingsProvider: ownerId is null');
       _setError('Please log in again.');
       return;
     }
@@ -96,16 +95,13 @@ class BookingsProvider extends ChangeNotifier {
     _setError(null);
     
     try {
-      debugPrint('BookingsProvider: Loading bookings for ownerId: $ownerId');
       
       // Try collectionGroup first
       try {
-        debugPrint('BookingsProvider: Trying collectionGroup query');
         _subscription = _firestore
             .collectionGroup('bookings')
             .snapshots()
             .listen((snap) {
-          debugPrint('BookingsProvider: Received ${snap.docs.length} booking documents from collectionGroup');
           
           final items = snap.docs
               .where((doc) {
@@ -116,7 +112,6 @@ class BookingsProvider extends ChangeNotifier {
                     parentId;
                 final matches = salonId == ownerId;
                 if (matches) {
-                  debugPrint('BookingsProvider: Found matching booking: ${doc.id} from salon: $salonId');
                 }
                 return matches;
               })
@@ -128,27 +123,19 @@ class BookingsProvider extends ChangeNotifier {
               .whereType<OwnerBooking>()
               .toList();
           
-          debugPrint('BookingsProvider: Mapped ${items.length} bookings for owner');
           _bookings = items;
           _hydrateCustomerAvatars();
           notifyListeners();
           _setLoading(false);
         }, onError: (e) {
-          debugPrint('BookingsProvider: Error in collectionGroup listener: $e');
-          debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
           // Fallback to direct salon collection query
           _loadFromSalonCollection(ownerId);
         });
       } catch (e) {
-        debugPrint('BookingsProvider: Error setting up collectionGroup listener: $e');
-        debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
         // Fallback to direct salon collection query
         _loadFromSalonCollection(ownerId);
       }
     } catch (e, stackTrace) {
-      debugPrint('BookingsProvider: Fatal error in load: $e');
-      debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
-      debugPrint('Stack trace: $stackTrace');
       _bookings = [];
       String errorMessage = 'Failed to load bookings. Pull to refresh.';
       if (e is FirebaseException) {
@@ -167,7 +154,6 @@ class BookingsProvider extends ChangeNotifier {
 
   Future<void> _loadFromSalonCollection(String ownerId) async {
     try {
-      debugPrint('BookingsProvider: Loading bookings directly from salon collection');
       _subscription?.cancel();
       
       _subscription = _firestore
@@ -176,7 +162,6 @@ class BookingsProvider extends ChangeNotifier {
           .collection('bookings')
           .snapshots()
           .listen((snap) {
-        debugPrint('BookingsProvider: Received ${snap.docs.length} booking documents from salon collection');
         
         final items = snap.docs
             .map((doc) => _mapBooking(
@@ -187,14 +172,11 @@ class BookingsProvider extends ChangeNotifier {
             .whereType<OwnerBooking>()
             .toList();
         
-        debugPrint('BookingsProvider: Mapped ${items.length} bookings from salon collection');
         _bookings = items;
         _hydrateCustomerAvatars();
         notifyListeners();
         _setLoading(false);
       }, onError: (e) {
-        debugPrint('BookingsProvider: Error in salon collection listener: $e');
-        debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
         _bookings = [];
         String errorMessage = 'Failed to load bookings. Pull to refresh.';
         if (e is FirebaseException) {
@@ -210,8 +192,6 @@ class BookingsProvider extends ChangeNotifier {
         _setLoading(false);
       });
     } catch (e, stackTrace) {
-      debugPrint('BookingsProvider: Error in _loadFromSalonCollection: $e');
-      debugPrint('Stack trace: $stackTrace');
       _bookings = [];
       _setError('Failed to load bookings. Pull to refresh.');
       _setLoading(false);
@@ -232,14 +212,12 @@ class BookingsProvider extends ChangeNotifier {
     String? parentSalonId,
   ) {
     try {
-      debugPrint('_mapBooking: Mapping booking $id, data keys: ${data.keys.toList()}');
       
       final statusString = (data['status'] as String?)?.trim() ?? 'upcoming';
       final status = _statusFromString(statusString);
       
       final dateTime = _parseDateTime(data);
       if (dateTime == null) {
-        debugPrint('_mapBooking: Failed to parse dateTime for booking $id');
         return null;
       }
       
@@ -287,11 +265,8 @@ class BookingsProvider extends ChangeNotifier {
         barberName: (data['barberName'] as String?)?.trim() ?? '',
       );
       
-      debugPrint('_mapBooking: Successfully mapped booking: ${booking.customerName} - ${booking.service}');
       return booking;
     } catch (e, stackTrace) {
-      debugPrint('_mapBooking: Error mapping booking $id: $e');
-      debugPrint('Stack trace: $stackTrace');
       return null;
     }
   }

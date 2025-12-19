@@ -39,7 +39,6 @@ class CachedProfileImage extends StatelessWidget {
         httpHeaders: kIsWeb ? {'Access-Control-Allow-Origin': '*'} : null,
         placeholder: (context, url) {
           if (kDebugMode && kIsWeb) {
-            debugPrint('CachedProfileImage: Loading image from $url');
           }
           return Container(
             width: radius * 2,
@@ -53,7 +52,6 @@ class CachedProfileImage extends StatelessWidget {
         },
         errorWidget: (context, url, error) {
           if (kDebugMode && kIsWeb) {
-            debugPrint('CachedProfileImage: Error loading $url - $error');
           }
           return Container(
             width: radius * 2,

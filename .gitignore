@@ -50,3 +50,8 @@ app.*.map.json
 # Firebase Functions
 functions/node_modules/
 functions/.runtimeconfig.json
+
+# Android signing
+key.properties
+**/*.jks
+**/*.keystore

@@ -41,12 +41,10 @@ class BarberHomeProvider extends ChangeNotifier {
   Future<void> load() async {
     final uid = _authProvider.currentUser?.uid;
     if (uid == null) {
-      debugPrint('load: Barber UID is null');
       _setError('Please log in again.');
       return;
     }
     
-    debugPrint('load: Starting for barber UID: $uid');
     _setLoading(true);
     _setError(null);
     
@@ -55,23 +53,18 @@ class BarberHomeProvider extends ChangeNotifier {
       try {
         final userDoc = await _firestore.collection('users').doc(uid).get();
         if (!userDoc.exists) {
-          debugPrint('load: User document does not exist for barber UID: $uid');
           _setError('User profile not found. Please contact the salon owner.');
           _setLoading(false);
           return;
         }
         final userData = userDoc.data();
         final userRole = userData?['role'] as String?;
-        debugPrint('load: User role: $userRole');
         if (userRole != 'barber') {
-          debugPrint('load: User role is not barber: $userRole');
           _setError('You do not have barber permissions.');
           _setLoading(false);
           return;
         }
       } catch (e, stackTrace) {
-        debugPrint('load: Error verifying user document: $e');
-        debugPrint('Stack trace: $stackTrace');
         if (e is FirebaseException && e.code == 'permission-denied') {
           _setError('Permission denied. Please check Firestore rules are deployed.');
           _setLoading(false);
@@ -81,50 +74,37 @@ class BarberHomeProvider extends ChangeNotifier {
       
       final profile = await _fetchProfile(uid);
       if (profile == null) {
-        debugPrint('load: Could not load barber profile');
         _setError('Could not load your profile. Please contact the salon owner.');
         _setLoading(false);
         return;
       }
       
-      debugPrint('load: Profile loaded - name: ${profile.name}, ownerId: ${profile.ownerId}');
       _profile = profile;
       
       try {
         _salonOpen = await _fetchSalonOpen(profile.ownerId);
-        debugPrint('load: Salon open status: $_salonOpen');
       } catch (e) {
-        debugPrint('load: Error loading salon open status: $e');
         _salonOpen = false; // Default to closed
       }
       
       try {
         _salonName = await _fetchSalonName(profile.ownerId);
-        debugPrint('load: Salon name: $_salonName');
       } catch (e) {
-        debugPrint('load: Error loading salon name: $e');
       }
       
       try {
         _isAvailable = await _fetchAvailability(profile);
-        debugPrint('load: Barber availability: $_isAvailable');
       } catch (e) {
-        debugPrint('load: Error loading availability: $e');
         _isAvailable = true; // Default to available
       }
       
       if (_salonOpen) {
         _startQueueListener(profile);
-        debugPrint('load: Queue listener started');
       } else {
         _queue = [];
-        debugPrint('load: Salon is closed, queue cleared');
       }
       
-      debugPrint('load: Completed successfully');
     } catch (e, stackTrace) {
-      debugPrint('load: Error in load: $e');
-      debugPrint('Stack trace: $stackTrace');
       String errorMessage = 'Failed to load data. Pull to refresh.';
       if (e is FirebaseException) {
         if (e.code == 'permission-denied') {
@@ -143,16 +123,13 @@ class BarberHomeProvider extends ChangeNotifier {
 
   Future<BarberProfile?> _fetchProfile(String uid) async {
     try {
-      debugPrint('_fetchProfile: Fetching barber profile for UID: $uid');
       final snap = await _firestore.collection('users').doc(uid).get();
       if (!snap.exists) {
-        debugPrint('_fetchProfile: User document does not exist for UID: $uid');
         return null;
       }
       final data = snap.data() ?? {};
       final ownerId = data['ownerId'] as String?;
       if (ownerId == null || ownerId.isEmpty) {
-        debugPrint('_fetchProfile: ownerId is null or empty for barber UID: $uid');
         return null;
       }
       final profile = BarberProfile(
@@ -161,14 +138,9 @@ class BarberHomeProvider extends ChangeNotifier {
         name: (data['name'] as String?) ?? '',
         photoUrl: (data['photoUrl'] as String?) ?? '',
       );
-      debugPrint('_fetchProfile: Profile loaded - name: ${profile.name}, ownerId: ${profile.ownerId}');
       return profile;
     } catch (e, stackTrace) {
-      debugPrint('_fetchProfile: Error fetching barber profile: $e');
-      debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
-      debugPrint('Stack trace: $stackTrace');
       if (e is FirebaseException && e.code == 'permission-denied') {
-        debugPrint('_fetchProfile: PERMISSION DENIED - Check Firestore rules!');
       }
       return null;
     }
@@ -177,52 +149,41 @@ class BarberHomeProvider extends ChangeNotifier {
   void _startQueueListener(BarberProfile profile) {
     _queueSubscription?.cancel();
     try {
-      debugPrint('_startQueueListener: Starting queue listener for ownerId: ${profile.ownerId}');
       _queueSubscription = _firestore
           .collection('salons')
           .doc(profile.ownerId)
           .collection('queue')
           .snapshots()
           .listen((snapshot) {
-        debugPrint('_startQueueListener: Queue snapshot received, ${snapshot.docs.length} documents');
         _queue = snapshot.docs
             .where((doc) => _isForBarber(doc.data(), profile))
             .map((doc) => _mapQueue(doc.id, doc.data(), profile))
             .whereType<BarberQueueItem>()
             .toList()
           ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
-        debugPrint('_startQueueListener: Filtered queue items: ${_queue.length}');
         notifyListeners();
       }, onError: (e) {
-        debugPrint('_startQueueListener: Error in nested queue listener: $e');
-        debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
         // Fallback to top-level queue collection
         try {
-          debugPrint('_startQueueListener: Trying fallback to top-level queue collection');
           _queueSubscription = _firestore
               .collection('queue')
               .snapshots()
               .listen((snapshot) {
-            debugPrint('_startQueueListener: Fallback queue snapshot received, ${snapshot.docs.length} documents');
             _queue = snapshot.docs
                 .where((doc) => _isForBarber(doc.data(), profile))
                 .map((doc) => _mapQueue(doc.id, doc.data(), profile))
                 .whereType<BarberQueueItem>()
                 .toList()
               ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
-            debugPrint('_startQueueListener: Fallback filtered queue items: ${_queue.length}');
             notifyListeners();
           }, onError: (e2) {
-            debugPrint('_startQueueListener: Error in fallback queue listener: $e2');
             _setError('Failed to load queue. Pull to refresh.');
           });
         } catch (e3) {
-          debugPrint('_startQueueListener: Error setting up fallback listener: $e3');
           _setError('Failed to load queue. Pull to refresh.');
         }
       });
     } catch (e) {
-      debugPrint('_startQueueListener: Error setting up queue listener: $e');
       _setError('Failed to load queue. Pull to refresh.');
     }
   }
@@ -286,48 +247,37 @@ class BarberHomeProvider extends ChangeNotifier {
 
   Future<bool> _fetchSalonOpen(String ownerId) async {
     if (ownerId.isEmpty) {
-      debugPrint('_fetchSalonOpen: ownerId is empty');
       return false;
     }
     try {
-      debugPrint('_fetchSalonOpen: Checking salon open status for ownerId: $ownerId');
       final doc = await _firestore.collection('salons').doc(ownerId).get();
       if (!doc.exists) {
-        debugPrint('_fetchSalonOpen: Salon document does not exist');
         return false;
       }
       final data = doc.data() ?? {};
       final isOpen = data['isOpen'];
       if (isOpen is bool) {
-        debugPrint('_fetchSalonOpen: Salon isOpen: $isOpen');
         return isOpen;
       }
-      debugPrint('_fetchSalonOpen: isOpen field is not boolean, defaulting to false');
       return false;
     } catch (e) {
-      debugPrint('_fetchSalonOpen: Error checking salon open status: $e');
       return false;
     }
   }
 
   Future<String?> _fetchSalonName(String ownerId) async {
     if (ownerId.isEmpty) {
-      debugPrint('_fetchSalonName: ownerId is empty');
       return null;
     }
     try {
-      debugPrint('_fetchSalonName: Fetching salon name for ownerId: $ownerId');
       final doc = await _firestore.collection('salons').doc(ownerId).get();
       if (!doc.exists) {
-        debugPrint('_fetchSalonName: Salon document does not exist');
         return null;
       }
       final data = doc.data() ?? {};
       final name = data['name'] as String?;
-      debugPrint('_fetchSalonName: Salon name: $name');
       return name;
     } catch (e) {
-      debugPrint('_fetchSalonName: Error fetching salon name: $e');
       return null;
     }
   }

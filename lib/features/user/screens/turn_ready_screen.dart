@@ -65,7 +65,6 @@ class _TurnReadyScreenState extends State<TurnReadyScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Error loading booking data: $e');
     }
   }
 
@@ -166,7 +165,6 @@ class _TurnReadyScreenState extends State<TurnReadyScreen> {
         }
       });
     } catch (e) {
-      debugPrint('Error marking as arrived: $e');
       setState(() {
         _isMarkingArrived = false;
       });

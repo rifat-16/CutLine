@@ -18,7 +18,6 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  debugPrint('Handling background message: ${message.messageId}');
   // Additional background processing can be added here
 }
 
@@ -77,9 +76,7 @@ class NotificationService {
       try {
         // Parse payload if it's JSON
         // For now, we'll handle navigation in the foreground handler
-        debugPrint('Local notification tapped: ${response.payload}');
       } catch (e) {
-        debugPrint('Error parsing notification payload: $e');
       }
     }
   }
@@ -115,7 +112,6 @@ class NotificationService {
 
     if (settings.authorizationStatus != AuthorizationStatus.authorized &&
         settings.authorizationStatus != AuthorizationStatus.provisional) {
-      debugPrint('User declined notification permission');
       return;
     }
 
@@ -136,7 +132,6 @@ class NotificationService {
 
   /// Handle foreground messages (app is open)
   Future<void> _handleForegroundMessage(RemoteMessage message) async {
-    debugPrint('Foreground message received: ${message.messageId}');
 
     final notification = message.notification;
     final data = message.data;
@@ -146,7 +141,6 @@ class NotificationService {
       
       // Filter notifications based on user role
       if (!_shouldShowNotification(payload)) {
-        debugPrint('Notification filtered out for current user role');
         return;
       }
 
@@ -160,7 +154,6 @@ class NotificationService {
       }
 
       // You can trigger UI updates here if needed
-      debugPrint('Notification payload: ${payload.type} - ${payload.bookingId}');
       
       // Schedule reminder for booking_accepted notifications
       final type = NotificationTypeExtension.fromString(payload.type);
@@ -184,13 +177,11 @@ class NotificationService {
           .get();
       
       if (!bookingDoc.exists) {
-        debugPrint('NotificationService: Booking $bookingId not found');
         return;
       }
       
       final bookingData = bookingDoc.data();
       if (bookingData == null) {
-        debugPrint('NotificationService: Booking data is null');
         return;
       }
       
@@ -199,7 +190,6 @@ class NotificationService {
       final salonName = (bookingData['salonName'] as String?)?.trim() ?? 'Salon';
       
       if (date.isEmpty || time.isEmpty) {
-        debugPrint('NotificationService: Missing date or time in booking data');
         return;
       }
       
@@ -213,18 +203,14 @@ class NotificationService {
       );
       
       if (scheduled) {
-        debugPrint('NotificationService: Successfully scheduled reminder for booking $bookingId');
       } else {
-        debugPrint('NotificationService: Failed to schedule reminder for booking $bookingId');
       }
     } catch (e) {
-      debugPrint('NotificationService: Error scheduling reminder: $e');
     }
   }
 
   /// Handle notification tap (background or terminated)
   void _handleNotificationTap(RemoteMessage message) {
-    debugPrint('Notification tapped: ${message.messageId}');
 
     final data = message.data;
     if (data.isNotEmpty) {
@@ -232,7 +218,6 @@ class NotificationService {
       
       // Filter notifications based on user role
       if (!_shouldShowNotification(payload)) {
-        debugPrint('Notification filtered out for current user role');
         return;
       }
       
@@ -327,7 +312,6 @@ class NotificationService {
     // Default navigation logic using navigator key
     final navigatorKey = AppRouter.navigatorKey;
     if (navigatorKey.currentContext == null) {
-      debugPrint('Navigator key not available');
       return;
     }
 

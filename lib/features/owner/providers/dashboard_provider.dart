@@ -50,7 +50,6 @@ class DashboardProvider extends ChangeNotifier {
   Future<void> load() async {
     final ownerId = _authProvider.currentUser?.uid;
     if (ownerId == null) {
-      debugPrint('DashboardProvider: ownerId is null');
       _setError('Please log in again.');
       return;
     }
@@ -59,19 +58,16 @@ class DashboardProvider extends ChangeNotifier {
     _setError(null);
     
     try {
-      debugPrint('DashboardProvider: Loading dashboard data for ownerId: $ownerId');
       
       // Load bookings
       List<OwnerBooking> bookings = [];
       try {
-        debugPrint('DashboardProvider: Loading bookings from salon collection');
         final bookingsSnap = await _firestore
             .collection('salons')
             .doc(ownerId)
             .collection('bookings')
             .get();
         
-        debugPrint('DashboardProvider: Found ${bookingsSnap.docs.length} booking documents');
         
         bookings = bookingsSnap.docs
             .map((d) => _mapBooking(d.id, d.data()))
@@ -79,22 +75,15 @@ class DashboardProvider extends ChangeNotifier {
             .toList()
           ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
         
-        debugPrint('DashboardProvider: Successfully mapped ${bookings.length} bookings');
       } catch (e) {
-        debugPrint('DashboardProvider: Error loading bookings: $e');
-        debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
         // Continue with empty bookings
       }
       
       // Load queue using OwnerQueueService (includes completed items)
       List<OwnerQueueItem> queue = [];
       try {
-        debugPrint('DashboardProvider: Loading queue using OwnerQueueService');
         queue = await _queueService.loadQueue(ownerId);
-        debugPrint('DashboardProvider: Successfully loaded ${queue.length} queue items');
       } catch (e) {
-        debugPrint('DashboardProvider: Error loading queue: $e');
-        debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
         // Continue with empty queue
       }
 
@@ -117,19 +106,11 @@ class DashboardProvider extends ChangeNotifier {
         _bookingStatusCounts = _countBookings(filteredBookings);
         _queueStatusCounts = _countQueue(filteredQueue);
         
-        debugPrint('DashboardProvider: Successfully computed metrics');
-        debugPrint('DashboardProvider: Total revenue: ${_metrics.totalRevenue}, Total bookings: ${_metrics.totalBookings}');
-        debugPrint('DashboardProvider: Barber performance - ${_barbers.length} barbers found');
       } catch (e, stackTrace) {
-        debugPrint('DashboardProvider: Error computing metrics: $e');
-        debugPrint('Stack trace: $stackTrace');
       }
       
       notifyListeners();
     } catch (e, stackTrace) {
-      debugPrint('DashboardProvider: Fatal error in load: $e');
-      debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
-      debugPrint('Stack trace: $stackTrace');
       
       String errorMessage = 'Failed to load dashboard. Pull to refresh.';
       if (e is FirebaseException) {
@@ -155,7 +136,6 @@ class DashboardProvider extends ChangeNotifier {
       final dateTime = _parseDateTime(data);
       
       if (dateTime == null) {
-        debugPrint('_mapBooking: Failed to parse dateTime for booking $id');
         return null;
       }
 
@@ -202,8 +182,6 @@ class DashboardProvider extends ChangeNotifier {
         barberName: (data['barberName'] as String?)?.trim() ?? '',
       );
     } catch (e, stackTrace) {
-      debugPrint('_mapBooking: Error mapping booking $id: $e');
-      debugPrint('Stack trace: $stackTrace');
       return null;
     }
   }
@@ -372,7 +350,6 @@ class DashboardProvider extends ChangeNotifier {
         .toList()
       ..sort((a, b) => b.served.compareTo(a.served)); // Sort by served count descending
       
-    debugPrint('_computeBarberPerformance: Found ${barberList.length} barbers with completed bookings');
     return barberList;
   }
 

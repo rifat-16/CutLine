@@ -44,7 +44,6 @@ class BookingReminderService {
       // Parse the booking date and time
       final bookingDateTime = _parseBookingDateTime(date, time);
       if (bookingDateTime == null) {
-        debugPrint('BookingReminderService: Failed to parse booking date/time');
         return false;
       }
 
@@ -53,7 +52,6 @@ class BookingReminderService {
 
       // Check if reminder time is in the past
       if (reminderTime.isBefore(DateTime.now())) {
-        debugPrint('BookingReminderService: Reminder time is in the past, skipping');
         return false;
       }
 
@@ -107,12 +105,8 @@ class BookingReminderService {
         payload: 'booking_reminder|$salonId|$bookingId',
       );
 
-      debugPrint(
-        'BookingReminderService: Scheduled reminder for booking $bookingId at ${DateFormat('yyyy-MM-dd h:mm a').format(reminderTime)}',
-      );
       return true;
     } catch (e) {
-      debugPrint('BookingReminderService: Error scheduling reminder: $e');
       return false;
     }
   }
@@ -121,9 +115,7 @@ class BookingReminderService {
   Future<void> cancelReminder(String bookingId) async {
     try {
       await _localNotifications.cancel(_getNotificationId(bookingId));
-      debugPrint('BookingReminderService: Cancelled reminder for booking $bookingId');
     } catch (e) {
-      debugPrint('BookingReminderService: Error cancelling reminder: $e');
     }
   }
 
@@ -131,9 +123,7 @@ class BookingReminderService {
   Future<void> cancelAllReminders() async {
     try {
       await _localNotifications.cancelAll();
-      debugPrint('BookingReminderService: Cancelled all reminders');
     } catch (e) {
-      debugPrint('BookingReminderService: Error cancelling all reminders: $e');
     }
   }
 
@@ -155,7 +145,6 @@ class BookingReminderService {
         parsedTime.minute,
       );
     } catch (e) {
-      debugPrint('BookingReminderService: Error parsing date/time: $e');
       return null;
     }
   }

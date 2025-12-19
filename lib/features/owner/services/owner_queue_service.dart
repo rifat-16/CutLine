@@ -32,11 +32,9 @@ class OwnerQueueService {
         .where((item) => item.customerAvatar.isEmpty && item.customerUid.isNotEmpty)
         .toList();
     if (itemsNeedingAvatars.isEmpty) {
-      debugPrint('_hydrateCustomerAvatars: No items need avatars');
       return;
     }
 
-    debugPrint('_hydrateCustomerAvatars: Loading avatars for ${itemsNeedingAvatars.length} items');
 
     // Use individual document reads instead of whereIn query to work with current rules
     // This is more compatible with Firestore security rules
@@ -46,7 +44,6 @@ class OwnerQueueService {
         .toSet()
         .toList();
 
-    debugPrint('_hydrateCustomerAvatars: Fetching avatars for ${uniqueUids.length} unique UIDs');
 
     final avatarMap = <String, String>{};
     
@@ -62,15 +59,11 @@ class OwnerQueueService {
               '';
           if (photoUrl.isNotEmpty) {
             avatarMap[uid] = photoUrl;
-            debugPrint('_hydrateCustomerAvatars: Found avatar for $uid: $photoUrl');
           } else {
-            debugPrint('_hydrateCustomerAvatars: No avatar found for $uid');
           }
         } else {
-          debugPrint('_hydrateCustomerAvatars: User document does not exist for $uid');
         }
       } catch (e) {
-        debugPrint('_hydrateCustomerAvatars: Error fetching avatar for $uid: $e');
         // Continue with other UIDs
       }
     }
@@ -101,8 +94,6 @@ class OwnerQueueService {
         }
       }
     }
-    debugPrint('_hydrateCustomerAvatars: Updated $updatedCount items with avatars');
-    debugPrint('_hydrateCustomerAvatars: Completed');
   }
 
   Future<void> updateStatus({
@@ -246,7 +237,6 @@ class OwnerQueueService {
             .where('status', whereIn: ['waiting', 'turn_ready', 'arrived', 'serving'])
             .get();
       } catch (e) {
-        debugPrint('Error loading queue with whereIn: $e');
         // Fallback: load all and filter
         try {
           snap = await _firestore
@@ -255,7 +245,6 @@ class OwnerQueueService {
               .collection('queue')
               .get();
         } catch (e2) {
-          debugPrint('Error loading queue collection: $e2');
           rethrow; // Re-throw to be caught by outer catch
         }
       }
@@ -289,7 +278,6 @@ class OwnerQueueService {
             .where('status', whereIn: ['waiting', 'turn_ready', 'arrived', 'serving'])
             .get();
       } catch (e) {
-        debugPrint('Error loading bookings with whereIn: $e');
         // Fallback: try loading all and filter
         try {
           snap = await _firestore
@@ -298,7 +286,6 @@ class OwnerQueueService {
               .collection('bookings')
               .get();
         } catch (e2) {
-          debugPrint('Error loading bookings collection: $e2');
           return const [];
         }
       }
@@ -308,7 +295,6 @@ class OwnerQueueService {
           .where((item) => item.status != OwnerQueueStatus.done && item.status != OwnerQueueStatus.noShow) // Filter out completed and no-show items
           .toList();
     } catch (e) {
-      debugPrint('Error in _loadBookingBackfill: $e');
       return const [];
     }
   }
@@ -335,7 +321,6 @@ class OwnerQueueService {
             .where('status', whereIn: ['done', 'completed'])
             .get();
       } catch (e) {
-        debugPrint('Error loading completed queue with whereIn: $e');
         // Fallback: load all and filter
         try {
           queueSnap = await _firestore
@@ -344,7 +329,6 @@ class OwnerQueueService {
               .collection('queue')
               .get();
         } catch (e2) {
-          debugPrint('Error loading queue collection for completed: $e2');
           queueSnap = await _firestore.collection('queue').get();
         }
       }
@@ -389,7 +373,6 @@ class OwnerQueueService {
             .where('status', whereIn: ['completed', 'done'])
             .get();
       } catch (e) {
-        debugPrint('Error loading completed bookings with whereIn: $e');
         // Fallback: load all and filter
         bookingSnap = await _firestore
             .collection('salons')
@@ -433,11 +416,9 @@ class OwnerQueueService {
         }
       }
     } catch (e) {
-      debugPrint('Error in _loadCompletedToday: $e');
       // Return whatever we've collected so far
     }
 
-    debugPrint('_loadCompletedToday: Loaded ${completedItems.length} completed items for today');
     return completedItems;
   }
 

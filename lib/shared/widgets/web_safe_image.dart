@@ -49,7 +49,6 @@ class WebSafeImage extends StatelessWidget {
         },
         errorBuilder: (context, error, stackTrace) {
           if (kDebugMode) {
-            debugPrint('WebSafeImage (Image.network): Error loading $imageUrl - $error');
           }
           // Fallback to CachedNetworkImage if Image.network fails
           return _buildCachedNetworkImage();
@@ -81,7 +80,6 @@ class WebSafeImage extends StatelessWidget {
       },
       errorWidget: (context, url, error) {
         if (kDebugMode) {
-          debugPrint('WebSafeImage (CachedNetworkImage): Error loading $imageUrl - $error');
         }
         return errorWidget ??
             Container(
