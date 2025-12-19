@@ -33,19 +33,26 @@ class BookingRequestsProvider extends ChangeNotifier {
     _setError(null);
     try {
       QuerySnapshot<Map<String, dynamic>> snap;
+      final collection = _firestore
+          .collection('salons')
+          .doc(ownerId)
+          .collection('bookings');
+
+      // Booking requests screen should only show new requests (pending/upcoming).
+      // Some devices may not have the required index for (status + createdAt),
+      // so gracefully fall back to a broader read + local filtering.
       try {
-        snap = await _firestore
-            .collection('salons')
-            .doc(ownerId)
-            .collection('bookings')
+        snap = await collection
+            .where('status', whereIn: ['pending', 'upcoming'])
             .orderBy('createdAt', descending: true)
             .get();
       } catch (_) {
-        snap = await _firestore
-            .collection('salons')
-            .doc(ownerId)
-            .collection('bookings')
-            .get();
+        try {
+          snap = await collection
+              .where('status', whereIn: ['pending', 'upcoming']).get();
+        } catch (_) {
+          snap = await collection.get();
+        }
       }
 
       _requests = snap.docs
@@ -53,6 +60,7 @@ class BookingRequestsProvider extends ChangeNotifier {
           .whereType<OwnerBookingRequest>()
           .toList();
 
+      _requests.sort((a, b) => b.dateTime.compareTo(a.dateTime));
       await _hydrateCustomerAvatars();
     } catch (_) {
       _setError('Failed to load requests. Pull to refresh.');
@@ -95,7 +103,8 @@ class BookingRequestsProvider extends ChangeNotifier {
           if (avatar != null && avatar.isNotEmpty) {
             final index = _requests.indexWhere((r) => r.id == request.id);
             if (index != -1) {
-              _requests[index] = _requests[index].copyWith(customerAvatar: avatar);
+              _requests[index] =
+                  _requests[index].copyWith(customerAvatar: avatar);
             }
           }
         }
@@ -108,12 +117,17 @@ class BookingRequestsProvider extends ChangeNotifier {
 
   OwnerBookingRequest? _mapRequest(String id, Map<String, dynamic> data) {
     final rawStatus = ((data['status'] as String?) ?? 'pending').toLowerCase();
-    if (_isHiddenStatus(rawStatus)) return null;
+    if (!_isBookingRequestStatus(rawStatus)) return null;
 
     final services = _mapServices(data['services']);
     final status = _statusFromString(rawStatus);
 
-    final dateTime = _parseDateTime(data['date'], data['time']) ??
+    final rawDate =
+        (data['date'] is String) ? (data['date'] as String).trim() : '';
+    final rawTime = (data['time'] is String)
+        ? _normalizeTimeString(data['time'] as String)
+        : '';
+    final dateTime = _parseDateTime(rawDate, rawTime) ??
         _parseTimestamp(data['dateTime']) ??
         DateTime.now();
 
@@ -132,6 +146,8 @@ class BookingRequestsProvider extends ChangeNotifier {
       barberName: (data['barberName'] as String?)?.trim() ?? 'Any',
       services: services,
       dateTime: dateTime,
+      date: rawDate.isNotEmpty ? rawDate : null,
+      time: rawTime.isNotEmpty ? rawTime : null,
       durationMinutes: _durationMinutes(data, services.length),
       totalPrice: (data['total'] as num?)?.toInt() ??
           (data['totalPrice'] as num?)?.toInt() ??
@@ -167,13 +183,20 @@ class BookingRequestsProvider extends ChangeNotifier {
     return null;
   }
 
-  DateTime? _parseDateTime(dynamic dateRaw, dynamic timeRaw) {
-    final date = dateRaw is String ? dateRaw : '';
-    final time = timeRaw is String ? timeRaw : '';
+  String _normalizeTimeString(String value) {
+    return value
+        .replaceAll('\u00A0', ' ')
+        .replaceAll('\u202F', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  DateTime? _parseDateTime(String date, String time) {
     if (date.isEmpty || time.isEmpty) return null;
     try {
       final parsedDate = DateTime.parse(date);
-      final parsedTime = DateFormat.jm().parse(time);
+      final parsedTime =
+          DateFormat('h:mm a', 'en_US').parse(_normalizeTimeString(time));
       return DateTime(parsedDate.year, parsedDate.month, parsedDate.day,
           parsedTime.hour, parsedTime.minute);
     } catch (_) {
@@ -199,12 +222,11 @@ class BookingRequestsProvider extends ChangeNotifier {
     }
   }
 
-  bool _isHiddenStatus(String status) {
-    return status == 'cancelled' ||
-        status == 'completed' ||
-        status == 'accepted' ||
-        status == 'waiting' ||
-        status == 'rejected';
+  bool _isBookingRequestStatus(String status) {
+    // Only show items that still need an owner decision.
+    // Statuses like waiting/serving/arrived/turn_ready are active queue items,
+    // not booking requests.
+    return status == 'pending' || status == 'upcoming' || status.isEmpty;
   }
 
   Future<void> updateStatus(String id, OwnerBookingRequestStatus status) async {
@@ -232,6 +254,14 @@ class BookingRequestsProvider extends ChangeNotifier {
     }
 
     if (status == OwnerBookingRequestStatus.accepted && request != null) {
+      final dateKey = (request.date?.trim().isNotEmpty == true)
+          ? request.date!.trim()
+          : DateFormat('yyyy-MM-dd').format(request.dateTime);
+      final timeLabel = (request.time?.trim().isNotEmpty == true)
+          ? _normalizeTimeString(request.time!)
+          : DateFormat('h:mm a').format(request.dateTime);
+      final scheduledAt =
+          _parseDateTime(dateKey, timeLabel) ?? request.dateTime;
       final queueData = {
         'customerName': request.customerName,
         'service': request.services.join(', '),
@@ -239,11 +269,11 @@ class BookingRequestsProvider extends ChangeNotifier {
         'price': request.totalPrice,
         'status': 'waiting',
         'waitMinutes': request.durationMinutes,
-        'slotLabel': DateFormat('h:mm a').format(request.dateTime),
+        'slotLabel': timeLabel,
         'customerPhone': request.customerPhone,
-        'date': DateFormat('yyyy-MM-dd').format(request.dateTime),
-        'time': DateFormat('h:mm a').format(request.dateTime),
-        'dateTime': Timestamp.fromDate(request.dateTime),
+        'date': dateKey,
+        'time': timeLabel,
+        'dateTime': Timestamp.fromDate(scheduledAt),
       };
       try {
         await _firestore

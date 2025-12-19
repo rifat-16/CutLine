@@ -103,7 +103,11 @@ class DashboardProvider extends ChangeNotifier {
       final filteredBookings = _filterBookingsByPeriod(bookings, periodFilter);
       final filteredQueue = _filterQueueByPeriod(queue, periodFilter);
       
-      _bookings = filteredBookings;
+      // Dashboard "Recent bookings" should reflect only completed bookings.
+      _bookings = filteredBookings
+          .where((b) => b.status == OwnerBookingStatus.completed)
+          .toList()
+        ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
       
       // Compute metrics and performance data using FILTERED data
       try {
@@ -174,8 +178,15 @@ class DashboardProvider extends ChangeNotifier {
       return OwnerBooking(
         id: id,
         customerName: (data['customerName'] as String?)?.trim() ?? 'Customer',
-        customerAvatar: '',
-        customerUid: '',
+        customerAvatar: (data['customerAvatar'] as String?)?.trim() ??
+            (data['customerPhotoUrl'] as String?)?.trim() ??
+            (data['photoUrl'] as String?)?.trim() ??
+            '',
+        customerUid: (data['customerUid'] as String?)?.trim() ??
+            (data['customerId'] as String?)?.trim() ??
+            (data['userId'] as String?)?.trim() ??
+            (data['uid'] as String?)?.trim() ??
+            '',
         salonName: (data['salonName'] as String?)?.trim() ??
             (data['salon'] as String?)?.trim() ??
             '',
@@ -258,15 +269,21 @@ class DashboardProvider extends ChangeNotifier {
 
   void _computeMetrics(
       List<OwnerBooking> bookings, List<OwnerQueueItem> queue) {
-    final totalBookings = bookings.length;
-    final totalRevenue = bookings.fold<int>(0, (acc, b) => acc + b.price);
+    final completedBookings =
+        bookings.where((b) => b.status == OwnerBookingStatus.completed).toList();
+    final totalBookings = completedBookings.length;
+    final totalRevenue =
+        completedBookings.fold<int>(0, (acc, b) => acc + b.price);
     final cancelled =
         bookings.where((b) => b.status == OwnerBookingStatus.cancelled).length;
-    final uniqueCustomers = bookings.map((b) => b.customerName).toSet().length;
+    final uniqueCustomers = completedBookings
+        .map((b) => b.customerUid.isNotEmpty ? b.customerUid : b.customerName)
+        .toSet()
+        .length;
     final manualWalkIns =
         queue.where((q) => q.status == OwnerQueueStatus.waiting).length;
     final bookingsByHour = <int, int>{};
-    for (final b in bookings) {
+    for (final b in completedBookings) {
       final hour = b.dateTime.hour;
       bookingsByHour[hour] = (bookingsByHour[hour] ?? 0) + 1;
     }
@@ -318,8 +335,10 @@ class DashboardProvider extends ChangeNotifier {
 
   List<ServicePerformance> _computeServicePerformance(
       List<OwnerBooking> bookings) {
+    final completed =
+        bookings.where((b) => b.status == OwnerBookingStatus.completed);
     final counts = <String, int>{};
-    for (final b in bookings) {
+    for (final b in completed) {
       counts[b.service] = (counts[b.service] ?? 0) + 1;
     }
     return counts.entries
@@ -360,6 +379,9 @@ class DashboardProvider extends ChangeNotifier {
   OwnerBookingStatus _statusFromString(String status) {
     switch (status) {
       case 'waiting':
+      case 'turn_ready':
+      case 'arrived':
+      case 'serving':
       case 'pending':
       case 'accepted':
         return OwnerBookingStatus.upcoming;
@@ -367,6 +389,8 @@ class DashboardProvider extends ChangeNotifier {
       case 'done':
         return OwnerBookingStatus.completed;
       case 'cancelled':
+      case 'canceled':
+      case 'no_show':
       case 'rejected':
         return OwnerBookingStatus.cancelled;
       default:

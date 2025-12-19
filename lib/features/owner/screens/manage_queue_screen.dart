@@ -3,6 +3,7 @@ import 'package:cutline/features/owner/providers/manage_queue_provider.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:cutline/features/owner/widgets/queue_card.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 class ManageQueueScreen extends StatefulWidget {
@@ -27,7 +28,11 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
       },
       builder: (context, _) {
         final provider = context.watch<ManageQueueProvider>();
-        final statuses = OwnerQueueStatus.values;
+        const statuses = [
+          OwnerQueueStatus.waiting,
+          OwnerQueueStatus.serving,
+          OwnerQueueStatus.done,
+        ];
         return DefaultTabController(
           length: statuses.length,
           child: Scaffold(
@@ -57,9 +62,9 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
                       ? const Center(child: CircularProgressIndicator())
                       : TabBarView(
                           children: statuses.map((status) {
-                            final filtered =
-                                _filteredQueue(provider.queue, status);
-                            if (filtered.isEmpty) {
+                            final entries =
+                                _buildQueueEntries(provider.queue, status);
+                            if (entries.isEmpty) {
                               return Center(
                                 child: Text(
                                   'No ${_statusLabel(status).toLowerCase()} customers.',
@@ -72,9 +77,13 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
                               child: ListView.builder(
                                 padding:
                                     const EdgeInsets.fromLTRB(20, 12, 20, 80),
-                                itemCount: filtered.length,
+                                itemCount: entries.length,
                                 itemBuilder: (_, index) {
-                                  final item = filtered[index];
+                                  final entry = entries[index];
+                                  if (entry.isHeader) {
+                                    return _DateHeader(label: entry.label);
+                                  }
+                                  final item = entry.item!;
                                   return OwnerQueueCard(
                                     item: item,
                                     onStatusChange: (next) =>
@@ -95,16 +104,65 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
     );
   }
 
-  List<OwnerQueueItem> _filteredQueue(
+  List<_QueueEntry> _buildQueueEntries(
       List<OwnerQueueItem> queue, OwnerQueueStatus status) {
     Iterable<OwnerQueueItem> filtered =
         queue.where((item) => item.status == status);
     if (_barberFilter != null) {
       filtered = filtered.where((item) => item.barberName == _barberFilter);
     }
+
     final sorted = filtered.toList()
-      ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
-    return sorted;
+      ..sort((a, b) => _compareBySchedule(a, b, status));
+    if (sorted.isEmpty) return const [];
+
+    final entries = <_QueueEntry>[];
+    DateTime? lastDay;
+    for (final item in sorted) {
+      final scheduledAt = item.scheduledAt;
+      final day = scheduledAt == null
+          ? null
+          : DateTime(scheduledAt.year, scheduledAt.month, scheduledAt.day);
+      if (lastDay != day) {
+        entries.add(_QueueEntry.header(_dayLabel(day)));
+        lastDay = day;
+      }
+      entries.add(_QueueEntry.item(item));
+    }
+    return entries;
+  }
+
+  int _compareBySchedule(
+      OwnerQueueItem a, OwnerQueueItem b, OwnerQueueStatus status) {
+    final aDt = a.scheduledAt;
+    final bDt = b.scheduledAt;
+
+    // Scheduled items first; unscheduled last.
+    if (aDt == null && bDt != null) return 1;
+    if (aDt != null && bDt == null) return -1;
+
+    // If both scheduled, sort by date+time.
+    if (aDt != null && bDt != null) {
+      final cmp =
+          status == OwnerQueueStatus.done ? bDt.compareTo(aDt) : aDt.compareTo(bDt);
+      if (cmp != 0) return cmp;
+    }
+
+    // Stable fallback: shorter wait first, then name.
+    final waitCmp = a.waitMinutes.compareTo(b.waitMinutes);
+    if (waitCmp != 0) return waitCmp;
+    return a.customerName.compareTo(b.customerName);
+  }
+
+  String _dayLabel(DateTime? day) {
+    if (day == null) return 'Unscheduled';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final diffDays = day.difference(today).inDays;
+    if (diffDays == 0) return 'Today';
+    if (diffDays == 1) return 'Tomorrow';
+    if (diffDays == -1) return 'Yesterday';
+    return DateFormat('EEE, d MMM').format(day);
   }
 
   List<String> _availableBarbers(List<OwnerQueueItem> queue) {
@@ -128,6 +186,45 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
       case OwnerQueueStatus.noShow:
         return 'No Show';
     }
+  }
+}
+
+class _QueueEntry {
+  final bool isHeader;
+  final String label;
+  final OwnerQueueItem? item;
+
+  const _QueueEntry._({
+    required this.isHeader,
+    required this.label,
+    required this.item,
+  });
+
+  factory _QueueEntry.header(String label) =>
+      _QueueEntry._(isHeader: true, label: label, item: null);
+
+  factory _QueueEntry.item(OwnerQueueItem item) =>
+      _QueueEntry._(isHeader: false, label: '', item: item);
+}
+
+class _DateHeader extends StatelessWidget {
+  final String label;
+
+  const _DateHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 8),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: Colors.black54,
+        ),
+      ),
+    );
   }
 }
 

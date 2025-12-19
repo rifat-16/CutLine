@@ -95,8 +95,16 @@ class _BookingScreenState extends State<BookingScreen> {
                       _BarberGrid(
                         barbers: barbers,
                         selectedBarber: selectedBarber,
-                        onSelected: (value) =>
-                            setState(() => selectedBarber = value),
+                        onSelected: (value) async {
+                          setState(() => selectedBarber = value);
+                          await provider.loadBookedSlots(selectedDate,
+                              barberName: value);
+                          if (!mounted) return;
+                          if (selectedTime != null &&
+                              provider.bookedSlots.contains(selectedTime)) {
+                            setState(() => selectedTime = null);
+                          }
+                        },
                       ),
                       const SizedBox(height: CutlineSpacing.md),
                       const CutlineSectionHeader(title: 'Select Date'),
@@ -110,7 +118,7 @@ class _BookingScreenState extends State<BookingScreen> {
                             selectedTime = null;
                           });
                           provider.updateTimeSlotsForDate(date);
-                          provider.loadBookedSlots(date);
+                          provider.loadBookedSlots(date, barberName: selectedBarber);
                         },
                       ),
                       const SizedBox(height: CutlineSpacing.md),

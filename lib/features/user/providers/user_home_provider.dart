@@ -46,7 +46,7 @@ class UserHomeProvider extends ChangeNotifier {
     _setError(null);
     try {
       debugPrint('UserHomeProvider: Starting to load salons');
-      
+
       // Load favorites first
       try {
         _favoriteIds = await _loadFavoriteIds();
@@ -55,34 +55,40 @@ class UserHomeProvider extends ChangeNotifier {
         debugPrint('UserHomeProvider: Error loading favorites: $e');
         _favoriteIds = {}; // Continue without favorites
       }
-      
+
       // Load salons collection
-      final snapshot = await _firestore.collection('salons').get();
-      debugPrint('UserHomeProvider: Found ${snapshot.docs.length} salon documents');
-      
+      final snapshot = await _firestore
+          .collection('salons')
+          .where('verificationStatus', isEqualTo: 'verified')
+          .get();
+      debugPrint(
+          'UserHomeProvider: Found ${snapshot.docs.length} salon documents');
+
       if (snapshot.docs.isEmpty) {
         debugPrint('UserHomeProvider: No salons found in database');
         _allSalons = [];
         _setError(null); // No error, just empty list
         return;
       }
-      
+
       final salons = await Future.wait(
         snapshot.docs.map((doc) => _mapSalon(doc.id, doc.data())),
       );
       salons.sort((a, b) => a.name.compareTo(b.name));
       _allSalons = salons;
-      debugPrint('UserHomeProvider: Successfully loaded ${_allSalons.length} salons');
+      debugPrint(
+          'UserHomeProvider: Successfully loaded ${_allSalons.length} salons');
     } catch (e, stackTrace) {
       debugPrint('UserHomeProvider: Error loading salons: $e');
       debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
       debugPrint('Stack trace: $stackTrace');
       _allSalons = [];
-      
+
       String errorMessage = 'Failed to load salons. Pull to refresh.';
       if (e is FirebaseException) {
         if (e.code == 'permission-denied') {
-          errorMessage = 'Permission denied. Please check Firestore rules are deployed.';
+          errorMessage =
+              'Salons are not available right now. Please try again later.';
         } else if (e.code == 'unavailable') {
           errorMessage = 'Network error. Check your connection.';
         } else {
@@ -108,7 +114,7 @@ class UserHomeProvider extends ChangeNotifier {
 
       final isOpenFlag = data['isOpen'];
       final bool isOpenNow = isOpenFlag is bool ? isOpenFlag : false;
-      
+
       // Estimate wait time (this may fail due to permissions, but shouldn't break salon loading)
       int waitMinutes = 0;
       try {
@@ -127,10 +133,10 @@ class UserHomeProvider extends ChangeNotifier {
         waitMinutes: waitMinutes,
         topServices: services.take(3).toList(),
         isFavorite: _favoriteIds.contains(id),
-        coverImageUrl:
-            (data['coverImageUrl'] as String?) ?? (data['coverPhoto'] as String?),
+        coverImageUrl: (data['coverImageUrl'] as String?) ??
+            (data['coverPhoto'] as String?),
       );
-      
+
       debugPrint('_mapSalon: Successfully mapped salon ${salon.name}');
       return salon;
     } catch (e) {
@@ -163,20 +169,22 @@ class UserHomeProvider extends ChangeNotifier {
 
   Future<int> _estimateWaitMinutes(String salonId) async {
     try {
-      debugPrint('_estimateWaitMinutes: Estimating wait time for salonId: $salonId');
+      debugPrint(
+          '_estimateWaitMinutes: Estimating wait time for salonId: $salonId');
       final snap = await _firestore
           .collection('salons')
           .doc(salonId)
           .collection('queue')
           .where('status', isEqualTo: 'waiting')
           .get();
-      
+
       if (snap.docs.isEmpty) {
         debugPrint('_estimateWaitMinutes: No waiting queue items found');
         return 0;
       }
 
-      debugPrint('_estimateWaitMinutes: Found ${snap.docs.length} waiting items');
+      debugPrint(
+          '_estimateWaitMinutes: Found ${snap.docs.length} waiting items');
       var collected = 0;
       var items = 0;
       for (final doc in snap.docs) {
@@ -192,7 +200,8 @@ class UserHomeProvider extends ChangeNotifier {
         return avg;
       }
       final fallback = snap.size * 10;
-      debugPrint('_estimateWaitMinutes: Using fallback estimate: $fallback minutes');
+      debugPrint(
+          '_estimateWaitMinutes: Using fallback estimate: $fallback minutes');
       return fallback;
     } catch (e) {
       debugPrint('_estimateWaitMinutes: Error estimating wait time: $e');

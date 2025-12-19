@@ -40,7 +40,7 @@ class MyBookingProvider extends ChangeNotifier {
       _setLoading(false);
       return;
     }
-    
+
     _setLoading(true);
     _setError(null);
     try {
@@ -55,7 +55,8 @@ class MyBookingProvider extends ChangeNotifier {
         await _loadWithFallback();
       } catch (e2) {
         debugPrint('MyBookingProvider: Error in _loadWithFallback: $e2');
-        debugPrint('Error code: ${e2 is FirebaseException ? e2.code : "unknown"}');
+        debugPrint(
+            'Error code: ${e2 is FirebaseException ? e2.code : "unknown"}');
         _setError('Failed to load bookings. Pull to refresh.');
         _upcoming = [];
         _completed = [];
@@ -75,7 +76,7 @@ class MyBookingProvider extends ChangeNotifier {
           .collection('bookings')
           .doc(booking.id)
           .set({'status': 'cancelled'}, SetOptions(merge: true));
-      
+
       // Cancel the reminder notification for this booking
       await _reminderService.cancelReminder(booking.id);
     } catch (_) {
@@ -83,53 +84,55 @@ class MyBookingProvider extends ChangeNotifier {
     }
   }
 
-  UserBooking? _mapBooking(
-      QueryDocumentSnapshot<Map<String, dynamic>> snapshot,
+  UserBooking? _mapBooking(QueryDocumentSnapshot<Map<String, dynamic>> snapshot,
       Map<String, String?> coverCache) {
     try {
       final data = snapshot.data();
       final parent = snapshot.reference.parent.parent;
       final salonId = parent?.id ?? '';
-      
-      debugPrint('_mapBooking: Mapping booking ${snapshot.id} from salon $salonId');
+
+      debugPrint(
+          '_mapBooking: Mapping booking ${snapshot.id} from salon $salonId');
       debugPrint('_mapBooking: Booking data keys: ${data.keys.toList()}');
-      
+
       // Try multiple field names for customer UID
       final customerUid = (data['customerUid'] as String?)?.trim() ??
           (data['userId'] as String?)?.trim() ??
           (data['userUid'] as String?)?.trim() ??
           '';
-      
+
       final dateStr = (data['date'] as String?)?.trim() ?? '';
       final timeStr = (data['time'] as String?)?.trim() ?? '';
-      
-      debugPrint('_mapBooking: customerUid: $customerUid, date: $dateStr, time: $timeStr');
-      
+
+      debugPrint(
+          '_mapBooking: customerUid: $customerUid, date: $dateStr, time: $timeStr');
+
       if (dateStr.isEmpty || timeStr.isEmpty) {
         debugPrint('_mapBooking: Missing date or time, skipping booking');
         return null;
       }
-      
+
       final dateTime = _parseDateTime(dateStr, timeStr);
       if (dateTime == null) {
         debugPrint('_mapBooking: Failed to parse date/time, skipping booking');
         return null;
       }
-      
-      final salonCover =
-          (data['coverImageUrl'] as String?)?.trim() ??
-              (data['coverPhoto'] as String?)?.trim() ??
-              coverCache[salonId];
-      
+
+      final salonCover = (data['coverImageUrl'] as String?)?.trim() ??
+          (data['coverPhoto'] as String?)?.trim() ??
+          coverCache[salonId];
+
       final booking = UserBooking(
         id: snapshot.id,
         salonId: salonId,
         salonName: (data['salonName'] as String?)?.trim() ?? 'Salon',
         customerUid: customerUid,
-        customerEmail: (data['customerEmail'] as String?)?.trim() ?? 
-            (data['email'] as String?)?.trim() ?? '',
-        customerPhone: (data['customerPhone'] as String?)?.trim() ?? 
-            (data['phone'] as String?)?.trim() ?? '',
+        customerEmail: (data['customerEmail'] as String?)?.trim() ??
+            (data['email'] as String?)?.trim() ??
+            '',
+        customerPhone: (data['customerPhone'] as String?)?.trim() ??
+            (data['phone'] as String?)?.trim() ??
+            '',
         coverImageUrl: salonCover,
         services: (data['services'] as List?)
                 ?.map((e) {
@@ -146,8 +149,9 @@ class MyBookingProvider extends ChangeNotifier {
         dateTime: dateTime,
         status: (data['status'] as String?)?.trim() ?? 'upcoming',
       );
-      
-      debugPrint('_mapBooking: Successfully mapped booking: ${booking.salonName} - ${booking.dateLabel}');
+
+      debugPrint(
+          '_mapBooking: Successfully mapped booking: ${booking.salonName} - ${booking.dateLabel}');
       return booking;
     } catch (e, stackTrace) {
       debugPrint('_mapBooking: Error mapping booking: $e');
@@ -190,8 +194,7 @@ class MyBookingProvider extends ChangeNotifier {
 
   void _updateLocalStatus(String id, String salonId, String status) {
     void update(List<UserBooking> list) {
-      final index = list.indexWhere(
-          (b) => b.id == id && b.salonId == salonId);
+      final index = list.indexWhere((b) => b.id == id && b.salonId == salonId);
       if (index != -1) {
         list[index] = list[index].copyWith(status: status);
       }
@@ -215,30 +218,34 @@ class MyBookingProvider extends ChangeNotifier {
 
   Future<void> _loadWithFilter() async {
     try {
-      debugPrint('_loadWithFilter: Querying collectionGroup bookings with customerUid: $userId');
-      
+      debugPrint(
+          '_loadWithFilter: Querying collectionGroup bookings with customerUid: $userId');
+
       // Try customerUid first
       try {
         final snap = await _firestore
             .collectionGroup('bookings')
             .where('customerUid', isEqualTo: userId)
             .get();
-        
-        debugPrint('_loadWithFilter: Found ${snap.docs.length} booking documents with customerUid');
-        
+
+        debugPrint(
+            '_loadWithFilter: Found ${snap.docs.length} booking documents with customerUid');
+
         if (snap.docs.isNotEmpty) {
           final coverCache = await _loadCoverCache(snap.docs);
-          debugPrint('_loadWithFilter: Loaded cover cache for ${coverCache.length} salons');
-          
+          debugPrint(
+              '_loadWithFilter: Loaded cover cache for ${coverCache.length} salons');
+
           final items = snap.docs
               .map((doc) => _mapBooking(doc, coverCache))
               .whereType<UserBooking>()
               .where(_isCurrentUser)
               .toList();
-          
-          debugPrint('_loadWithFilter: Mapped ${items.length} bookings after filtering');
+
+          debugPrint(
+              '_loadWithFilter: Mapped ${items.length} bookings after filtering');
           _categorize(items);
-          
+
           if (items.isEmpty) {
             debugPrint('_loadWithFilter: No bookings found after filtering');
           }
@@ -247,7 +254,7 @@ class MyBookingProvider extends ChangeNotifier {
       } catch (e) {
         debugPrint('_loadWithFilter: Error querying with customerUid: $e');
       }
-      
+
       // Fallback: try userId field
       try {
         debugPrint('_loadWithFilter: Trying userId field');
@@ -255,19 +262,21 @@ class MyBookingProvider extends ChangeNotifier {
             .collectionGroup('bookings')
             .where('userId', isEqualTo: userId)
             .get();
-        
-        debugPrint('_loadWithFilter: Found ${snap.docs.length} booking documents with userId');
-        
+
+        debugPrint(
+            '_loadWithFilter: Found ${snap.docs.length} booking documents with userId');
+
         final coverCache = await _loadCoverCache(snap.docs);
         final items = snap.docs
             .map((doc) => _mapBooking(doc, coverCache))
             .whereType<UserBooking>()
             .where(_isCurrentUser)
             .toList();
-        
-        debugPrint('_loadWithFilter: Mapped ${items.length} bookings with userId field');
+
+        debugPrint(
+            '_loadWithFilter: Mapped ${items.length} bookings with userId field');
         _categorize(items);
-        
+
         if (items.isEmpty) {
           debugPrint('_loadWithFilter: No bookings found with userId field');
         }
@@ -287,47 +296,58 @@ class MyBookingProvider extends ChangeNotifier {
   Future<void> _loadWithFallback() async {
     try {
       debugPrint('_loadWithFallback: Starting fallback loading method');
-      
+
       // Method 1: Try collectionGroup without filter
       try {
-        debugPrint('_loadWithFallback: Method 1 - Loading all bookings from collectionGroup');
+        debugPrint(
+            '_loadWithFallback: Method 1 - Loading all bookings from collectionGroup');
         final snap = await _firestore.collectionGroup('bookings').get();
-        
-        debugPrint('_loadWithFallback: Found ${snap.docs.length} total booking documents');
-        
+
+        debugPrint(
+            '_loadWithFallback: Found ${snap.docs.length} total booking documents');
+
         final coverCache = await _loadCoverCache(snap.docs);
-        debugPrint('_loadWithFallback: Loaded cover cache for ${coverCache.length} salons');
-        
+        debugPrint(
+            '_loadWithFallback: Loaded cover cache for ${coverCache.length} salons');
+
         final allItems = snap.docs
             .map((doc) => _mapBooking(doc, coverCache))
             .whereType<UserBooking>()
             .toList();
-        
-        debugPrint('_loadWithFallback: Mapped ${allItems.length} bookings before user filtering');
-        
+
+        debugPrint(
+            '_loadWithFallback: Mapped ${allItems.length} bookings before user filtering');
+
         final items = allItems.where(_isCurrentUser).toList();
-        debugPrint('_loadWithFallback: Filtered to ${items.length} bookings for current user');
-        
+        debugPrint(
+            '_loadWithFallback: Filtered to ${items.length} bookings for current user');
+
         if (items.isNotEmpty) {
           _categorize(items);
-          debugPrint('_loadWithFallback: Successfully loaded ${items.length} bookings using collectionGroup');
+          debugPrint(
+              '_loadWithFallback: Successfully loaded ${items.length} bookings using collectionGroup');
           _setError(null);
           return;
         }
       } catch (e) {
         debugPrint('_loadWithFallback: Method 1 failed: $e');
-        debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
+        debugPrint(
+            'Error code: ${e is FirebaseException ? e.code : "unknown"}');
       }
-      
+
       // Method 2: Load all salons and query each salon's bookings individually
       try {
-        debugPrint('_loadWithFallback: Method 2 - Loading bookings from individual salons');
-        final salonsSnap = await _firestore.collection('salons').get();
+        debugPrint(
+            '_loadWithFallback: Method 2 - Loading bookings from individual salons');
+        final salonsSnap = await _firestore
+            .collection('salons')
+            .where('verificationStatus', isEqualTo: 'verified')
+            .get();
         debugPrint('_loadWithFallback: Found ${salonsSnap.docs.length} salons');
-        
+
         final allBookings = <UserBooking>[];
         final coverCache = <String, String?>{};
-        
+
         // Load cover images
         for (final salonDoc in salonsSnap.docs) {
           final salonId = salonDoc.id;
@@ -335,15 +355,17 @@ class MyBookingProvider extends ChangeNotifier {
           coverCache[salonId] = (salonData['coverImageUrl'] as String?) ??
               (salonData['coverPhoto'] as String?);
         }
-        
-        debugPrint('_loadWithFallback: Loaded cover cache for ${coverCache.length} salons');
-        
+
+        debugPrint(
+            '_loadWithFallback: Loaded cover cache for ${coverCache.length} salons');
+
         // Query bookings from each salon
         for (final salonDoc in salonsSnap.docs) {
           try {
             final salonId = salonDoc.id;
-            debugPrint('_loadWithFallback: Checking bookings in salon: $salonId');
-            
+            debugPrint(
+                '_loadWithFallback: Checking bookings in salon: $salonId');
+
             // Try with customerUid filter
             try {
               final bookingsSnap = await _firestore
@@ -352,9 +374,10 @@ class MyBookingProvider extends ChangeNotifier {
                   .collection('bookings')
                   .where('customerUid', isEqualTo: userId)
                   .get();
-              
-              debugPrint('_loadWithFallback: Found ${bookingsSnap.docs.length} bookings in salon $salonId with customerUid');
-              
+
+              debugPrint(
+                  '_loadWithFallback: Found ${bookingsSnap.docs.length} bookings in salon $salonId with customerUid');
+
               for (final doc in bookingsSnap.docs) {
                 final booking = _mapBooking(doc, coverCache);
                 if (booking != null && _isCurrentUser(booking)) {
@@ -362,7 +385,8 @@ class MyBookingProvider extends ChangeNotifier {
                 }
               }
             } catch (e) {
-              debugPrint('_loadWithFallback: Error querying with customerUid for salon $salonId: $e');
+              debugPrint(
+                  '_loadWithFallback: Error querying with customerUid for salon $salonId: $e');
               // Try without filter
               try {
                 final bookingsSnap = await _firestore
@@ -370,9 +394,10 @@ class MyBookingProvider extends ChangeNotifier {
                     .doc(salonId)
                     .collection('bookings')
                     .get();
-                
-                debugPrint('_loadWithFallback: Found ${bookingsSnap.docs.length} total bookings in salon $salonId');
-                
+
+                debugPrint(
+                    '_loadWithFallback: Found ${bookingsSnap.docs.length} total bookings in salon $salonId');
+
                 for (final doc in bookingsSnap.docs) {
                   final booking = _mapBooking(doc, coverCache);
                   if (booking != null && _isCurrentUser(booking)) {
@@ -380,53 +405,59 @@ class MyBookingProvider extends ChangeNotifier {
                   }
                 }
               } catch (e2) {
-                debugPrint('_loadWithFallback: Error loading all bookings from salon $salonId: $e2');
+                debugPrint(
+                    '_loadWithFallback: Error loading all bookings from salon $salonId: $e2');
               }
             }
           } catch (e) {
-            debugPrint('_loadWithFallback: Error processing salon ${salonDoc.id}: $e');
+            debugPrint(
+                '_loadWithFallback: Error processing salon ${salonDoc.id}: $e');
             continue;
           }
         }
-        
-        debugPrint('_loadWithFallback: Method 2 - Found ${allBookings.length} bookings from individual salon queries');
-        
+
+        debugPrint(
+            '_loadWithFallback: Method 2 - Found ${allBookings.length} bookings from individual salon queries');
+
         if (allBookings.isNotEmpty) {
           _categorize(allBookings);
-          debugPrint('_loadWithFallback: Successfully loaded ${allBookings.length} bookings');
+          debugPrint(
+              '_loadWithFallback: Successfully loaded ${allBookings.length} bookings');
           _setError(null);
           return;
         }
       } catch (e) {
         debugPrint('_loadWithFallback: Method 2 failed: $e');
-        debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
+        debugPrint(
+            'Error code: ${e is FirebaseException ? e.code : "unknown"}');
       }
-      
+
       // If both methods fail
       debugPrint('_loadWithFallback: All methods failed, no bookings found');
       _setError('No bookings found for this account.');
       _upcoming = [];
       _completed = [];
       _cancelled = [];
-      
     } catch (e, stackTrace) {
       debugPrint('_loadWithFallback: Fatal error: $e');
       debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
       debugPrint('Stack trace: $stackTrace');
-      
+
       String errorMessage = 'Failed to load bookings. Pull to refresh.';
       if (e is FirebaseException) {
         if (e.code == 'permission-denied') {
-          errorMessage = 'Permission denied. Please check Firestore rules are deployed.';
+          errorMessage =
+              'Permission denied. Please check Firestore rules are deployed.';
         } else if (e.code == 'unavailable') {
           errorMessage = 'Network error. Check your connection.';
         } else if (e.code == 'failed-precondition') {
-          errorMessage = 'Database query failed. Please ensure Firestore indexes are created.';
+          errorMessage =
+              'Database query failed. Please ensure Firestore indexes are created.';
         } else {
           errorMessage = 'Firebase error: ${e.message ?? e.code}';
         }
       }
-      
+
       _setError(errorMessage);
       _upcoming = [];
       _completed = [];

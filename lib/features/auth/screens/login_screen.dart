@@ -127,22 +127,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: TextButton(
                     onPressed: auth.isLoading
                         ? null
-                        : () async {
-                            final email = _emailController.text.trim();
-                            if (email.isEmpty) {
-                              _showSnack('Enter your email to reset password.');
-                              return;
-                            }
-
-                            final sent = await auth.sendPasswordReset(email);
-                            if (!context.mounted) return;
-                            if (sent) {
-                              _showSnack(
-                                'Reset link sent. Check your email inbox.',
-                              );
-                            } else if (auth.lastError != null) {
-                              _showSnack(auth.lastError!);
-                            }
+                        : () {
+                            Navigator.pushNamed(
+                              context,
+                              AppRoutes.forgotPassword,
+                              arguments: _emailController.text.trim().isEmpty
+                                  ? null
+                                  : _emailController.text.trim(),
+                            );
                           },
                     child: Text(
                       "Forgot Password?",

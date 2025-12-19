@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cutline/shared/models/salon_verification_status.dart';
 
 class SalonService {
   SalonService({FirebaseFirestore? firestore})
@@ -20,6 +21,8 @@ class SalonService {
   }) async {
     final now = FieldValue.serverTimestamp();
     final salonRef = _firestore.collection('salons').doc(ownerId);
+    final existing = await salonRef.get();
+    final isNewSalon = !existing.exists;
 
     await salonRef.set(
       {
@@ -35,8 +38,12 @@ class SalonService {
           'coverImageUrl': coverPhotoUrl,
         if (galleryPhotos != null && galleryPhotos.isNotEmpty)
           'galleryPhotos': galleryPhotos,
+        if (isNewSalon) 'isOpen': false,
+        if (isNewSalon)
+          'verificationStatus': SalonVerificationStatus.pending.firestoreValue,
+        if (isNewSalon) 'submittedAt': now,
         'updatedAt': now,
-        'createdAt': now,
+        if (isNewSalon) 'createdAt': now,
       },
       SetOptions(merge: true),
     );

@@ -53,19 +53,46 @@ class BookingProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> loadBookedSlots(DateTime date) async {
+  Future<void> loadBookedSlots(DateTime date, {String? barberName}) async {
     final formattedDate = DateFormat('yyyy-MM-dd').format(date);
     try {
+      final normalizedBarber = barberName?.trim().toLowerCase();
+      if (normalizedBarber == null || normalizedBarber.isEmpty) {
+        _bookedSlots = [];
+        notifyListeners();
+        return;
+      }
+
       final snap = await _firestore
           .collection('salons')
           .doc(salonId)
           .collection('bookings')
           .where('date', isEqualTo: formattedDate)
           .get();
-      _bookedSlots = snap.docs
-          .map((doc) => (doc.data()['time'] as String?) ?? '')
-          .where((slot) => slot.isNotEmpty)
-          .toList();
+      final slots = <String>{};
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final status = (data['status'] as String?)?.trim().toLowerCase() ?? '';
+        // Cancelled/no-show bookings shouldn't block availability.
+        if (status == 'cancelled' ||
+            status == 'canceled' ||
+            status == 'no_show' ||
+            status == 'rejected') {
+          continue;
+        }
+
+        final bookingBarber =
+            (data['barberName'] as String?)?.trim().toLowerCase() ?? '';
+        if (bookingBarber != normalizedBarber) continue;
+
+        final slot = ((data['time'] as String?) ??
+                (data['bookingTime'] as String?) ??
+                (data['slotLabel'] as String?) ??
+                '')
+            .trim();
+        if (slot.isNotEmpty) slots.add(slot);
+      }
+      _bookedSlots = slots.toList();
     } catch (_) {
       _bookedSlots = [];
     }

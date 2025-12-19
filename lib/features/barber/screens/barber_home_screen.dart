@@ -1,6 +1,8 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/barber/providers/barber_home_provider.dart';
+import 'package:cutline/shared/widgets/notification_badge_icon.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 
@@ -155,25 +157,37 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                     ),
                   )
                 else
-                  ...queue.map(
-                    (item) => Padding(
+                  ...queue.asMap().entries.map(
+                    (entry) {
+                      final item = entry.value;
+                      final isCurrentTurn =
+                          item.status == BarberQueueStatus.waiting &&
+                              entry.key == 0;
+                      return Padding(
                       padding: const EdgeInsets.only(bottom: 14),
                       child: _QueueCard(
                         item: item,
-                        onStartServing: item.status == BarberQueueStatus.waiting
+                        onStartServing: isCurrentTurn
                             ? () => provider.updateStatus(
                                   item.id,
                                   BarberQueueStatus.serving,
                                 )
                             : null,
-                        onMarkDone: item.status != BarberQueueStatus.done
+                        onCancel: isCurrentTurn
+                            ? () => provider.updateStatus(
+                                  item.id,
+                                  BarberQueueStatus.cancelled,
+                                )
+                            : null,
+                        onMarkDone: item.status == BarberQueueStatus.serving
                             ? () => provider.updateStatus(
                                   item.id,
                                   BarberQueueStatus.done,
                                 )
                             : null,
                       ),
-                    ),
+                    );
+                    },
                   ),
               ],
             ),
@@ -184,6 +198,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
   }
 
   AppBar _buildAppBar(BuildContext context, BarberHomeProvider provider) {
+    final userId = context.read<AuthProvider>().currentUser?.uid ?? '';
     final salonName = provider.salonName;
     return AppBar(
       titleSpacing: 0,
@@ -202,9 +217,9 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
       ),
       actions: [
         _AvailabilityToggle(provider: provider),
-        IconButton(
-          icon: const Icon(Icons.notifications_none),
-          onPressed: () {
+        NotificationBadgeIcon(
+          userId: userId,
+          onTap: () {
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -245,10 +260,15 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
   }
 
   Widget _buildQueueTabs() {
+    const tabStatuses = [
+      BarberQueueStatus.waiting,
+      BarberQueueStatus.serving,
+      BarberQueueStatus.done,
+    ];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: BarberQueueStatus.values.map((status) {
+        children: tabStatuses.map((status) {
           final isSelected = _selectedStatus == status;
           return GestureDetector(
             onTap: () => setState(() => _selectedStatus = status),
@@ -265,7 +285,14 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
   List<BarberQueueItem> _filteredQueue(List<BarberQueueItem> queue) {
     final selected = _selectedStatus;
     final sorted = List.of(queue)
-      ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
+      ..sort((a, b) {
+        final aDt = a.scheduledAt;
+        final bDt = b.scheduledAt;
+        if (aDt != null && bDt != null) return aDt.compareTo(bDt);
+        if (aDt != null) return -1;
+        if (bDt != null) return 1;
+        return a.waitMinutes.compareTo(b.waitMinutes);
+      });
     if (selected == null) return sorted;
     return sorted.where((item) => item.status == selected).toList();
   }
@@ -400,11 +427,13 @@ class _QueueCard extends StatefulWidget {
   final BarberQueueItem item;
   final VoidCallback? onStartServing;
   final VoidCallback? onMarkDone;
+  final VoidCallback? onCancel;
 
   const _QueueCard({
     required this.item,
     this.onStartServing,
     this.onMarkDone,
+    this.onCancel,
   });
 
   @override
@@ -485,6 +514,8 @@ class _QueueCardState extends State<_QueueCard> {
         return "$actualMinutes min";
       }
       return "${widget.item.waitMinutes} min";
+    } else if (widget.item.status == BarberQueueStatus.cancelled) {
+      return "${widget.item.waitMinutes} min";
     } else {
       return "${widget.item.waitMinutes} min";
     }
@@ -497,13 +528,16 @@ class _QueueCardState extends State<_QueueCard> {
       }
       return Colors.orange;
     }
+    if (widget.item.status == BarberQueueStatus.cancelled) {
+      return Colors.grey;
+    }
     return Colors.orange;
   }
 
   @override
   Widget build(BuildContext context) {
     final statusColor = _statusColor(widget.item.status);
-    final actionButton = _buildActionButton();
+    final actions = _buildActions();
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -515,20 +549,39 @@ class _QueueCardState extends State<_QueueCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(widget.item.customerName,
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.bold)),
-              Text(_getTimeDisplay(),
-                  style: TextStyle(
-                      color: _getTimeColor(), fontSize: 15)),
+              _buildAvatar(),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.item.customerName,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _scheduledLabel(),
+                      style:
+                          TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                _getTimeDisplay(),
+                style: TextStyle(color: _getTimeColor(), fontSize: 15),
+              ),
             ],
           ),
           const SizedBox(height: 8),
           Text(
-            "${widget.item.service} • ৳${widget.item.price}   ${widget.item.slotLabel}",
-            style: const TextStyle(color: Colors.black54, fontSize: 14),
+            "${widget.item.service} • ৳${widget.item.price}",
+            style: const TextStyle(color: Colors.black54, fontSize: 15),
           ),
           const SizedBox(height: 6),
           Text("Barber: ${widget.item.barberName}",
@@ -556,9 +609,13 @@ class _QueueCardState extends State<_QueueCard> {
                       color: statusColor, fontWeight: FontWeight.w600),
                 ),
               ),
-              if (actionButton != null) ...[
+              if (actions.isNotEmpty) ...[
                 const Spacer(),
-                actionButton,
+                Row(
+                  children: [
+                    ...actions,
+                  ],
+                ),
               ],
             ],
           ),
@@ -567,42 +624,121 @@ class _QueueCardState extends State<_QueueCard> {
     );
   }
 
-  Widget? _buildActionButton() {
-    if (widget.onStartServing != null) {
-      return ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(
-          elevation: 0,
-          backgroundColor: Colors.blueAccent,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          shape: const StadiumBorder(),
+  List<Widget> _buildActions() {
+    if (widget.onStartServing != null && widget.onCancel != null) {
+      return [
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            elevation: 0,
+            backgroundColor: Colors.redAccent,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            shape: const StadiumBorder(),
+          ),
+          onPressed: _confirmCancel,
+          child: const Text(
+            "Cancel",
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
         ),
-        onPressed: widget.onStartServing,
-        icon: const Icon(Icons.play_arrow_rounded, size: 20),
-        label: const Text(
-          "Start Serving",
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        const SizedBox(width: 10),
+        ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            elevation: 0,
+            backgroundColor: Colors.blueAccent,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: const StadiumBorder(),
+          ),
+          onPressed: widget.onStartServing,
+          icon: const Icon(Icons.play_arrow_rounded, size: 20),
+          label: const Text(
+            "Start Serving",
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
         ),
-      );
+      ];
     }
     if (widget.onMarkDone != null) {
-      return ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(
-          elevation: 0,
-          backgroundColor: Colors.green.shade600,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          shape: const StadiumBorder(),
+      return [
+        ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            elevation: 0,
+            backgroundColor: Colors.green.shade600,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: const StadiumBorder(),
+          ),
+          onPressed: widget.onMarkDone,
+          icon: const Icon(Icons.check_circle_rounded, size: 20),
+          label: const Text(
+            "Mark Completed",
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
         ),
-        onPressed: widget.onMarkDone,
-        icon: const Icon(Icons.check_circle_rounded, size: 20),
-        label: const Text(
-          "Mark Completed",
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-        ),
-      );
+      ];
     }
-    return null;
+    return [];
+  }
+
+  Future<void> _confirmCancel() async {
+    if (widget.onCancel == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel booking?'),
+        content: const Text(
+          'This will remove the customer from the queue. Are you sure?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text(
+              'Yes, cancel',
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      widget.onCancel!();
+    }
+  }
+
+  Widget _buildAvatar() {
+    final avatarUrl = widget.item.customerAvatar;
+    final initials = widget.item.customerName.isNotEmpty
+        ? widget.item.customerName[0].toUpperCase()
+        : '?';
+    return CircleAvatar(
+      radius: 22,
+      backgroundColor: Colors.blue.shade100,
+      backgroundImage:
+          avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+      child: avatarUrl.isEmpty
+          ? Text(
+              initials,
+              style: const TextStyle(
+                color: Colors.blueAccent,
+                fontWeight: FontWeight.w700,
+              ),
+            )
+          : null,
+    );
+  }
+
+  String _scheduledLabel() {
+    if (widget.item.scheduledAt != null) {
+      return DateFormat('MMM d • h:mm a').format(widget.item.scheduledAt!);
+    }
+    if (widget.item.slotLabel.isNotEmpty) return widget.item.slotLabel;
+    return 'Schedule not set';
   }
 }
 
@@ -614,6 +750,8 @@ String _statusLabel(BarberQueueStatus status) {
       return 'Serving';
     case BarberQueueStatus.done:
       return 'Completed';
+    case BarberQueueStatus.cancelled:
+      return 'Cancelled';
   }
 }
 
@@ -625,5 +763,7 @@ Color _statusColor(BarberQueueStatus status) {
       return Colors.blue;
     case BarberQueueStatus.done:
       return Colors.green;
+    case BarberQueueStatus.cancelled:
+      return Colors.grey;
   }
 }

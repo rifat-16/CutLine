@@ -2,6 +2,7 @@ import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:cutline/features/owner/utils/cutline_theme.dart';
 import 'package:cutline/features/owner/utils/queue_actions.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 class OwnerQueueCard extends StatelessWidget {
   final OwnerQueueItem item;
@@ -22,8 +23,7 @@ class OwnerQueueCard extends StatelessWidget {
     final Color statusColor = _statusColor(item.status);
     final String durationLabel =
         '${item.waitMinutes} min${item.waitMinutes == 1 ? '' : 's'}';
-    final String scheduleLabel =
-        item.slotLabel.isNotEmpty ? item.slotLabel : 'Not scheduled';
+    final String scheduleLabel = _scheduleLabel(item);
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       child: Material(
@@ -201,6 +201,14 @@ class OwnerQueueCard extends StatelessWidget {
         input.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
     if (parts.isEmpty) return 'C';
     return parts.map((e) => e[0]).take(2).join().toUpperCase();
+  }
+
+  String _scheduleLabel(OwnerQueueItem item) {
+    final scheduledAt = item.scheduledAt;
+    if (scheduledAt != null) {
+      return DateFormat('d MMM, h:mm a').format(scheduledAt);
+    }
+    return item.slotLabel.isNotEmpty ? item.slotLabel : 'Not scheduled';
   }
 }
 

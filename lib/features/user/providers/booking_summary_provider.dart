@@ -150,9 +150,22 @@ class BookingSummaryProvider extends ChangeNotifier {
           .collection('bookings')
           .where('date', isEqualTo: dateKey)
           .where('time', isEqualTo: selectedTime)
-          .limit(1)
           .get();
-      return snap.docs.isNotEmpty;
+      final normalizedBarber = selectedBarber.trim().toLowerCase();
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final status = (data['status'] as String?)?.trim().toLowerCase() ?? '';
+        if (status == 'cancelled' ||
+            status == 'canceled' ||
+            status == 'no_show' ||
+            status == 'rejected') {
+          continue;
+        }
+        final bookingBarber =
+            (data['barberName'] as String?)?.trim().toLowerCase() ?? '';
+        if (bookingBarber == normalizedBarber) return true;
+      }
+      return false;
     } catch (_) {
       return false;
     }

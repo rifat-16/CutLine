@@ -4,6 +4,7 @@ import 'package:cutline/features/user/widgets/home_bottom_navigation.dart';
 import 'package:cutline/features/user/widgets/nearby_salon_card.dart';
 import 'package:cutline/features/user/widgets/user_search_bar.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
+import 'package:cutline/shared/widgets/notification_badge_icon.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -41,9 +42,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           appBar: CutlineAppBar(
             title: 'Home',
             actions: [
-              IconButton(
-                icon: const Icon(Icons.notifications_none),
-                onPressed: () =>
+              NotificationBadgeIcon(
+                userId: userId,
+                onTap: () =>
                     Navigator.pushNamed(context, AppRoutes.userNotifications),
               ),
               SizedBox(width: 8.w),

@@ -47,10 +47,12 @@ class SalonDetailsScreen extends StatelessWidget {
             onFavoriteToggle: provider.toggleFavorite,
           ),
           body: _buildContent(context, provider, details),
-          floatingActionButton: BookNowFab(
-            salonId: details?.id ?? salonId,
-            salonName: details?.name ?? salonName,
-          ),
+          floatingActionButton: details == null
+              ? null
+              : BookNowFab(
+                  salonId: details.id,
+                  salonName: details.name,
+                ),
         );
       },
     );
@@ -79,8 +81,7 @@ class SalonDetailsScreen extends StatelessWidget {
             CoverPhotoSection(coverImageUrl: details?.coverImageUrl),
             if (provider.error != null)
               Padding(
-                padding:
-                    CutlineSpacing.section.copyWith(top: 8, bottom: 8),
+                padding: CutlineSpacing.section.copyWith(top: 8, bottom: 8),
                 child: Text(provider.error!,
                     style: const TextStyle(color: Colors.red)),
               ),
@@ -101,8 +102,7 @@ class SalonDetailsScreen extends StatelessWidget {
               _mediumGap,
               ComboOfferCard(
                 salonName: details.name,
-                combo:
-                    details.combos.isNotEmpty ? details.combos.first : null,
+                combo: details.combos.isNotEmpty ? details.combos.first : null,
               ),
               _mediumGap,
               ServicesSection(
@@ -128,7 +128,8 @@ class SalonDetailsScreen extends StatelessWidget {
 }
 
 // App bar extracted for readability.
-class SalonDetailsAppBar extends StatelessWidget implements PreferredSizeWidget {
+class SalonDetailsAppBar extends StatelessWidget
+    implements PreferredSizeWidget {
   final String titleText;
   final bool isFavorite;
   final VoidCallback? onFavoriteToggle;
@@ -308,7 +309,8 @@ class SalonInfoSection extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
-              const Icon(Icons.location_on, size: 18, color: CutlineColors.primary),
+              const Icon(Icons.location_on,
+                  size: 18, color: CutlineColors.primary),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -340,7 +342,8 @@ class SalonInfoSection extends StatelessWidget {
           const SizedBox(height: 6),
           _IconTextRow(
             icon: Icons.email_outlined,
-            label: details.email.isNotEmpty ? details.email : 'Email unavailable',
+            label:
+                details.email.isNotEmpty ? details.email : 'Email unavailable',
           ),
           const SizedBox(height: 6),
           _IconTextRow(
@@ -378,14 +381,18 @@ class WorkingHoursCard extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: CutlineDecorations.card(
-          colors: [CutlineColors.background, CutlineColors.primary.withValues(alpha: 0.06)],
+          colors: [
+            CutlineColors.background,
+            CutlineColors.primary.withValues(alpha: 0.06)
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: const [
-                Icon(Icons.schedule_rounded, color: CutlineColors.primary, size: 22),
+                Icon(Icons.schedule_rounded,
+                    color: CutlineColors.primary, size: 22),
                 SizedBox(width: 8),
                 Text('Working Hours', style: CutlineTextStyles.title),
               ],
@@ -398,18 +405,17 @@ class WorkingHoursCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(hour.day,
-                        style:
-                            CutlineTextStyles.body.copyWith(fontSize: 15)),
+                        style: CutlineTextStyles.body.copyWith(fontSize: 15)),
                     Text(hour.timeRangeLabel,
-                        style: CutlineTextStyles.caption.copyWith(fontSize: 15)),
+                        style:
+                            CutlineTextStyles.caption.copyWith(fontSize: 15)),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 10),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: isOpen
                     ? Colors.green.withValues(alpha: 0.1)
@@ -541,69 +547,74 @@ class _BarberCard extends StatelessWidget {
         width: 170,
         margin: const EdgeInsets.only(right: 12, bottom: 8),
         decoration: CutlineDecorations.card(
-          colors: [CutlineColors.background, CutlineColors.primary.withValues(alpha: 0.04)],
+          colors: [
+            CutlineColors.background,
+            CutlineColors.primary.withValues(alpha: 0.04)
+          ],
         ),
         padding: const EdgeInsets.all(12),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-          ClipOval(
-            child: Container(
-              width: 64,
-              height: 64,
-              color: Colors.grey.shade200,
-              child: barber.avatarUrl != null && barber.avatarUrl!.isNotEmpty
-                  ? Image.network(
-                      barber.avatarUrl!,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Center(
-                          child: CircularProgressIndicator(
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                    loadingProgress.expectedTotalBytes!
-                                : null,
-                            strokeWidth: 2,
-                          ),
-                        );
-                      },
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.person,
-                        color: Colors.grey,
-                        size: 40,
-                      ),
-                    )
-                  : const Icon(Icons.person, color: Colors.grey, size: 40),
+            ClipOval(
+              child: Container(
+                width: 64,
+                height: 64,
+                color: Colors.grey.shade200,
+                child: barber.avatarUrl != null && barber.avatarUrl!.isNotEmpty
+                    ? Image.network(
+                        barber.avatarUrl!,
+                        fit: BoxFit.cover,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                              strokeWidth: 2,
+                            ),
+                          );
+                        },
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.person,
+                          color: Colors.grey,
+                          size: 40,
+                        ),
+                      )
+                    : const Icon(Icons.person, color: Colors.grey, size: 40),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            barber.name,
-            style: CutlineTextStyles.subtitleBold.copyWith(fontSize: 15),
-          ),
-          const SizedBox(height: 4),
-          Text(barber.skills, style: CutlineTextStyles.caption),
-          const SizedBox(height: 10),
-          Text(
-            barber.isAvailable ? 'Available' : 'Unavailable',
-            style: TextStyle(
-              color: barber.isAvailable ? Colors.green : Colors.redAccent,
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
+            const SizedBox(height: 10),
+            Text(
+              barber.name,
+              style: CutlineTextStyles.subtitleBold.copyWith(fontSize: 15),
             ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.people_alt_rounded, color: CutlineColors.primary, size: 14),
-              const SizedBox(width: 4),
-              Text('${barber.waitingClients} waiting', style: CutlineTextStyles.caption),
-            ],
-          ),
-        ],
-      ),
+            const SizedBox(height: 4),
+            Text(barber.skills, style: CutlineTextStyles.caption),
+            const SizedBox(height: 10),
+            Text(
+              barber.isAvailable ? 'Available' : 'Unavailable',
+              style: TextStyle(
+                color: barber.isAvailable ? Colors.green : Colors.redAccent,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.people_alt_rounded,
+                    color: CutlineColors.primary, size: 14),
+                const SizedBox(width: 4),
+                Text('${barber.waitingClients} waiting',
+                    style: CutlineTextStyles.caption),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -651,17 +662,23 @@ class _BarberProfileSheet extends StatelessWidget {
                           width: 100,
                           height: 100,
                           color: Colors.grey.shade200,
-                          child: barber.avatarUrl != null && barber.avatarUrl!.isNotEmpty
+                          child: barber.avatarUrl != null &&
+                                  barber.avatarUrl!.isNotEmpty
                               ? Image.network(
                                   barber.avatarUrl!,
                                   fit: BoxFit.cover,
-                                  loadingBuilder: (context, child, loadingProgress) {
+                                  loadingBuilder:
+                                      (context, child, loadingProgress) {
                                     if (loadingProgress == null) return child;
                                     return Center(
                                       child: CircularProgressIndicator(
-                                        value: loadingProgress.expectedTotalBytes != null
-                                            ? loadingProgress.cumulativeBytesLoaded /
-                                                loadingProgress.expectedTotalBytes!
+                                        value: loadingProgress
+                                                    .expectedTotalBytes !=
+                                                null
+                                            ? loadingProgress
+                                                    .cumulativeBytesLoaded /
+                                                loadingProgress
+                                                    .expectedTotalBytes!
                                             : null,
                                         strokeWidth: 2,
                                       ),
@@ -673,7 +690,8 @@ class _BarberProfileSheet extends StatelessWidget {
                                     size: 60,
                                   ),
                                 )
-                              : const Icon(Icons.person, color: Colors.grey, size: 60),
+                              : const Icon(Icons.person,
+                                  color: Colors.grey, size: 60),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -708,9 +726,13 @@ class _BarberProfileSheet extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  barber.isAvailable ? 'Available' : 'Unavailable',
+                                  barber.isAvailable
+                                      ? 'Available'
+                                      : 'Unavailable',
                                   style: TextStyle(
-                                    color: barber.isAvailable ? Colors.green : Colors.redAccent,
+                                    color: barber.isAvailable
+                                        ? Colors.green
+                                        : Colors.redAccent,
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
                                   ),
@@ -727,7 +749,7 @@ class _BarberProfileSheet extends StatelessWidget {
                                 const SizedBox(height: 4),
                                 Row(
                                   children: [
-                                    const Icon(Icons.people_alt_rounded, 
+                                    const Icon(Icons.people_alt_rounded,
                                         color: CutlineColors.primary, size: 18),
                                     const SizedBox(width: 4),
                                     Text(
@@ -882,8 +904,8 @@ class ComboOfferCard extends StatelessWidget {
             const SizedBox(height: 10),
             Container(
               height: 120,
-              decoration: CutlineDecorations.card(
-                  solidColor: Colors.grey.shade200),
+              decoration:
+                  CutlineDecorations.card(solidColor: Colors.grey.shade200),
               child: const Center(
                 child: Text(
                   'Combo offers coming soon',
@@ -902,22 +924,22 @@ class ComboOfferCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Combo Offers', style: CutlineTextStyles.title),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pushNamed(
-                        context,
-                        AppRoutes.viewAllServices,
-                        arguments: ViewAllServicesArgs(salonName: salonName),
-                      );
-                    },
-                    child: const Text('See all', style: CutlineTextStyles.link),
-                  ),
-                ],
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Combo Offers', style: CutlineTextStyles.title),
+              TextButton(
+                onPressed: () {
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.viewAllServices,
+                    arguments: ViewAllServicesArgs(salonName: salonName),
+                  );
+                },
+                child: const Text('See all', style: CutlineTextStyles.link),
               ),
+            ],
+          ),
           const SizedBox(height: 10),
           Container(
             decoration: BoxDecoration(
@@ -953,8 +975,8 @@ class ComboOfferCard extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       displayCombo.services,
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 14),
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 14),
                     ),
                   ],
                 ),
@@ -962,7 +984,8 @@ class ComboOfferCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(10),
@@ -985,10 +1008,14 @@ class ComboOfferCard extends StatelessWidget {
                         backgroundColor: Colors.white,
                         foregroundColor: Colors.deepOrange,
                         elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
                       ),
-                      child: const Text('Book Now', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      child: const Text('Book Now',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13)),
                     ),
                   ],
                 ),
@@ -1033,8 +1060,7 @@ class ServicesSection extends StatelessWidget {
               );
             },
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
               decoration: CutlineDecorations.card(
                 colors: [
                   CutlineColors.background,
@@ -1048,8 +1074,8 @@ class ServicesSection extends StatelessWidget {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(
-                            Icons.cut, color: CutlineColors.primary, size: 26),
+                        const Icon(Icons.cut,
+                            color: CutlineColors.primary, size: 26),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
@@ -1093,8 +1119,9 @@ class ServicesSection extends StatelessWidget {
   }
 
   String _previewLabel() {
-    final source =
-        topServices.isNotEmpty ? topServices : services.map((s) => s.name).toList();
+    final source = topServices.isNotEmpty
+        ? topServices
+        : services.map((s) => s.name).toList();
     if (source.isEmpty) return 'Popular services will appear here';
     return source.take(3).join(' • ');
   }
@@ -1198,12 +1225,12 @@ class _LiveQueueContentState extends State<_LiveQueueContent> {
     }
 
     // Calculate progress based on service duration and elapsed time
-    final serviceDuration = nowServing.waitMinutes > 0 
-        ? nowServing.waitMinutes 
+    final serviceDuration = nowServing.waitMinutes > 0
+        ? nowServing.waitMinutes
         : 30; // Default 30 minutes if duration not available
-    
+
     double newProgress = 0.0;
-    
+
     if (nowServing.dateTime != null) {
       final startTime = nowServing.dateTime!;
       final now = DateTime.now();
@@ -1222,7 +1249,8 @@ class _LiveQueueContentState extends State<_LiveQueueContent> {
 
   @override
   Widget build(BuildContext context) {
-    final waitLabel = widget.waitMinutes <= 0 ? 'No wait' : '≈ ${widget.waitMinutes} mins';
+    final waitLabel =
+        widget.waitMinutes <= 0 ? 'No wait' : '≈ ${widget.waitMinutes} mins';
     final nowServing = widget.queue.firstWhere(
       (e) => e.isServing,
       orElse: () => const SalonQueueEntry(
@@ -1250,9 +1278,11 @@ class _LiveQueueContentState extends State<_LiveQueueContent> {
                 children: [
                   Row(
                     children: const [
-                      Icon(Icons.refresh, size: 16, color: CutlineColors.primary),
+                      Icon(Icons.refresh,
+                          size: 16, color: CutlineColors.primary),
                       SizedBox(width: 4),
-                      Text('Updating live...', style: CutlineTextStyles.caption),
+                      Text('Updating live...',
+                          style: CutlineTextStyles.caption),
                     ],
                   ),
                   Text('Estimated wait: $waitLabel',
@@ -1286,16 +1316,21 @@ class _LiveQueueContentState extends State<_LiveQueueContent> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Now Serving', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                const Text('Now Serving',
+                    style: TextStyle(color: Colors.white70, fontSize: 14)),
                 const SizedBox(height: 4),
                 Text(
                   nowServing.customerName,
-                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold),
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  nowServing.barberName.isNotEmpty || nowServing.service.isNotEmpty
+                  nowServing.barberName.isNotEmpty ||
+                          nowServing.service.isNotEmpty
                       ? 'Barber: ${nowServing.barberName.isNotEmpty ? nowServing.barberName : 'Not assigned'} • ${nowServing.service}'
                       : 'No assignment',
                   style: const TextStyle(color: Colors.white70, fontSize: 14),
@@ -1303,7 +1338,10 @@ class _LiveQueueContentState extends State<_LiveQueueContent> {
                 ),
                 const SizedBox(height: 8),
                 LinearProgressIndicator(
-                  value: nowServing.isServing && nowServing.customerName.isNotEmpty ? _progress : 0.0,
+                  value:
+                      nowServing.isServing && nowServing.customerName.isNotEmpty
+                          ? _progress
+                          : 0.0,
                   backgroundColor: Colors.white24,
                   color: Colors.white,
                   minHeight: 6,
@@ -1311,7 +1349,9 @@ class _LiveQueueContentState extends State<_LiveQueueContent> {
                 const SizedBox(height: 4),
                 Align(
                   alignment: Alignment.bottomRight,
-                  child: Text(waitLabel, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  child: Text(waitLabel,
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12)),
                 ),
               ],
             ),
@@ -1324,8 +1364,9 @@ class _LiveQueueContentState extends State<_LiveQueueContent> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Waiting for Service', style: CutlineTextStyles.subtitleBold),
-                  TextButton(
+                const Text('Waiting for Service',
+                    style: CutlineTextStyles.subtitleBold),
+                TextButton(
                   onPressed: () {
                     Navigator.pushNamed(
                       context,
@@ -1385,11 +1426,20 @@ int _compareQueueEntries(SalonQueueEntry a, SalonQueueEntry b) {
 
 DateTime? _scheduleKey(SalonQueueEntry entry) {
   if (entry.dateTime != null) return entry.dateTime;
-  if (entry.date != null && entry.date!.isNotEmpty && entry.time != null && entry.time!.isNotEmpty) {
+  if (entry.date != null &&
+      entry.date!.isNotEmpty &&
+      entry.time != null &&
+      entry.time!.isNotEmpty) {
     try {
       final parsedDate = DateTime.parse(entry.date!);
-      final parsedTime = DateFormat.jm().parse(entry.time!);
-      return DateTime(parsedDate.year, parsedDate.month, parsedDate.day, parsedTime.hour, parsedTime.minute);
+      final normalizedTime = entry.time!
+          .replaceAll('\u00A0', ' ')
+          .replaceAll('\u202F', ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      final parsedTime = DateFormat('h:mm a', 'en_US').parse(normalizedTime);
+      return DateTime(parsedDate.year, parsedDate.month, parsedDate.day,
+          parsedTime.hour, parsedTime.minute);
     } catch (_) {
       return null;
     }
@@ -1418,7 +1468,8 @@ class _QueueCard extends StatelessWidget {
                 imageUrl: entry.avatarUrl,
                 radius: 18,
                 backgroundColor: Colors.blueAccent.withValues(alpha: 0.15),
-                errorWidget: const Icon(Icons.person, color: Colors.blueAccent, size: 20),
+                errorWidget: const Icon(Icons.person,
+                    color: Colors.blueAccent, size: 20),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -1453,12 +1504,16 @@ class _QueueCard extends StatelessWidget {
           const SizedBox(height: 6),
           Row(
             children: [
-              const Icon(Icons.calendar_today_outlined, size: 14, color: Colors.blueAccent),
+              const Icon(Icons.calendar_today_outlined,
+                  size: 14, color: Colors.blueAccent),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
                   entry.dateLabel,
-                  style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      color: Colors.blueAccent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -1472,7 +1527,10 @@ class _QueueCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   entry.timeLabel,
-                  style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      color: Colors.blueAccent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -1483,6 +1541,7 @@ class _QueueCard extends StatelessWidget {
     );
   }
 }
+
 // Booking floating action button.
 class BookNowFab extends StatelessWidget {
   final String salonId;
@@ -1502,7 +1561,8 @@ class BookNowFab extends StatelessWidget {
       },
       label: const Text(
         'Book Now',
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+        style: TextStyle(
+            fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
       ),
       icon: const Icon(Icons.calendar_month_rounded, color: Colors.white),
       backgroundColor: CutlineColors.primary,
@@ -1557,10 +1617,12 @@ class _IconTextRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textWidget = labelWidget ?? Text(label ?? '', style: CutlineTextStyles.body);
+    final textWidget =
+        labelWidget ?? Text(label ?? '', style: CutlineTextStyles.body);
 
     return Row(
-      crossAxisAlignment: wrap ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+      crossAxisAlignment:
+          wrap ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
         Icon(icon, size: 18, color: CutlineColors.primary),
         const SizedBox(width: 6),

@@ -117,14 +117,12 @@ class WaitingListProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    _customers = _customers
-        .map((c) {
-          if (c.avatar.isNotEmpty) return c;
-          final url = c.customerUid != null ? photos[c.customerUid!] : null;
-          if (url == null || url.isEmpty) return c;
-          return c.copyWith(avatar: url);
-        })
-        .toList()
+    _customers = _customers.map((c) {
+      if (c.avatar.isNotEmpty) return c;
+      final url = c.customerUid != null ? photos[c.customerUid!] : null;
+      if (url == null || url.isEmpty) return c;
+      return c.copyWith(avatar: url);
+    }).toList()
       ..sort(_compareBySchedule);
     notifyListeners();
   }
@@ -161,8 +159,7 @@ class WaitingListProvider extends ChangeNotifier {
           .collection('salons')
           .doc(salonId)
           .collection('queue')
-          .where('status', whereIn: ['waiting', 'serving'])
-          .snapshots();
+          .where('status', whereIn: ['waiting', 'serving']).snapshots();
     }
     return _firestore.collectionGroup('queue').snapshots();
   }
@@ -173,14 +170,18 @@ class WaitingListProvider extends ChangeNotifier {
           .collection('salons')
           .doc(salonId)
           .collection('bookings')
-          .where('status', whereIn: ['waiting', 'serving'])
-          .snapshots();
+          .where('status', whereIn: ['waiting', 'serving']).snapshots();
     }
     return _firestore.collectionGroup('bookings').snapshots();
   }
 
   WaitingCustomer _combine(WaitingCustomer primary, WaitingCustomer? fallback) {
     if (fallback == null) return primary;
+    final bestDate = _preferNonEmptyString(fallback.date, primary.date);
+    final bestTime = _preferNonEmptyString(fallback.time, primary.time);
+    final bestDateTime = _combineDateAndTime(bestDate, bestTime) ??
+        fallback.dateTime ??
+        primary.dateTime;
     return primary.copyWith(
       name: primary.name.isNotEmpty ? primary.name : fallback.name,
       barber: primary.barber.isNotEmpty ? primary.barber : fallback.barber,
@@ -189,12 +190,28 @@ class WaitingListProvider extends ChangeNotifier {
           primary.waitMinutes != 0 ? primary.waitMinutes : fallback.waitMinutes,
       slotLabel:
           primary.slotLabel.isNotEmpty ? primary.slotLabel : fallback.slotLabel,
-      date: primary.date ?? fallback.date,
-      time: primary.time ?? fallback.time,
-      dateTime: primary.dateTime ?? fallback.dateTime,
+      date: bestDate,
+      time: bestTime,
+      dateTime: bestDateTime,
       customerUid: primary.customerUid ?? fallback.customerUid,
       avatar: primary.avatar.isNotEmpty ? primary.avatar : fallback.avatar,
     );
+  }
+
+  String? _preferNonEmptyString(String? preferred, String? fallback) {
+    final preferredTrimmed = preferred?.trim() ?? '';
+    if (preferredTrimmed.isNotEmpty) return preferredTrimmed;
+    final fallbackTrimmed = fallback?.trim() ?? '';
+    if (fallbackTrimmed.isNotEmpty) return fallbackTrimmed;
+    return null;
+  }
+
+  String _normalizeTimeString(String value) {
+    return value
+        .replaceAll('\u00A0', ' ')
+        .replaceAll('\u202F', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   void _stopLoadingIfReady() {
@@ -209,11 +226,11 @@ class WaitingListProvider extends ChangeNotifier {
     final String? rawDate =
         _extractDateString(data['date'] ?? data['bookingDate']);
     final String? rawTime =
-        _extractTimeString(data['time'] ?? data['bookingTime']);
-    final DateTime? scheduledAt =
-        _parseDateTime(data['dateTime']) ??
-            _combineDateAndTime(rawDate, rawTime) ??
-            _parseDateTime(data['createdAt']);
+        _extractTimeString(data['time'] ?? data['bookingTime']) ??
+            _extractSlotTimeString(data['slotLabel']);
+    final DateTime? scheduledAt = _parseDateTime(data['dateTime']) ??
+        _combineDateAndTime(rawDate, rawTime) ??
+        _parseDateTime(data['createdAt']);
     final String serviceLabel = _serviceFrom(data);
     final String avatarUrl = (data['avatar'] as String?) ??
         (data['customerAvatar'] as String?) ??
@@ -234,6 +251,23 @@ class WaitingListProvider extends ChangeNotifier {
       dateTime: scheduledAt,
       customerUid: customerUid,
     );
+  }
+
+  String? _extractSlotTimeString(dynamic value) {
+    if (value is String) {
+      final trimmed = _normalizeTimeString(value);
+      if (trimmed.isEmpty) return null;
+      try {
+        DateFormat('h:mm a', 'en_US').parse(trimmed);
+        return trimmed;
+      } catch (_) {
+        return null;
+      }
+    }
+    if (value is Timestamp) {
+      return DateFormat('h:mm a').format(value.toDate());
+    }
+    return null;
   }
 
   String _serviceFrom(Map<String, dynamic> data) {
@@ -288,15 +322,13 @@ class WaitingListProvider extends ChangeNotifier {
   }
 
   DateTime? _combineDateAndTime(String? date, String? time) {
-    if (date == null ||
-        date.isEmpty ||
-        time == null ||
-        time.isEmpty) {
+    if (date == null || date.isEmpty || time == null || time.isEmpty) {
       return null;
     }
     try {
       final parsedDate = DateTime.parse(date);
-      final parsedTime = DateFormat.jm().parse(time);
+      final parsedTime =
+          DateFormat('h:mm a', 'en_US').parse(_normalizeTimeString(time));
       return DateTime(parsedDate.year, parsedDate.month, parsedDate.day,
           parsedTime.hour, parsedTime.minute);
     } catch (_) {
@@ -367,7 +399,10 @@ class WaitingCustomer {
   String get scheduleLabel {
     final dateLabel = _formattedDate;
     final timeLabel = _formattedTime;
-    if (dateLabel != null && dateLabel.isNotEmpty && timeLabel != null && timeLabel.isNotEmpty) {
+    if (dateLabel != null &&
+        dateLabel.isNotEmpty &&
+        timeLabel != null &&
+        timeLabel.isNotEmpty) {
       return '$dateLabel, $timeLabel';
     }
     if (dateLabel != null && dateLabel.isNotEmpty) return dateLabel;

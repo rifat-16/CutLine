@@ -1,4 +1,5 @@
 import 'package:cutline/features/auth/models/user_role.dart';
+import 'package:cutline/features/auth/screens/forgot_password_screen.dart';
 import 'package:cutline/features/auth/screens/login_screen.dart';
 import 'package:cutline/features/auth/screens/role_selection_screen.dart';
 import 'package:cutline/features/auth/screens/signup_screen.dart';
@@ -47,6 +48,7 @@ class AppRoutes {
   static const splash = '/';
   static const roleSelection = '/welcome';
   static const login = '/login';
+  static const forgotPassword = '/forgot-password';
   static const signup = '/signup';
   static const ownerLogin = '/owner-login';
   static const ownerSignup = '/owner-signup';
@@ -107,6 +109,13 @@ class AppRouter {
         final roleArg = settings.arguments;
         final selectedRole = roleArg is UserRole ? roleArg : UserRole.customer;
         return _page(LoginScreen(role: selectedRole), settings);
+      case AppRoutes.forgotPassword:
+        final args = settings.arguments;
+        final initialEmail = args is String ? args : null;
+        return _page(
+          ForgotPasswordScreen(initialEmail: initialEmail),
+          settings,
+        );
       case AppRoutes.signup:
         final roleArg = settings.arguments;
         final selectedRole = roleArg is UserRole ? roleArg : UserRole.customer;

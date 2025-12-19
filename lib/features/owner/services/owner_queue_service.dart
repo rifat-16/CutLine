@@ -91,6 +91,7 @@ class OwnerQueueService {
             status: items[index].status,
             waitMinutes: items[index].waitMinutes,
             slotLabel: items[index].slotLabel,
+            scheduledAt: items[index].scheduledAt,
             customerPhone: items[index].customerPhone,
             note: items[index].note,
             customerAvatar: avatar,
@@ -454,6 +455,7 @@ class OwnerQueueService {
   OwnerQueueItem? _mapQueue(String id, Map<String, dynamic> data) {
     final statusString = (data['status'] as String?) ?? 'waiting';
     final status = _statusFromString(statusString);
+    final scheduledAt = _parseScheduledAt(data);
     return OwnerQueueItem(
       id: id,
       customerName: (data['customerName'] as String?) ?? 'Customer',
@@ -463,6 +465,7 @@ class OwnerQueueService {
       status: status,
       waitMinutes: (data['waitMinutes'] as num?)?.toInt() ?? 0,
       slotLabel: (data['slotLabel'] as String?) ?? id,
+      scheduledAt: scheduledAt,
       customerPhone: (data['customerPhone'] as String?) ?? '',
       note: data['note'] as String?,
       customerAvatar: (data['customerAvatar'] as String?) ??
@@ -480,6 +483,7 @@ class OwnerQueueService {
   OwnerQueueItem? _mapBooking(String id, Map<String, dynamic> data) {
     final statusString = (data['status'] as String?) ?? 'waiting';
     final status = _statusFromString(statusString);
+    final scheduledAt = _parseScheduledAt(data);
 
     final services = (data['services'] as List?)
             ?.map((e) => (e is Map && e['name'] is String) ? e['name'] as String : '')
@@ -510,6 +514,7 @@ class OwnerQueueService {
       status: status,
       waitMinutes: duration,
       slotLabel: timeLabel.isNotEmpty ? timeLabel : id,
+      scheduledAt: scheduledAt,
       customerPhone: (data['customerPhone'] as String?) ?? '',
       note: data['note'] as String?,
       customerAvatar: (data['customerAvatar'] as String?) ??
@@ -556,6 +561,27 @@ class OwnerQueueService {
         return 'no_show';
       case OwnerQueueStatus.waiting:
         return 'waiting';
+    }
+  }
+
+  DateTime? _parseScheduledAt(Map<String, dynamic> data) {
+    final ts = data['dateTime'];
+    if (ts is Timestamp) return ts.toDate();
+
+    final dateStr = (data['date'] as String?)?.trim() ?? '';
+    final timeStr = ((data['time'] as String?) ??
+            (data['bookingTime'] as String?) ??
+            (data['slotLabel'] as String?))
+        ?.trim() ??
+        '';
+    if (dateStr.isEmpty || timeStr.isEmpty) return null;
+
+    try {
+      final date = DateTime.parse(dateStr);
+      final time = DateFormat('h:mm a').parse(timeStr);
+      return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    } catch (_) {
+      return null;
     }
   }
 }

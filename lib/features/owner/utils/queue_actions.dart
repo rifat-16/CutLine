@@ -20,9 +20,9 @@ List<QueueActionConfig> queueActionsForStatus(OwnerQueueStatus status) {
     case OwnerQueueStatus.waiting:
       return const [
         QueueActionConfig(
-            label: 'Turn Ready',
-            color: Color(0xFF10B981),
-            nextStatus: OwnerQueueStatus.turnReady),
+            label: 'Start Serving',
+            color: Color(0xFF2563EB),
+            nextStatus: OwnerQueueStatus.serving),
       ];
     case OwnerQueueStatus.turnReady:
       return const [

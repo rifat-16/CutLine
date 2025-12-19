@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:cutline/features/owner/services/owner_queue_service.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
+import 'package:cutline/shared/models/salon_verification_status.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -34,15 +35,26 @@ class OwnerHomeProvider extends ChangeNotifier {
   String? _error;
   String? _salonName;
   String? _photoUrl;
+  SalonVerificationStatus _verificationStatus =
+      SalonVerificationStatus.verified;
+  String? _reviewNote;
+  bool _hasLoadedSalon = false;
+  bool _salonDocExists = false;
   List<OwnerQueueItem> _queueItems = [];
   int _pendingRequests = 0;
-  bool _isOpen = true;
+  bool _isOpen = false;
   bool _isUpdatingStatus = false;
 
   bool get isLoading => _isLoading;
   String? get error => _error;
   String? get salonName => _salonName;
   String? get photoUrl => _photoUrl;
+  SalonVerificationStatus get verificationStatus => _verificationStatus;
+  String? get reviewNote => _reviewNote;
+  bool get hasLoadedSalon => _hasLoadedSalon;
+  bool get salonDocExists => _salonDocExists;
+  bool get isVerified =>
+      _verificationStatus == SalonVerificationStatus.verified;
   List<OwnerQueueItem> get queueItems => _queueItems;
   int get pendingRequests => _pendingRequests;
   bool get isOpen => _isOpen;
@@ -55,12 +67,13 @@ class OwnerHomeProvider extends ChangeNotifier {
       _setError('Please log in again.');
       return;
     }
-    
+
     // Verify authentication and user document
     try {
       final userDoc = await _firestore.collection('users').doc(ownerId).get();
       if (!userDoc.exists) {
-        debugPrint('fetchAll: User document does not exist for ownerId: $ownerId');
+        debugPrint(
+            'fetchAll: User document does not exist for ownerId: $ownerId');
         _setError('User profile not found. Please sign up again.');
         _setLoading(false);
         return;
@@ -78,20 +91,21 @@ class OwnerHomeProvider extends ChangeNotifier {
       debugPrint('fetchAll: Error verifying user document: $e');
       debugPrint('Stack trace: $stackTrace');
       if (e is FirebaseException && e.code == 'permission-denied') {
-        _setError('Permission denied. Please check Firestore rules are deployed.');
+        _setError(
+            'Permission denied. Please check Firestore rules are deployed.');
         _setLoading(false);
         return;
       }
       // Continue even if verification fails - might be network issue
     }
-    
+
     debugPrint('fetchAll: Starting for ownerId: $ownerId');
     _setLoading(true);
     _setError(null);
     try {
       // Load salon first (this might not exist for new owners)
       await _loadSalon(ownerId);
-      
+
       // Load queue and booking requests (these can fail gracefully)
       try {
         await _loadQueue(ownerId);
@@ -102,10 +116,11 @@ class OwnerHomeProvider extends ChangeNotifier {
         // Queue might be empty, that's okay
         _queueItems = [];
         if (e is FirebaseException && e.code == 'permission-denied') {
-          debugPrint('fetchAll: Permission denied for queue. Check Firestore rules.');
+          debugPrint(
+              'fetchAll: Permission denied for queue. Check Firestore rules.');
         }
       }
-      
+
       try {
         await _loadBookingRequests(ownerId);
         debugPrint('fetchAll: Booking requests loaded: $_pendingRequests');
@@ -115,10 +130,11 @@ class OwnerHomeProvider extends ChangeNotifier {
         // Booking requests might be empty, that's okay
         _pendingRequests = 0;
         if (e is FirebaseException && e.code == 'permission-denied') {
-          debugPrint('fetchAll: Permission denied for bookings. Check Firestore rules.');
+          debugPrint(
+              'fetchAll: Permission denied for bookings. Check Firestore rules.');
         }
       }
-      
+
       // Set up listeners (these can fail silently)
       try {
         _listenToBookingRequests(ownerId);
@@ -127,7 +143,7 @@ class OwnerHomeProvider extends ChangeNotifier {
         debugPrint('fetchAll: Error setting up booking requests listener: $e');
         // Listener setup failed, but continue
       }
-      
+
       try {
         _listenToQueue(ownerId);
         debugPrint('fetchAll: Queue listener set up');
@@ -135,9 +151,10 @@ class OwnerHomeProvider extends ChangeNotifier {
         debugPrint('fetchAll: Error setting up queue listener: $e');
         // Listener setup failed, but continue
       }
-      
-      debugPrint('fetchAll: Completed. salonName=$_salonName, queueItems=${_queueItems.length}, pendingRequests=$_pendingRequests');
-      
+
+      debugPrint(
+          'fetchAll: Completed. salonName=$_salonName, queueItems=${_queueItems.length}, pendingRequests=$_pendingRequests');
+
       // Only show error if salon doesn't exist and no data loaded
       if (_salonName == null && _queueItems.isEmpty && _pendingRequests == 0) {
         // This is likely a new owner who hasn't set up salon yet
@@ -148,23 +165,27 @@ class OwnerHomeProvider extends ChangeNotifier {
       // Only show error for unexpected failures
       debugPrint('Error in fetchAll: $e');
       debugPrint('Stack trace: $stackTrace');
-      
+
       // Provide specific error messages
       String errorMessage = 'Failed to load data. Pull to refresh.';
       if (e is FirebaseException) {
         if (e.code == 'permission-denied') {
-          errorMessage = 'Permission denied. Please check Firestore rules are deployed in Firebase Console.';
+          errorMessage =
+              'Permission denied. Please check Firestore rules are deployed in Firebase Console.';
         } else if (e.code == 'unavailable') {
           errorMessage = 'Network error. Check your connection.';
         } else if (e.code == 'failed-precondition') {
-          errorMessage = 'Firestore index required. Please check Firebase Console.';
+          errorMessage =
+              'Firestore index required. Please check Firebase Console.';
         } else {
           errorMessage = 'Firebase error: ${e.message ?? e.code}';
         }
       }
-      
+
       // Don't set error for expected cases (new owner, empty data)
-      if (_salonName != null || _queueItems.isNotEmpty || _pendingRequests > 0) {
+      if (_salonName != null ||
+          _queueItems.isNotEmpty ||
+          _pendingRequests > 0) {
         // Some data loaded, don't show error
         _setError(null);
       } else {
@@ -180,30 +201,42 @@ class OwnerHomeProvider extends ChangeNotifier {
       debugPrint('_loadSalon: Attempting to read salons/$ownerId');
       final doc = await _firestore.collection('salons').doc(ownerId).get();
       debugPrint('_loadSalon: Document exists: ${doc.exists}');
+      _salonDocExists = doc.exists;
       if (doc.exists) {
         final data = doc.data() ?? {};
         _salonName = data['name'] as String?;
-        _isOpen = (data['isOpen'] as bool?) ?? _isOpen;
+        _isOpen = (data['isOpen'] as bool?) ?? false;
         _photoUrl = (data['photoUrl'] as String?)?.trim();
+        _verificationStatus =
+            salonVerificationStatusFromFirestore(data['verificationStatus']);
+        _reviewNote = (data['reviewNote'] as String?)?.trim();
         if (_photoUrl != null && _photoUrl!.isEmpty) {
           _photoUrl = null;
         }
-        debugPrint('Loaded salon: name=$_salonName, isOpen=$_isOpen, photoUrl=${_photoUrl != null ? "set" : "null"}');
+        debugPrint(
+            'Loaded salon: name=$_salonName, isOpen=$_isOpen, photoUrl=${_photoUrl != null ? "set" : "null"}');
       } else {
-        debugPrint('Salon document does not exist for ownerId: $ownerId. Owner needs to create salon profile.');
+        debugPrint(
+            'Salon document does not exist for ownerId: $ownerId. Owner needs to create salon profile.');
       }
       // If salon doesn't exist, that's okay - owner might not have set up yet
     } catch (e, stackTrace) {
       debugPrint('Error loading salon for ownerId $ownerId: $e');
       debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
-      debugPrint('Error message: ${e is FirebaseException ? e.message : e.toString()}');
+      debugPrint(
+          'Error message: ${e is FirebaseException ? e.message : e.toString()}');
       debugPrint('Stack trace: $stackTrace');
       // Re-throw to be caught by parent try-catch if it's a permission error
       if (e is FirebaseException && e.code == 'permission-denied') {
-        debugPrint('_loadSalon: PERMISSION DENIED - Check Firestore rules are deployed!');
+        debugPrint(
+            '_loadSalon: PERMISSION DENIED - Check Firestore rules are deployed!');
         rethrow;
       }
       // Silently fail - salon might not exist yet
+    } finally {
+      final shouldNotify = !_hasLoadedSalon;
+      _hasLoadedSalon = true;
+      if (shouldNotify) notifyListeners();
     }
   }
 
@@ -216,48 +249,53 @@ class OwnerHomeProvider extends ChangeNotifier {
     } catch (e, stackTrace) {
       debugPrint('Error loading queue: $e');
       debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
-      debugPrint('Error message: ${e is FirebaseException ? e.message : e.toString()}');
+      debugPrint(
+          'Error message: ${e is FirebaseException ? e.message : e.toString()}');
       debugPrint('Stack trace: $stackTrace');
       // If queue fails to load, set empty list (might be no queue yet)
       _queueItems = [];
       notifyListeners();
       // Re-throw permission errors
       if (e is FirebaseException && e.code == 'permission-denied') {
-        debugPrint('_loadQueue: PERMISSION DENIED - Check Firestore rules for salons/$ownerId/queue');
+        debugPrint(
+            '_loadQueue: PERMISSION DENIED - Check Firestore rules for salons/$ownerId/queue');
         rethrow;
       }
     }
   }
 
   Future<void> _loadBookingRequests(String ownerId) async {
-    final collection = _firestore
-        .collection('salons')
-        .doc(ownerId)
-        .collection('bookings');
+    final collection =
+        _firestore.collection('salons').doc(ownerId).collection('bookings');
     try {
-      debugPrint('_loadBookingRequests: Attempting to load bookings for ownerId: $ownerId');
+      debugPrint(
+          '_loadBookingRequests: Attempting to load bookings for ownerId: $ownerId');
       QuerySnapshot<Map<String, dynamic>> snap;
       try {
         snap = await collection
-            .where('status', whereIn: ['pending', 'upcoming'])
-            .get();
+            .where('status', whereIn: ['pending', 'upcoming']).get();
         debugPrint('Loaded booking requests: ${snap.size} pending/upcoming');
       } catch (e, stackTrace) {
         debugPrint('Error loading booking requests with whereIn: $e');
-        debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
+        debugPrint(
+            'Error code: ${e is FirebaseException ? e.code : "unknown"}');
         debugPrint('Stack trace: $stackTrace');
         // Check if it's a missing index error
         if (e is FirebaseException && e.code == 'failed-precondition') {
-          debugPrint('Missing Firestore index! Please create index for bookings.status in Firebase Console');
+          debugPrint(
+              'Missing Firestore index! Please create index for bookings.status in Firebase Console');
         } else if (e is FirebaseException && e.code == 'permission-denied') {
-          debugPrint('_loadBookingRequests: PERMISSION DENIED - Check Firestore rules for salons/$ownerId/bookings');
+          debugPrint(
+              '_loadBookingRequests: PERMISSION DENIED - Check Firestore rules for salons/$ownerId/bookings');
         }
         try {
           snap = await collection.where('status', isEqualTo: 'upcoming').get();
-          debugPrint('Loaded booking requests (fallback): ${snap.size} upcoming');
+          debugPrint(
+              'Loaded booking requests (fallback): ${snap.size} upcoming');
         } catch (e2, stackTrace2) {
           debugPrint('Error loading booking requests (fallback): $e2');
-          debugPrint('Error code: ${e2 is FirebaseException ? e2.code : "unknown"}');
+          debugPrint(
+              'Error code: ${e2 is FirebaseException ? e2.code : "unknown"}');
           debugPrint('Stack trace: $stackTrace2');
           snap = await collection.get();
           debugPrint('Loaded all booking requests: ${snap.size}');
@@ -271,7 +309,8 @@ class OwnerHomeProvider extends ChangeNotifier {
       _pendingRequests = 0;
       // Re-throw permission errors
       if (e is FirebaseException && e.code == 'permission-denied') {
-        debugPrint('_loadBookingRequests: PERMISSION DENIED - Check Firestore rules!');
+        debugPrint(
+            '_loadBookingRequests: PERMISSION DENIED - Check Firestore rules!');
         rethrow;
       }
     }
@@ -279,21 +318,19 @@ class OwnerHomeProvider extends ChangeNotifier {
 
   void _listenToBookingRequests(String ownerId) {
     _bookingRequestsSubscription?.cancel();
-    final collection = _firestore
-        .collection('salons')
-        .doc(ownerId)
-        .collection('bookings');
+    final collection =
+        _firestore.collection('salons').doc(ownerId).collection('bookings');
     try {
       _bookingRequestsSubscription = collection
           .where('status', whereIn: ['pending', 'upcoming'])
           .snapshots()
           .listen((snapshot) {
-        _pendingRequests = snapshot.size;
-        debugPrint('Booking requests updated: $_pendingRequests');
-        notifyListeners();
-      }, onError: (e) {
-        debugPrint('Error in booking requests listener: $e');
-      });
+            _pendingRequests = snapshot.size;
+            debugPrint('Booking requests updated: $_pendingRequests');
+            notifyListeners();
+          }, onError: (e) {
+            debugPrint('Error in booking requests listener: $e');
+          });
     } catch (e) {
       debugPrint('Error setting up booking requests listener: $e');
       try {
@@ -307,7 +344,8 @@ class OwnerHomeProvider extends ChangeNotifier {
           debugPrint('Error in booking requests listener (fallback): $e2');
         });
       } catch (e3) {
-        debugPrint('Error setting up booking requests listener (fallback): $e3');
+        debugPrint(
+            'Error setting up booking requests listener (fallback): $e3');
       }
     }
   }
@@ -324,11 +362,11 @@ class OwnerHomeProvider extends ChangeNotifier {
             .where('status', whereIn: ['waiting', 'serving'])
             .snapshots()
             .listen((_) {
-          debugPrint('Queue updated (nested collection with whereIn)');
-          _refreshQueue();
-        }, onError: (e) {
-          debugPrint('Error in queue listener (nested with whereIn): $e');
-        });
+              debugPrint('Queue updated (nested collection with whereIn)');
+              _refreshQueue();
+            }, onError: (e) {
+              debugPrint('Error in queue listener (nested with whereIn): $e');
+            });
       } catch (e) {
         debugPrint('Error setting up queue listener (nested with whereIn): $e');
         // Fallback: listen to all and filter in service
@@ -345,7 +383,8 @@ class OwnerHomeProvider extends ChangeNotifier {
             debugPrint('Error in queue listener (nested, all items): $e2');
           });
         } catch (e3) {
-          debugPrint('Error setting up queue listener (nested, all items): $e3');
+          debugPrint(
+              'Error setting up queue listener (nested, all items): $e3');
           // fall back to top-level queue collection if nested path fails
           try {
             _queueLiveSubscription = _firestore
@@ -353,17 +392,17 @@ class OwnerHomeProvider extends ChangeNotifier {
                 .where('status', whereIn: ['waiting', 'serving'])
                 .snapshots()
                 .listen((_) {
-              debugPrint('Queue updated (top-level with whereIn)');
-              _refreshQueue();
-            }, onError: (e4) {
-              debugPrint('Error in queue listener (top-level with whereIn): $e4');
-            });
+                  debugPrint('Queue updated (top-level with whereIn)');
+                  _refreshQueue();
+                }, onError: (e4) {
+                  debugPrint(
+                      'Error in queue listener (top-level with whereIn): $e4');
+                });
           } catch (e5) {
-            debugPrint('Error setting up queue listener (top-level with whereIn): $e5');
-            _queueLiveSubscription = _firestore
-                .collection('queue')
-                .snapshots()
-                .listen((_) {
+            debugPrint(
+                'Error setting up queue listener (top-level with whereIn): $e5');
+            _queueLiveSubscription =
+                _firestore.collection('queue').snapshots().listen((_) {
               debugPrint('Queue updated (top-level, all items)');
               _refreshQueue();
             }, onError: (e6) {
@@ -403,7 +442,8 @@ class OwnerHomeProvider extends ChangeNotifier {
     final ownerId = _authProvider.currentUser?.uid;
     if (ownerId == null) return;
     try {
-      await _queueService.updateStatus(ownerId: ownerId, id: id, status: status);
+      await _queueService.updateStatus(
+          ownerId: ownerId, id: id, status: status);
     } catch (_) {
       // ignore write failures for now
     }

@@ -72,6 +72,7 @@ class BookingRequestsScreen extends StatelessWidget {
         status: OwnerQueueStatus.waiting,
         waitMinutes: request.durationMinutes,
         slotLabel: request.id,
+        scheduledAt: request.dateTime,
         customerPhone: request.customerPhone,
         customerAvatar: request.customerAvatar,
         customerUid: request.customerUid,

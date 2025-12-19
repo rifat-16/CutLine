@@ -14,6 +14,11 @@ class SetupBottomActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasBack = onBack != null;
+    final width = MediaQuery.of(context).size.width;
+    final compact = hasBack && width < 380;
+    final continueLabel =
+        isLoading ? 'Saving...' : (compact ? 'Continue' : 'Save & Continue');
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
       decoration: BoxDecoration(
@@ -31,7 +36,7 @@ class SetupBottomActionBar extends StatelessWidget {
         children: [
           Row(
             children: [
-              if (onBack != null)
+              if (hasBack)
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: isLoading ? null : onBack,
@@ -47,7 +52,7 @@ class SetupBottomActionBar extends StatelessWidget {
                     ),
                   ),
                 ),
-              if (onBack != null) const SizedBox(width: 12),
+              if (hasBack) const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
@@ -70,7 +75,7 @@ class SetupBottomActionBar extends StatelessWidget {
                         )
                       : const Icon(Icons.arrow_forward),
                   label: Text(
-                    isLoading ? 'Saving...' : 'Save & Continue',
+                    continueLabel,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,

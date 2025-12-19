@@ -5,6 +5,20 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isSalonVerifiedByData(data) {
+      // Backwards-compat: older salon docs might not have this field yet.
+      return !('verificationStatus' in data) || data.verificationStatus == 'verified';
+    }
+
+    function isSalonVerified(salonId) {
+      return exists(/databases/$(database)/documents/salons/$(salonId))
+        && isSalonVerifiedByData(get(/databases/$(database)/documents/salons/$(salonId)).data);
+    }
+
+    function isSalonOwnerId(salonId) {
+      return isAuthenticated() && request.auth.uid == salonId;
+    }
+
     function userRole(uid) {
       return exists(/databases/$(database)/documents/users/$(uid))
         ? get(/databases/$(database)/documents/users/$(uid)).data.role
@@ -23,6 +37,11 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/users/$(barberUid))
         ? get(/databases/$(database)/documents/users/$(barberUid)).data.ownerId
         : null;
+    }
+
+    function isOwnerOrBarberOfSalon(salonId) {
+      return isSalonOwnerId(salonId)
+        || (isBarber(request.auth.uid) && barberOwnerId(request.auth.uid) == salonId);
     }
 
     function salonOwner(salonId) {
@@ -57,64 +76,108 @@ service cloud.firestore {
     }
 
     match /salons/{salonId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated()
+        && (isOwnerOrBarberOfSalon(salonId) || isSalonVerifiedByData(resource.data));
+
       allow create: if isAuthenticated()
         && isOwner(request.auth.uid)
-        && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && salonId == request.auth.uid;
+        && salonId == request.auth.uid
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.verificationStatus == 'pending'
+        && request.resource.data.isOpen == false;
+
+      function salonVerificationFields() {
+        return ['verificationStatus', 'submittedAt', 'reviewedAt', 'reviewNote'];
+      }
+
+      function salonUnverifiedOwnerAllowedUpdateKeys() {
+        return [
+          'name',
+          'address',
+          'contact',
+          'email',
+          'ownerName',
+          'description',
+          'photoUrl',
+          'coverImageUrl',
+          'coverPhoto',
+          'coverPhotoUrl',
+          'galleryPhotos',
+          'gallery',
+          'photos',
+          'galleryImages',
+          'updatedAt'
+        ];
+      }
+
+      function ownerUpdateAllowed() {
+        let changes = request.resource.data.diff(resource.data).changedKeys();
+        let touchesVerification = changes.hasAny(salonVerificationFields());
+        let verified = isSalonVerifiedByData(resource.data);
+        return isSalonOwnerId(salonId)
+          && !touchesVerification
+          // Prevent going "open" before verification.
+          && (verified || (!('isOpen' in request.resource.data) || request.resource.data.isOpen == false))
+          // While not verified, only allow basic profile edits.
+          && (verified || changes.hasOnly(salonUnverifiedOwnerAllowedUpdateKeys()));
+      }
+
+      allow update: if isAuthenticated() && ownerUpdateAllowed();
+      allow delete: if isAuthenticated() && salonId == request.auth.uid;
       
       // Nested queue collection
       match /queue/{queueId} {
         // Owner can read/write their salon's queue
         // Barber can read their owner's salon queue
         // Customers can read queue to see wait times and live queue status
-        allow read: if isAuthenticated() && (
-          salonId == request.auth.uid ||
-          (isBarber(request.auth.uid) && barberOwnerId(request.auth.uid) == salonId) ||
-          true  // Allow all authenticated users to read queue for wait time estimates and live queue
-        );
-        allow create, update: if isAuthenticated() && (
-          salonId == request.auth.uid ||
-          (isBarber(request.auth.uid) && barberOwnerId(request.auth.uid) == salonId)
-        );
-        allow delete: if isAuthenticated() && salonId == request.auth.uid;
+        allow read: if isAuthenticated()
+          && (isOwnerOrBarberOfSalon(salonId) || isSalonVerified(salonId));
+
+        allow create, update, delete: if isAuthenticated()
+          && isSalonVerified(salonId)
+          && isOwnerOrBarberOfSalon(salonId);
       }
       
       // Nested bookings collection
       match /bookings/{bookingId} {
-        // Owner, barber, and all customers can read bookings for live queue display
-        // Customers need to see all bookings to view the live queue status
-        // Support both userId and customerUid field names for compatibility
-        allow read: if isAuthenticated() && (
-          salonId == request.auth.uid ||
-          resource.data.userId == request.auth.uid ||
-          resource.data.customerUid == request.auth.uid ||
-          (isBarber(request.auth.uid) && barberOwnerId(request.auth.uid) == salonId) ||
-          true  // Allow all authenticated users to read bookings for live queue display
-        );
-        allow create: if isAuthenticated() && (
-          salonId == request.auth.uid ||
-          request.resource.data.userId == request.auth.uid ||
-          request.resource.data.customerUid == request.auth.uid
-        );
-        allow update: if isAuthenticated() && (
-          salonId == request.auth.uid ||
-          resource.data.userId == request.auth.uid ||
-          resource.data.customerUid == request.auth.uid ||
-          (isBarber(request.auth.uid) && barberOwnerId(request.auth.uid) == salonId)
-        );
-        allow delete: if isAuthenticated() && salonId == request.auth.uid;
+        // Keep current behavior (readable for live queue), but only after verification.
+        allow read: if isAuthenticated()
+          && (isOwnerOrBarberOfSalon(salonId) || isSalonVerified(salonId));
+
+        allow create: if isAuthenticated()
+          && isSalonVerified(salonId)
+          && (
+            salonId == request.auth.uid ||
+            request.resource.data.userId == request.auth.uid ||
+            request.resource.data.customerUid == request.auth.uid
+          );
+
+        allow update: if isAuthenticated()
+          && isSalonVerified(salonId)
+          && (
+            salonId == request.auth.uid ||
+            resource.data.userId == request.auth.uid ||
+            resource.data.customerUid == request.auth.uid ||
+            (isBarber(request.auth.uid) && barberOwnerId(request.auth.uid) == salonId)
+          );
+
+        allow delete: if isAuthenticated()
+          && isSalonVerified(salonId)
+          && salonId == request.auth.uid;
       }
       
       // Nested barbers collection (for barber availability)
       match /barbers/{barberId} {
         // Anyone authenticated can read barbers (customers need to see barbers for booking)
-        allow read: if isAuthenticated();
-        allow create, update: if isAuthenticated() && (
-          salonId == request.auth.uid ||
-          barberId == request.auth.uid
-        );
-        allow delete: if isAuthenticated() && salonId == request.auth.uid;
+        allow read: if isAuthenticated()
+          && (isOwnerOrBarberOfSalon(salonId) || isSalonVerified(salonId));
+
+        allow create, update, delete: if isAuthenticated()
+          && isSalonVerified(salonId)
+          && (
+            salonId == request.auth.uid ||
+            barberId == request.auth.uid
+          );
       }
     }
 
@@ -125,6 +188,7 @@ service cloud.firestore {
       );
 
       allow create: if isAuthenticated()
+        && isSalonVerified(request.resource.data.salonId)
         && request.resource.data.userId == request.auth.uid
         && isValidStatus(request.resource.data.status);
 
@@ -133,6 +197,7 @@ service cloud.firestore {
           resource.data.userId == request.auth.uid ||
           salonOwner(resource.data.salonId) == request.auth.uid
         )
+        && isSalonVerified(resource.data.salonId)
         && isValidStatus(request.resource.data.status);
 
       allow delete: if false;

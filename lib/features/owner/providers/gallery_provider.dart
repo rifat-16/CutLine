@@ -50,18 +50,34 @@ class GalleryProvider extends ChangeNotifier {
       final doc = await _firestore.collection('salons').doc(ownerId).get();
       if (doc.exists) {
         final data = doc.data() ?? {};
-        _coverPhotoUrl = (data['coverPhoto'] as String?) ??
+        _coverPhotoUrl = (data['coverImageUrl'] as String?) ??
+            (data['coverPhoto'] as String?) ??
             (data['coverPhotoUrl'] as String?) ??
             '';
-        final gallery = data['gallery'] as List?;
-        if (gallery != null) {
-          _galleryUrls.clear();
-          _galleryUrls.addAll(
-            gallery
-                .map((e) => e is String ? e : '')
-                .where((e) => e.isNotEmpty)
-                .toList(),
+        final galleryRaw = data['galleryPhotos'] ??
+            data['gallery'] ??
+            data['photos'] ??
+            data['galleryImages'];
+        final List<String> parsed = [];
+        if (galleryRaw is List) {
+          parsed.addAll(
+            galleryRaw
+                .whereType<String>()
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty),
           );
+        } else if (galleryRaw is Map) {
+          parsed.addAll(
+            galleryRaw.values
+                .whereType<String>()
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty),
+          );
+        }
+        if (parsed.isNotEmpty) {
+          _galleryUrls
+            ..clear()
+            ..addAll(parsed);
         }
       }
     } catch (_) {
@@ -103,6 +119,8 @@ class GalleryProvider extends ChangeNotifier {
       await _firestore.collection('salons').doc(ownerId).set(
         {
           'coverPhoto': url,
+          'coverPhotoUrl': url,
+          'coverImageUrl': url,
           'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
@@ -147,6 +165,8 @@ class GalleryProvider extends ChangeNotifier {
       await _firestore.collection('salons').doc(ownerId).set(
         {
           'coverPhoto': url,
+          'coverPhotoUrl': url,
+          'coverImageUrl': url,
           'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
@@ -193,6 +213,7 @@ class GalleryProvider extends ChangeNotifier {
       await _firestore.collection('salons').doc(ownerId).set(
         {
           'gallery': _galleryUrls,
+          'galleryPhotos': _galleryUrls,
           'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
@@ -241,6 +262,7 @@ class GalleryProvider extends ChangeNotifier {
       await _firestore.collection('salons').doc(ownerId).set(
         {
           'gallery': _galleryUrls,
+          'galleryPhotos': _galleryUrls,
           'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
@@ -265,6 +287,8 @@ class GalleryProvider extends ChangeNotifier {
       await _firestore.collection('salons').doc(ownerId).set(
         {
           'coverPhoto': FieldValue.delete(),
+          'coverPhotoUrl': FieldValue.delete(),
+          'coverImageUrl': FieldValue.delete(),
           'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
@@ -298,6 +322,7 @@ class GalleryProvider extends ChangeNotifier {
       await _firestore.collection('salons').doc(ownerId).set(
         {
           'gallery': _galleryUrls,
+          'galleryPhotos': _galleryUrls,
           'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
@@ -352,4 +377,3 @@ class GalleryProvider extends ChangeNotifier {
     }
   }
 }
-

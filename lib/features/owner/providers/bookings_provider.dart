@@ -299,6 +299,9 @@ class BookingsProvider extends ChangeNotifier {
   OwnerBookingStatus _statusFromString(String status) {
     switch (status) {
       case 'waiting':
+      case 'turn_ready':
+      case 'arrived':
+      case 'serving':
       case 'pending':
       case 'accepted':
         return OwnerBookingStatus.upcoming;
@@ -306,6 +309,8 @@ class BookingsProvider extends ChangeNotifier {
       case 'done':
         return OwnerBookingStatus.completed;
       case 'cancelled':
+      case 'canceled':
+      case 'no_show':
       case 'rejected':
         return OwnerBookingStatus.cancelled;
       default:

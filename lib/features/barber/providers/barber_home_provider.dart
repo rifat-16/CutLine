@@ -3,6 +3,7 @@ import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:intl/intl.dart';
 
 class BarberHomeProvider extends ChangeNotifier {
   BarberHomeProvider({
@@ -19,7 +20,7 @@ class BarberHomeProvider extends ChangeNotifier {
   String? _error;
   BarberProfile? _profile;
   List<BarberQueueItem> _queue = [];
-  bool _salonOpen = true;
+  bool _salonOpen = false;
   bool _isAvailable = true;
   bool _isUpdatingAvailability = false;
   String? _salonName;
@@ -94,7 +95,7 @@ class BarberHomeProvider extends ChangeNotifier {
         debugPrint('load: Salon open status: $_salonOpen');
       } catch (e) {
         debugPrint('load: Error loading salon open status: $e');
-        _salonOpen = true; // Default to open
+        _salonOpen = false; // Default to closed
       }
       
       try {
@@ -259,6 +260,12 @@ class BarberHomeProvider extends ChangeNotifier {
         completedAt = ts.toDate();
       }
     }
+    final scheduledAt = _parseScheduledAt(data);
+    final avatar = (data['customerAvatar'] as String?) ??
+        (data['customerPhotoUrl'] as String?) ??
+        (data['photoUrl'] as String?) ??
+        '';
+
     return BarberQueueItem(
       id: id,
       customerName: (data['customerName'] as String?) ?? 'Customer',
@@ -272,20 +279,22 @@ class BarberHomeProvider extends ChangeNotifier {
       note: data['note'] as String?,
       startedAt: startedAt,
       completedAt: completedAt,
+      scheduledAt: scheduledAt,
+      customerAvatar: avatar,
     );
   }
 
   Future<bool> _fetchSalonOpen(String ownerId) async {
     if (ownerId.isEmpty) {
       debugPrint('_fetchSalonOpen: ownerId is empty');
-      return true;
+      return false;
     }
     try {
       debugPrint('_fetchSalonOpen: Checking salon open status for ownerId: $ownerId');
       final doc = await _firestore.collection('salons').doc(ownerId).get();
       if (!doc.exists) {
         debugPrint('_fetchSalonOpen: Salon document does not exist');
-        return true;
+        return false;
       }
       final data = doc.data() ?? {};
       final isOpen = data['isOpen'];
@@ -293,11 +302,11 @@ class BarberHomeProvider extends ChangeNotifier {
         debugPrint('_fetchSalonOpen: Salon isOpen: $isOpen');
         return isOpen;
       }
-      debugPrint('_fetchSalonOpen: isOpen field is not boolean, defaulting to true');
-      return true;
+      debugPrint('_fetchSalonOpen: isOpen field is not boolean, defaulting to false');
+      return false;
     } catch (e) {
       debugPrint('_fetchSalonOpen: Error checking salon open status: $e');
-      return true;
+      return false;
     }
   }
 
@@ -378,6 +387,8 @@ class BarberHomeProvider extends ChangeNotifier {
       case 'done':
       case 'completed':
         return BarberQueueStatus.done;
+      case 'cancelled':
+        return BarberQueueStatus.cancelled;
       default:
         return BarberQueueStatus.waiting;
     }
@@ -387,14 +398,17 @@ class BarberHomeProvider extends ChangeNotifier {
     final profile = _profile;
     if (profile == null) return;
     try {
-      final statusString =
-          status == BarberQueueStatus.done ? 'completed' : status.name;
+      final statusString = status == BarberQueueStatus.done
+          ? 'completed'
+          : (status == BarberQueueStatus.cancelled ? 'cancelled' : status.name);
       final updateData = <String, dynamic>{'status': status.name};
       
       if (status == BarberQueueStatus.serving) {
         updateData['startedAt'] = FieldValue.serverTimestamp();
       } else if (status == BarberQueueStatus.done) {
         updateData['completedAt'] = FieldValue.serverTimestamp();
+      } else if (status == BarberQueueStatus.cancelled) {
+        updateData['cancelledAt'] = FieldValue.serverTimestamp();
       }
 
       await _firestore
@@ -438,6 +452,27 @@ class BarberHomeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  DateTime? _parseScheduledAt(Map<String, dynamic> data) {
+    final ts = data['dateTime'];
+    if (ts is Timestamp) return ts.toDate();
+
+    final dateStr = (data['date'] as String?)?.trim() ?? '';
+    final timeStr = ((data['time'] as String?) ??
+            (data['bookingTime'] as String?) ??
+            (data['slotLabel'] as String?))
+        ?.trim() ??
+        '';
+    if (dateStr.isEmpty || timeStr.isEmpty) return null;
+
+    try {
+      final date = DateTime.parse(dateStr);
+      final time = DateFormat('h:mm a').parse(timeStr);
+      return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   void dispose() {
     _queueSubscription?.cancel();
@@ -470,6 +505,8 @@ class BarberQueueItem {
   final String slotLabel;
   final String customerPhone;
   final String? note;
+  final String customerAvatar;
+  final DateTime? scheduledAt;
   final DateTime? startedAt;
   final DateTime? completedAt;
 
@@ -483,6 +520,8 @@ class BarberQueueItem {
     required this.waitMinutes,
     required this.slotLabel,
     required this.customerPhone,
+    required this.customerAvatar,
+    this.scheduledAt,
     this.note,
     this.startedAt,
     this.completedAt,
@@ -492,6 +531,8 @@ class BarberQueueItem {
     BarberQueueStatus? status,
     DateTime? startedAt,
     DateTime? completedAt,
+    String? customerAvatar,
+    DateTime? scheduledAt,
   }) {
     return BarberQueueItem(
       id: id,
@@ -504,10 +545,12 @@ class BarberQueueItem {
       slotLabel: slotLabel,
       customerPhone: customerPhone,
       note: note,
+      customerAvatar: customerAvatar ?? this.customerAvatar,
+      scheduledAt: scheduledAt ?? this.scheduledAt,
       startedAt: startedAt ?? this.startedAt,
       completedAt: completedAt ?? this.completedAt,
     );
   }
 }
 
-enum BarberQueueStatus { waiting, serving, done }
+enum BarberQueueStatus { waiting, serving, done, cancelled }

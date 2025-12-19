@@ -23,7 +23,7 @@ class SalonDetailsProvider extends ChangeNotifier {
   List<SalonBarber> _barbers = [];
   List<SalonQueueEntry> _queue = [];
   bool _isFavorite = false;
-  
+
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _queueSubscription;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _bookingSubscription;
   String? _currentSalonId;
@@ -39,8 +39,9 @@ class SalonDetailsProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-      debugPrint('SalonDetailsProvider: Loading salon details for salonId: $salonId, salonName: $salonName');
-      
+      debugPrint(
+          'SalonDetailsProvider: Loading salon details for salonId: $salonId, salonName: $salonName');
+
       final doc = await _fetchSalonDoc();
       if (doc == null || !doc.exists) {
         debugPrint('SalonDetailsProvider: Salon document not found');
@@ -48,19 +49,20 @@ class SalonDetailsProvider extends ChangeNotifier {
         _setError('Salon details not found.');
         return;
       }
-      
+
       debugPrint('SalonDetailsProvider: Salon document found: ${doc.id}');
-      
+
       // Load data with error handling - continue even if some parts fail
       int waitMinutes = 0;
       try {
         waitMinutes = await _estimateWaitMinutes(doc.id);
-        debugPrint('SalonDetailsProvider: Wait minutes estimated: $waitMinutes');
+        debugPrint(
+            'SalonDetailsProvider: Wait minutes estimated: $waitMinutes');
       } catch (e) {
         debugPrint('SalonDetailsProvider: Error estimating wait minutes: $e');
         // Continue without wait time
       }
-      
+
       try {
         _barbers = await _loadBarbers(doc.id);
         debugPrint('SalonDetailsProvider: Loaded ${_barbers.length} barbers');
@@ -68,13 +70,13 @@ class SalonDetailsProvider extends ChangeNotifier {
         debugPrint('SalonDetailsProvider: Error loading barbers: $e');
         _barbers = [];
       }
-      
+
       try {
         await _hydrateBarberAvatars(_barbers);
       } catch (e) {
         debugPrint('SalonDetailsProvider: Error hydrating barber avatars: $e');
       }
-      
+
       try {
         _queue = await _loadQueue(doc.id);
         debugPrint('SalonDetailsProvider: Loaded ${_queue.length} queue items');
@@ -82,31 +84,32 @@ class SalonDetailsProvider extends ChangeNotifier {
         debugPrint('SalonDetailsProvider: Error loading queue: $e');
         _queue = [];
       }
-      
+
       try {
         await _hydrateQueueAvatars(_queue);
       } catch (e) {
         debugPrint('SalonDetailsProvider: Error hydrating queue avatars: $e');
       }
-      
+
       // Update barber waiting counts from queue
       try {
         _updateBarberWaitingCounts(_barbers, _queue);
       } catch (e) {
-        debugPrint('SalonDetailsProvider: Error updating barber waiting counts: $e');
+        debugPrint(
+            'SalonDetailsProvider: Error updating barber waiting counts: $e');
       }
-      
+
       _details = _mapSalon(doc.id, doc.data() ?? {}, waitMinutes, _queue);
-      
+
       try {
         await _loadFavorite(doc.id);
       } catch (e) {
         debugPrint('SalonDetailsProvider: Error loading favorite: $e');
         _isFavorite = false;
       }
-      
+
       _currentSalonId = doc.id;
-      
+
       try {
         _startRealtimeQueueUpdates(doc.id);
         debugPrint('SalonDetailsProvider: Started realtime queue updates');
@@ -114,18 +117,18 @@ class SalonDetailsProvider extends ChangeNotifier {
         debugPrint('SalonDetailsProvider: Error starting realtime updates: $e');
         // Continue without realtime updates
       }
-      
+
       debugPrint('SalonDetailsProvider: Successfully loaded salon details');
     } catch (e, stackTrace) {
       debugPrint('SalonDetailsProvider: Error in load: $e');
       debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
       debugPrint('Stack trace: $stackTrace');
       _details = null;
-      
+
       String errorMessage = 'Could not load salon details. Pull to refresh.';
       if (e is FirebaseException) {
         if (e.code == 'permission-denied') {
-          errorMessage = 'Permission denied. Please check Firestore rules are deployed.';
+          errorMessage = 'This salon is not available yet.';
         } else if (e.code == 'unavailable') {
           errorMessage = 'Network error. Check your connection.';
         } else {
@@ -148,7 +151,8 @@ class SalonDetailsProvider extends ChangeNotifier {
           debugPrint('_fetchSalonDoc: Found salon document by ID');
           return doc;
         } else {
-          debugPrint('_fetchSalonDoc: Salon document does not exist for ID: $salonId');
+          debugPrint(
+              '_fetchSalonDoc: Salon document does not exist for ID: $salonId');
         }
       }
       if (salonName.isNotEmpty) {
@@ -157,6 +161,7 @@ class SalonDetailsProvider extends ChangeNotifier {
           final query = await _firestore
               .collection('salons')
               .where('name', isEqualTo: salonName)
+              .where('verificationStatus', isEqualTo: 'verified')
               .limit(1)
               .get();
           if (query.docs.isNotEmpty) {
@@ -167,7 +172,8 @@ class SalonDetailsProvider extends ChangeNotifier {
           }
         } catch (e) {
           debugPrint('_fetchSalonDoc: Error querying by name: $e');
-          debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
+          debugPrint(
+              'Error code: ${e is FirebaseException ? e.code : "unknown"}');
         }
       }
       return null;
@@ -188,11 +194,11 @@ class SalonDetailsProvider extends ChangeNotifier {
     final topServicesField = data['topServices'];
     final topServices = _parseTopServices(topServicesField);
     // Try multiple field names for gallery photos
-    final galleryPhotosRaw = data['galleryPhotos'] ?? 
-        data['gallery'] ?? 
-        data['photos'] ?? 
+    final galleryPhotosRaw = data['galleryPhotos'] ??
+        data['gallery'] ??
+        data['photos'] ??
         data['galleryImages'];
-    
+
     List<String> galleryPhotos = [];
     if (galleryPhotosRaw is List) {
       galleryPhotos = galleryPhotosRaw
@@ -217,10 +223,10 @@ class SalonDetailsProvider extends ChangeNotifier {
       email: (data['email'] as String?) ?? '',
       rating: (data['rating'] as num?)?.toDouble() ?? 4.6,
       reviews: (data['reviews'] as num?)?.toInt() ?? 120,
-      isOpen: (data['isOpen'] as bool?) ?? true,
+      isOpen: (data['isOpen'] as bool?) ?? false,
       waitMinutes: waitMinutes,
-      coverImageUrl: (data['coverImageUrl'] as String?) ??
-          (data['coverPhoto'] as String?),
+      coverImageUrl:
+          (data['coverImageUrl'] as String?) ?? (data['coverPhoto'] as String?),
       galleryPhotos: galleryPhotos,
       services: services,
       combos: combos,
@@ -241,14 +247,16 @@ class SalonDetailsProvider extends ChangeNotifier {
           .doc(salonId)
           .collection('barbers')
           .get();
-      debugPrint('_loadBarbers: Found ${snap.docs.length} barber documents in nested collection');
-      
+      debugPrint(
+          '_loadBarbers: Found ${snap.docs.length} barber documents in nested collection');
+
       final docs = snap.docs
           .map((doc) => _mapBarber(doc.id, doc.data()))
           .whereType<SalonBarber>()
           .toList();
       if (docs.isNotEmpty) {
-        debugPrint('_loadBarbers: Successfully loaded ${docs.length} barbers from nested collection');
+        debugPrint(
+            '_loadBarbers: Successfully loaded ${docs.length} barbers from nested collection');
         return docs;
       }
 
@@ -259,10 +267,12 @@ class SalonDetailsProvider extends ChangeNotifier {
             await _firestore.collection('salons').doc(salonId).get();
         final data = salonDoc.data() ?? {};
         final barbersField = data['barbers'];
-        debugPrint('_loadBarbers: Barbers field type: ${barbersField.runtimeType}');
-        
+        debugPrint(
+            '_loadBarbers: Barbers field type: ${barbersField.runtimeType}');
+
         if (barbersField is List) {
-          debugPrint('_loadBarbers: Found barbers array with ${barbersField.length} items');
+          debugPrint(
+              '_loadBarbers: Found barbers array with ${barbersField.length} items');
           final barbers = <SalonBarber>[];
           for (var i = 0; i < barbersField.length; i++) {
             final item = barbersField[i];
@@ -274,8 +284,9 @@ class SalonDetailsProvider extends ChangeNotifier {
                     (barberMap['id'] as String?)?.trim() ??
                     (barberMap['barberId'] as String?)?.trim() ??
                     'barber_$i';
-                
-                debugPrint('_loadBarbers: Mapping barber $i with id: $barberId');
+
+                debugPrint(
+                    '_loadBarbers: Mapping barber $i with id: $barberId');
                 final barber = _mapBarber(barberId, barberMap);
                 if (barber != null) {
                   barbers.add(barber);
@@ -283,13 +294,16 @@ class SalonDetailsProvider extends ChangeNotifier {
                   debugPrint('_loadBarbers: Failed to map barber at index $i');
                 }
               } catch (e) {
-                debugPrint('_loadBarbers: Error mapping barber at index $i: $e');
+                debugPrint(
+                    '_loadBarbers: Error mapping barber at index $i: $e');
               }
             } else {
-              debugPrint('_loadBarbers: Item at index $i is not a Map: ${item.runtimeType}');
+              debugPrint(
+                  '_loadBarbers: Item at index $i is not a Map: ${item.runtimeType}');
             }
           }
-          debugPrint('_loadBarbers: Successfully loaded ${barbers.length} barbers from salon document array');
+          debugPrint(
+              '_loadBarbers: Successfully loaded ${barbers.length} barbers from salon document array');
           if (barbers.isNotEmpty) {
             return barbers;
           }
@@ -300,7 +314,7 @@ class SalonDetailsProvider extends ChangeNotifier {
         debugPrint('_loadBarbers: Error loading from salon document: $e');
         debugPrint('Stack trace: $stackTrace');
       }
-      
+
       debugPrint('_loadBarbers: No barbers found');
       return const [];
     } catch (e, stackTrace) {
@@ -338,16 +352,17 @@ class SalonDetailsProvider extends ChangeNotifier {
       debugPrint('toggleFavorite: userId or details is empty');
       return;
     }
-    
+
     final favRef = _firestore
         .collection('users')
         .doc(userId)
         .collection('favorites')
         .doc(_details!.id);
-    
+
     try {
-      debugPrint('toggleFavorite: Toggling favorite for salonId: ${_details!.id}, current status: $_isFavorite');
-      
+      debugPrint(
+          'toggleFavorite: Toggling favorite for salonId: ${_details!.id}, current status: $_isFavorite');
+
       if (_isFavorite) {
         debugPrint('toggleFavorite: Removing favorite');
         await favRef.delete();
@@ -375,38 +390,42 @@ class SalonDetailsProvider extends ChangeNotifier {
 
   SalonBarber? _mapBarber(String id, Map<String, dynamic> data) {
     try {
-      debugPrint('_mapBarber: Mapping barber with id: $id, data keys: ${data.keys.toList()}');
-      
+      debugPrint(
+          '_mapBarber: Mapping barber with id: $id, data keys: ${data.keys.toList()}');
+
       // Try to get uid from data, fallback to id
-      final barberUid = (data['uid'] as String?) ?? 
+      final barberUid = (data['uid'] as String?) ??
           (data['barberUid'] as String?) ??
           (data['id'] as String?) ??
           (id.isNotEmpty ? id : null);
-      
+
       // Get name with multiple fallback options
       final name = (data['name'] as String?)?.trim() ?? 'Barber';
       if (name.isEmpty || name == 'Barber') {
-        debugPrint('_mapBarber: Warning - barber name is empty or default for id: $id');
+        debugPrint(
+            '_mapBarber: Warning - barber name is empty or default for id: $id');
       }
-      
+
       // Get specialization/skills
       final specialization = (data['specialization'] as String?)?.trim() ?? '';
-      final skills = _parseSkills(data['skills'] ?? data['specialization'] ?? specialization);
-      
+      final skills = _parseSkills(
+          data['skills'] ?? data['specialization'] ?? specialization);
+
       // Get availability
-      final isAvailable = (data['isAvailable'] as bool?) ?? 
-          (data['available'] as bool?) ?? true;
-      
+      final isAvailable = (data['isAvailable'] as bool?) ??
+          (data['available'] as bool?) ??
+          true;
+
       // Get waiting clients count
       final waitingClients = (data['waitingClients'] as num?)?.toInt() ??
           (data['waiting'] as num?)?.toInt() ??
           0;
-      
+
       // Get avatar/photo URL
       final avatarUrl = (data['avatarUrl'] as String?)?.trim() ??
           (data['photoUrl'] as String?)?.trim() ??
           (data['photo'] as String?)?.trim();
-      
+
       final barber = SalonBarber(
         id: id,
         uid: barberUid,
@@ -417,7 +436,7 @@ class SalonDetailsProvider extends ChangeNotifier {
         waitingClients: waitingClients,
         avatarUrl: avatarUrl,
       );
-      
+
       debugPrint('_mapBarber: Successfully mapped barber: $name');
       return barber;
     } catch (e) {
@@ -436,34 +455,28 @@ class SalonDetailsProvider extends ChangeNotifier {
 
   List<SalonService> _mapServices(dynamic data) {
     if (data is! List) return [];
-    return data
-        .whereType<Map>()
-        .map((raw) {
-          final map = raw.cast<String, dynamic>();
-          return SalonService(
-            name: (map['name'] as String?) ?? 'Service',
-            price: (map['price'] as num?)?.toInt() ?? 0,
-            durationMinutes: (map['durationMinutes'] as num?)?.toInt() ?? 0,
-          );
-        })
-        .toList();
+    return data.whereType<Map>().map((raw) {
+      final map = raw.cast<String, dynamic>();
+      return SalonService(
+        name: (map['name'] as String?) ?? 'Service',
+        price: (map['price'] as num?)?.toInt() ?? 0,
+        durationMinutes: (map['durationMinutes'] as num?)?.toInt() ?? 0,
+      );
+    }).toList();
   }
 
   List<SalonCombo> _mapCombos(dynamic data) {
     if (data is! List) return [];
-    return data
-        .whereType<Map>()
-        .map((raw) {
-          final map = raw.cast<String, dynamic>();
-          return SalonCombo(
-            name: (map['name'] as String?) ?? 'Combo',
-            services: (map['services'] as String?) ?? '',
-            highlight: (map['highlight'] as String?) ?? '',
-            price: (map['price'] as num?)?.toInt() ?? 0,
-            emoji: (map['emoji'] as String?) ?? '✨',
-          );
-        })
-        .toList();
+    return data.whereType<Map>().map((raw) {
+      final map = raw.cast<String, dynamic>();
+      return SalonCombo(
+        name: (map['name'] as String?) ?? 'Combo',
+        services: (map['services'] as String?) ?? '',
+        highlight: (map['highlight'] as String?) ?? '',
+        price: (map['price'] as num?)?.toInt() ?? 0,
+        emoji: (map['emoji'] as String?) ?? '✨',
+      );
+    }).toList();
   }
 
   List<SalonWorkingHour> _mapWorkingHours(dynamic data) {
@@ -486,8 +499,9 @@ class SalonDetailsProvider extends ChangeNotifier {
       'Sunday': {'open': false, 'openTime': '10:00', 'closeTime': '20:00'},
     };
     return days.map((day) {
-      final entry =
-          data is Map<String, dynamic> ? data[day] as Map<String, dynamic>? : null;
+      final entry = data is Map<String, dynamic>
+          ? data[day] as Map<String, dynamic>?
+          : null;
       final source = entry ?? defaults[day]!;
       final openTime = _parseTime(source['openTime'] as String?);
       final closeTime = _parseTime(source['closeTime'] as String?);
@@ -537,8 +551,9 @@ class SalonDetailsProvider extends ChangeNotifier {
         debugPrint('_estimateWaitMinutes: No waiting items found');
         return 0;
       }
-      
-      debugPrint('_estimateWaitMinutes: Found ${snap.docs.length} waiting items');
+
+      debugPrint(
+          '_estimateWaitMinutes: Found ${snap.docs.length} waiting items');
       var collected = 0;
       var items = 0;
       for (final doc in snap.docs) {
@@ -554,7 +569,8 @@ class SalonDetailsProvider extends ChangeNotifier {
         return avg;
       }
       final fallback = snap.size * 10;
-      debugPrint('_estimateWaitMinutes: Using fallback estimate: $fallback minutes');
+      debugPrint(
+          '_estimateWaitMinutes: Using fallback estimate: $fallback minutes');
       return fallback;
     } catch (e) {
       debugPrint('_estimateWaitMinutes: Error estimating wait time: $e');
@@ -572,16 +588,14 @@ class SalonDetailsProvider extends ChangeNotifier {
           .collection('salons')
           .doc(salonId)
           .collection('queue')
-          .where('status', whereIn: ['waiting', 'serving'])
-          .get();
+          .where('status', whereIn: ['waiting', 'serving']).get();
       debugPrint('_loadQueue: Found ${queueSnap.docs.length} queue items');
-      
+
       final bookingSnap = await _firestore
           .collection('salons')
           .doc(salonId)
           .collection('bookings')
-          .where('status', whereIn: ['waiting', 'serving'])
-          .get();
+          .where('status', whereIn: ['waiting', 'serving']).get();
       debugPrint('_loadQueue: Found ${bookingSnap.docs.length} booking items');
 
       final queueEntries = queueSnap.docs
@@ -595,7 +609,8 @@ class SalonDetailsProvider extends ChangeNotifier {
           .where((e) => e.isWaiting || e.isServing) // Additional filter
           .toList();
 
-      final merged = _mergeQueue(queueEntries, bookingEntries)..sort(_queueComparator);
+      final merged = _mergeQueue(queueEntries, bookingEntries)
+        ..sort(_queueComparator);
       try {
         await _hydrateQueueAvatars(merged);
       } catch (e) {
@@ -631,13 +646,16 @@ class SalonDetailsProvider extends ChangeNotifier {
             .where((e) => e.isWaiting || e.isServing)
             .toList();
 
-        final merged = _mergeQueue(queueEntries, bookingEntries)..sort(_queueComparator);
+        final merged = _mergeQueue(queueEntries, bookingEntries)
+          ..sort(_queueComparator);
         try {
           await _hydrateQueueAvatars(merged);
         } catch (e2) {
-          debugPrint('_loadQueue: Error hydrating queue avatars (fallback): $e2');
+          debugPrint(
+              '_loadQueue: Error hydrating queue avatars (fallback): $e2');
         }
-        debugPrint('_loadQueue: Fallback merged queue entries: ${merged.length}');
+        debugPrint(
+            '_loadQueue: Fallback merged queue entries: ${merged.length}');
         return merged;
       } catch (e2) {
         debugPrint('_loadQueue: Error in fallback: $e2');
@@ -660,19 +678,19 @@ class SalonDetailsProvider extends ChangeNotifier {
           .where('status', whereIn: ['waiting', 'serving'])
           .snapshots()
           .listen((snapshot) async {
-        await _updateQueueFromStream(salonId);
-      }, onError: (_) {
-        // Fallback: listen to all queue items and filter
-        _queueSubscription?.cancel();
-        _queueSubscription = _firestore
-            .collection('salons')
-            .doc(salonId)
-            .collection('queue')
-            .snapshots()
-            .listen((snapshot) async {
-          await _updateQueueFromStream(salonId);
-        }, onError: (_) {});
-      });
+            await _updateQueueFromStream(salonId);
+          }, onError: (_) {
+            // Fallback: listen to all queue items and filter
+            _queueSubscription?.cancel();
+            _queueSubscription = _firestore
+                .collection('salons')
+                .doc(salonId)
+                .collection('queue')
+                .snapshots()
+                .listen((snapshot) async {
+              await _updateQueueFromStream(salonId);
+            }, onError: (_) {});
+          });
     } catch (_) {
       // Fallback: listen without filter
       _queueSubscription = _firestore
@@ -694,19 +712,19 @@ class SalonDetailsProvider extends ChangeNotifier {
           .where('status', whereIn: ['waiting', 'serving'])
           .snapshots()
           .listen((snapshot) async {
-        await _updateQueueFromStream(salonId);
-      }, onError: (_) {
-        // Fallback: listen to all bookings and filter
-        _bookingSubscription?.cancel();
-        _bookingSubscription = _firestore
-            .collection('salons')
-            .doc(salonId)
-            .collection('bookings')
-            .snapshots()
-            .listen((snapshot) async {
-          await _updateQueueFromStream(salonId);
-        }, onError: (_) {});
-      });
+            await _updateQueueFromStream(salonId);
+          }, onError: (_) {
+            // Fallback: listen to all bookings and filter
+            _bookingSubscription?.cancel();
+            _bookingSubscription = _firestore
+                .collection('salons')
+                .doc(salonId)
+                .collection('bookings')
+                .snapshots()
+                .listen((snapshot) async {
+              await _updateQueueFromStream(salonId);
+            }, onError: (_) {});
+          });
     } catch (_) {
       // Fallback: listen without filter
       _bookingSubscription = _firestore
@@ -724,14 +742,15 @@ class SalonDetailsProvider extends ChangeNotifier {
     if (_currentSalonId != salonId) return;
     try {
       _queue = await _loadQueue(salonId);
-      
+
       // Update barber waiting counts when queue updates
       try {
         _updateBarberWaitingCounts(_barbers, _queue);
       } catch (e) {
-        debugPrint('_updateQueueFromStream: Error updating barber waiting counts: $e');
+        debugPrint(
+            '_updateQueueFromStream: Error updating barber waiting counts: $e');
       }
-      
+
       if (_details != null) {
         final waitMinutes = await _estimateWaitMinutes(salonId);
         _details = _details!.copyWith(
@@ -754,7 +773,8 @@ class SalonDetailsProvider extends ChangeNotifier {
 
   int _queueComparator(SalonQueueEntry a, SalonQueueEntry b) {
     const order = {'serving': 0, 'waiting': 1, 'done': 2};
-    final statusCompare = (order[a.status] ?? 9).compareTo(order[b.status] ?? 9);
+    final statusCompare =
+        (order[a.status] ?? 9).compareTo(order[b.status] ?? 9);
     if (statusCompare != 0) return statusCompare;
     final aKey = _scheduleKey(a);
     final bKey = _scheduleKey(b);
@@ -778,14 +798,16 @@ class SalonDetailsProvider extends ChangeNotifier {
     };
     for (final booking in bookings) {
       final existing = map[booking.id];
-      map[booking.id] = existing == null ? booking : _combineEntries(existing, booking);
+      map[booking.id] =
+          existing == null ? booking : _combineEntries(existing, booking);
     }
     return map.values.toList();
   }
 
   Future<void> _hydrateBarberAvatars(List<SalonBarber> barbers) async {
     try {
-      debugPrint('_hydrateBarberAvatars: Starting hydration for ${barbers.length} barbers');
+      debugPrint(
+          '_hydrateBarberAvatars: Starting hydration for ${barbers.length} barbers');
       final missing = barbers
           .where((b) =>
               (b.avatarUrl == null || b.avatarUrl!.isEmpty) &&
@@ -794,36 +816,38 @@ class SalonDetailsProvider extends ChangeNotifier {
           .whereType<String>()
           .toSet()
           .toList();
-      
+
       if (missing.isEmpty) {
         debugPrint('_hydrateBarberAvatars: No barbers need avatar hydration');
         return;
       }
-      
-      debugPrint('_hydrateBarberAvatars: Fetching avatars for ${missing.length} barbers: $missing');
+
+      debugPrint(
+          '_hydrateBarberAvatars: Fetching avatars for ${missing.length} barbers: $missing');
       final photos = await _fetchUserPhotos(missing);
       debugPrint('_hydrateBarberAvatars: Fetched ${photos.length} avatars');
-      
+
       if (photos.isEmpty) {
         debugPrint('_hydrateBarberAvatars: No avatars found');
         return;
       }
-      
-      final updatedBarbers = barbers
-          .map((b) {
-            if (b.avatarUrl != null && b.avatarUrl!.isNotEmpty) return b;
-            final url = b.uid != null ? photos[b.uid!] : null;
-            if (url == null || url.isEmpty) {
-              debugPrint('_hydrateBarberAvatars: No avatar found for barber ${b.name} (uid: ${b.uid})');
-              return b;
-            }
-            debugPrint('_hydrateBarberAvatars: Found avatar for barber ${b.name}: $url');
-            return b.copyWith(avatarUrl: url);
-          })
-          .toList();
-      
+
+      final updatedBarbers = barbers.map((b) {
+        if (b.avatarUrl != null && b.avatarUrl!.isNotEmpty) return b;
+        final url = b.uid != null ? photos[b.uid!] : null;
+        if (url == null || url.isEmpty) {
+          debugPrint(
+              '_hydrateBarberAvatars: No avatar found for barber ${b.name} (uid: ${b.uid})');
+          return b;
+        }
+        debugPrint(
+            '_hydrateBarberAvatars: Found avatar for barber ${b.name}: $url');
+        return b.copyWith(avatarUrl: url);
+      }).toList();
+
       _barbers = updatedBarbers;
-      debugPrint('_hydrateBarberAvatars: Updated ${updatedBarbers.length} barbers');
+      debugPrint(
+          '_hydrateBarberAvatars: Updated ${updatedBarbers.length} barbers');
       notifyListeners();
     } catch (e, stackTrace) {
       debugPrint('_hydrateBarberAvatars: Error hydrating barber avatars: $e');
@@ -843,25 +867,23 @@ class SalonDetailsProvider extends ChangeNotifier {
     if (missing.isEmpty) return;
     final photos = await _fetchUserPhotos(missing);
     if (photos.isEmpty) return;
-    _queue = entries
-        .map((e) {
-          if (e.avatarUrl != null && e.avatarUrl!.isNotEmpty) return e;
-          final url = e.customerUid != null ? photos[e.customerUid!] : null;
-          if (url == null || url.isEmpty) return e;
-          return e.copyWith(avatarUrl: url);
-        })
-        .toList()
+    _queue = entries.map((e) {
+      if (e.avatarUrl != null && e.avatarUrl!.isNotEmpty) return e;
+      final url = e.customerUid != null ? photos[e.customerUid!] : null;
+      if (url == null || url.isEmpty) return e;
+      return e.copyWith(avatarUrl: url);
+    }).toList()
       ..sort(_queueComparator);
     notifyListeners();
   }
 
   Future<Map<String, String>> _fetchUserPhotos(List<String> uids) async {
     final Map<String, String> result = {};
-    
+
     // Use individual document reads instead of whereIn to avoid permission issues
     // Similar to what we did in OwnerQueueService for customer avatars
     debugPrint('_fetchUserPhotos: Fetching photos for ${uids.length} users');
-    
+
     for (final uid in uids) {
       try {
         debugPrint('_fetchUserPhotos: Fetching user document for uid: $uid');
@@ -879,26 +901,31 @@ class SalonDetailsProvider extends ChangeNotifier {
             debugPrint('_fetchUserPhotos: No photo URL found for uid $uid');
           }
         } else {
-          debugPrint('_fetchUserPhotos: User document does not exist for uid: $uid');
+          debugPrint(
+              '_fetchUserPhotos: User document does not exist for uid: $uid');
         }
       } catch (e) {
         debugPrint('_fetchUserPhotos: Error fetching user $uid: $e');
-        debugPrint('Error code: ${e is FirebaseException ? e.code : "unknown"}');
+        debugPrint(
+            'Error code: ${e is FirebaseException ? e.code : "unknown"}');
         // Continue with other users
       }
     }
-    
-    debugPrint('_fetchUserPhotos: Successfully fetched ${result.length} photos out of ${uids.length} users');
+
+    debugPrint(
+        '_fetchUserPhotos: Successfully fetched ${result.length} photos out of ${uids.length} users');
     return result;
   }
 
-  void _updateBarberWaitingCounts(List<SalonBarber> barbers, List<SalonQueueEntry> queue) {
+  void _updateBarberWaitingCounts(
+      List<SalonBarber> barbers, List<SalonQueueEntry> queue) {
     try {
-      debugPrint('_updateBarberWaitingCounts: Updating waiting counts for ${barbers.length} barbers from ${queue.length} queue items');
-      
+      debugPrint(
+          '_updateBarberWaitingCounts: Updating waiting counts for ${barbers.length} barbers from ${queue.length} queue items');
+
       // Count waiting items per barber by matching barber name or UID
       final waitingCounts = <String, int>{};
-      
+
       // First, count by barber name
       for (final entry in queue) {
         if (entry.isWaiting) {
@@ -908,29 +935,38 @@ class SalonDetailsProvider extends ChangeNotifier {
           }
         }
       }
-      
-      debugPrint('_updateBarberWaitingCounts: Waiting counts by name: $waitingCounts');
-      
+
+      debugPrint(
+          '_updateBarberWaitingCounts: Waiting counts by name: $waitingCounts');
+
       // Update barbers with waiting counts
       for (var i = 0; i < barbers.length; i++) {
         final barber = barbers[i];
         final barberNameLower = barber.name.trim().toLowerCase();
         final waitingCount = waitingCounts[barberNameLower] ?? 0;
-        
+
         if (waitingCount != barber.waitingClients) {
-          debugPrint('_updateBarberWaitingCounts: Updating ${barber.name} waiting count from ${barber.waitingClients} to $waitingCount');
+          debugPrint(
+              '_updateBarberWaitingCounts: Updating ${barber.name} waiting count from ${barber.waitingClients} to $waitingCount');
           _barbers[i] = barber.copyWith(waitingClients: waitingCount);
         }
       }
-      
+
       notifyListeners();
     } catch (e, stackTrace) {
-      debugPrint('_updateBarberWaitingCounts: Error updating barber waiting counts: $e');
+      debugPrint(
+          '_updateBarberWaitingCounts: Error updating barber waiting counts: $e');
       debugPrint('Stack trace: $stackTrace');
     }
   }
 
-  SalonQueueEntry _combineEntries(SalonQueueEntry primary, SalonQueueEntry fallback) {
+  SalonQueueEntry _combineEntries(
+      SalonQueueEntry primary, SalonQueueEntry fallback) {
+    final bestDate = _preferNonEmptyString(fallback.date, primary.date);
+    final bestTime = _preferNonEmptyString(fallback.time, primary.time);
+    final bestDateTime = _combineDateAndTime(bestDate, bestTime) ??
+        fallback.dateTime ??
+        primary.dateTime;
     return primary.copyWith(
       customerName: primary.customerName.isNotEmpty
           ? primary.customerName
@@ -940,22 +976,38 @@ class SalonDetailsProvider extends ChangeNotifier {
           : fallback.barberName,
       service: primary.service.isNotEmpty ? primary.service : fallback.service,
       status: primary.status.isNotEmpty ? primary.status : fallback.status,
-      waitMinutes: primary.waitMinutes != 0 ? primary.waitMinutes : fallback.waitMinutes,
-      date: primary.date ?? fallback.date,
-      time: primary.time ?? fallback.time,
-      dateTime: primary.dateTime ?? fallback.dateTime,
+      waitMinutes:
+          primary.waitMinutes != 0 ? primary.waitMinutes : fallback.waitMinutes,
+      date: bestDate,
+      time: bestTime,
+      dateTime: bestDateTime,
       avatarUrl: primary.avatarUrl ?? fallback.avatarUrl,
       customerUid: primary.customerUid ?? fallback.customerUid,
     );
   }
 
+  String? _preferNonEmptyString(String? preferred, String? fallback) {
+    final preferredTrimmed = preferred?.trim() ?? '';
+    if (preferredTrimmed.isNotEmpty) return preferredTrimmed;
+    final fallbackTrimmed = fallback?.trim() ?? '';
+    if (fallbackTrimmed.isNotEmpty) return fallbackTrimmed;
+    return null;
+  }
+
+  String _normalizeTimeString(String value) {
+    return value
+        .replaceAll('\u00A0', ' ')
+        .replaceAll('\u202F', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
   SalonQueueEntry? _mapQueue(String id, Map<String, dynamic> data) {
     final status = _normalizeStatus((data['status'] as String?) ?? 'waiting');
     final wait = (data['waitMinutes'] as num?)?.toInt() ?? 0;
-    final date =
-        _extractDateString(data['date'] ?? data['bookingDate']);
-    final time =
-        _extractTimeString(data['time'] ?? data['bookingTime'] ?? data['slotLabel']);
+    final date = _extractDateString(data['date'] ?? data['bookingDate']);
+    final time = _extractTimeString(
+        data['time'] ?? data['bookingTime'] ?? data['slotLabel']);
     final dateTime = _parseDateTime(data['dateTime']) ??
         _combineDateAndTime(date, time) ??
         _parseDateTime(data['createdAt']);
@@ -984,10 +1036,9 @@ class SalonDetailsProvider extends ChangeNotifier {
     final wait = (data['durationMinutes'] as num?)?.toInt() ??
         (data['waitMinutes'] as num?)?.toInt() ??
         0;
-    final date =
-        _extractDateString(data['date'] ?? data['bookingDate']);
-    final time =
-        _extractTimeString(data['time'] ?? data['bookingTime'] ?? data['slotLabel']);
+    final date = _extractDateString(data['date'] ?? data['bookingDate']);
+    final time = _extractTimeString(
+        data['time'] ?? data['bookingTime'] ?? data['slotLabel']);
     final dateTime = _parseDateTime(data['dateTime']) ??
         _combineDateAndTime(date, time) ??
         _parseDateTime(data['createdAt']);
@@ -1070,15 +1121,13 @@ class SalonDetailsProvider extends ChangeNotifier {
   }
 
   DateTime? _combineDateAndTime(String? date, String? time) {
-    if (date == null ||
-        date.isEmpty ||
-        time == null ||
-        time.isEmpty) {
+    if (date == null || date.isEmpty || time == null || time.isEmpty) {
       return null;
     }
     try {
       final parsedDate = DateTime.parse(date);
-      final parsedTime = DateFormat.jm().parse(time);
+      final parsedTime =
+          DateFormat('h:mm a', 'en_US').parse(_normalizeTimeString(time));
       return DateTime(parsedDate.year, parsedDate.month, parsedDate.day,
           parsedTime.hour, parsedTime.minute);
     } catch (_) {

@@ -19,6 +19,7 @@ class OwnerQueueItem {
   final OwnerQueueStatus status;
   final int waitMinutes;
   final String slotLabel;
+  final DateTime? scheduledAt;
   final String customerPhone;
   final String? note;
   final String customerAvatar;
@@ -33,13 +34,14 @@ class OwnerQueueItem {
     required this.status,
     required this.waitMinutes,
     required this.slotLabel,
+    this.scheduledAt,
     required this.customerPhone,
     this.note,
     this.customerAvatar = '',
     this.customerUid = '',
   });
 
-  OwnerQueueItem copyWith({OwnerQueueStatus? status}) {
+  OwnerQueueItem copyWith({OwnerQueueStatus? status, DateTime? scheduledAt}) {
     return OwnerQueueItem(
       id: id,
       customerName: customerName,
@@ -49,6 +51,7 @@ class OwnerQueueItem {
       status: status ?? this.status,
       waitMinutes: waitMinutes,
       slotLabel: slotLabel,
+      scheduledAt: scheduledAt ?? this.scheduledAt,
       customerPhone: customerPhone,
       note: note,
       customerAvatar: customerAvatar,
@@ -287,6 +290,8 @@ class OwnerBookingRequest {
   final String customerUid;
   final String barberName;
   final DateTime dateTime;
+  final String? date;
+  final String? time;
   final List<String> services;
   final int durationMinutes;
   final int totalPrice;
@@ -300,6 +305,8 @@ class OwnerBookingRequest {
     required this.customerUid,
     required this.barberName,
     required this.dateTime,
+    this.date,
+    this.time,
     required this.services,
     required this.durationMinutes,
     required this.totalPrice,
@@ -309,6 +316,8 @@ class OwnerBookingRequest {
   OwnerBookingRequest copyWith({
     OwnerBookingRequestStatus? status,
     String? customerAvatar,
+    String? date,
+    String? time,
   }) {
     return OwnerBookingRequest(
       id: id,
@@ -318,6 +327,8 @@ class OwnerBookingRequest {
       customerUid: customerUid,
       barberName: barberName,
       dateTime: dateTime,
+      date: date ?? this.date,
+      time: time ?? this.time,
       services: services,
       durationMinutes: durationMinutes,
       totalPrice: totalPrice,

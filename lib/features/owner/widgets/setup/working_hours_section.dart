@@ -77,25 +77,47 @@ class WorkingHoursSection extends StatelessWidget {
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 250),
                   child: isOpen
-                      ? Row(
+                      ? LayoutBuilder(
                           key: ValueKey('$day-open'),
-                          children: [
-                            Expanded(
-                              child: _TimePickerTile(
-                                label: 'Opens',
-                                time: openTime,
-                                onPick: () => onPickTime(day, true),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _TimePickerTile(
-                                label: 'Closes',
-                                time: closeTime,
-                                onPick: () => onPickTime(day, false),
-                              ),
-                            ),
-                          ],
+                          builder: (context, constraints) {
+                            final stackVertically = constraints.maxWidth < 340;
+                            if (stackVertically) {
+                              return Column(
+                                children: [
+                                  _TimePickerTile(
+                                    label: 'Opens',
+                                    time: openTime,
+                                    onPick: () => onPickTime(day, true),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _TimePickerTile(
+                                    label: 'Closes',
+                                    time: closeTime,
+                                    onPick: () => onPickTime(day, false),
+                                  ),
+                                ],
+                              );
+                            }
+                            return Row(
+                              children: [
+                                Expanded(
+                                  child: _TimePickerTile(
+                                    label: 'Opens',
+                                    time: openTime,
+                                    onPick: () => onPickTime(day, true),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _TimePickerTile(
+                                    label: 'Closes',
+                                    time: closeTime,
+                                    onPick: () => onPickTime(day, false),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         )
                       : Padding(
                           key: ValueKey('$day-closed'),
@@ -128,7 +150,9 @@ class _DayChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
-        color: isOpen ? Colors.green.withValues(alpha: 0.15) : Colors.grey.shade200,
+        color: isOpen
+            ? Colors.green.withValues(alpha: 0.15)
+            : Colors.grey.shade200,
         borderRadius: BorderRadius.circular(30),
       ),
       child: Row(
@@ -217,26 +241,38 @@ class _TimePickerTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.black54,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.black54,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '$formattedHour:$formattedMinute $suffix',
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '$formattedHour:$formattedMinute $suffix',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      softWrap: false,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const Spacer(),
             const Icon(Icons.chevron_right, color: Colors.black38),
           ],
         ),

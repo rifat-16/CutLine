@@ -7,7 +7,6 @@ import 'package:provider/provider.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/services/notification_service.dart';
-import 'package:cutline/features/auth/models/user_role.dart';
 
 import 'firebase_options.dart';
 
