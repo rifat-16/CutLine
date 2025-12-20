@@ -58,9 +58,10 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBKc37zt5h-CS6hBCMFJv0x1Ip3uwf9B1c',
-    appId: '1:766335706711:android:c677e50e1d598778b06512',
+    appId: '1:766335706711:android:3f26173cdaf25f2db06512',
     messagingSenderId: '766335706711',
     projectId: 'cutline-526aa',
+    databaseURL: 'https://cutline-526aa-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'cutline-526aa.firebasestorage.app',
   );
 
