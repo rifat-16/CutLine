@@ -106,7 +106,9 @@ class AppRouter {
       case AppRoutes.splash:
         return _page(const SplashScreen(), settings);
       case AppRoutes.roleSelection:
-        return _page(const RoleSelectionScreen(), settings);
+        final args = settings.arguments;
+        final message = args is String ? args : null;
+        return _page(RoleSelectionScreen(message: message), settings);
       case AppRoutes.login:
         final roleArg = settings.arguments;
         final selectedRole = roleArg is UserRole ? roleArg : UserRole.customer;

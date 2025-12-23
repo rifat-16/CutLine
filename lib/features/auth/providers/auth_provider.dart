@@ -104,6 +104,10 @@ class AuthProvider extends ChangeNotifier {
     _profile = null;
     notificationService.setUserRole(null);
     unawaited(_stopTokenRefresh());
+    // Clear local auth state immediately so routing/UI can't use a stale user
+    // while FirebaseAuth completes sign-out.
+    _currentUser = null;
+    notifyListeners();
     return _authService.signOut();
   }
 
@@ -148,8 +152,10 @@ class AuthProvider extends ChangeNotifier {
       final shouldForceSignOut = e.code == 'user-not-found' ||
           e.code == 'user-disabled' ||
           e.code == 'invalid-user-token' ||
-          e.code == 'user-token-expired';
+          e.code == 'user-token-expired' ||
+          _isStaleAuthSessionError(e);
       if (shouldForceSignOut) {
+        _setError(_mapFirebaseError(e));
         await signOut();
         _currentUser = null;
         notifyListeners();
@@ -157,6 +163,33 @@ class AuthProvider extends ChangeNotifier {
       }
       _setError(_mapFirebaseError(e));
     }
+  }
+
+  bool _isStaleAuthSessionError(FirebaseAuthException e) {
+    // Some platform implementations surface account deletion/disablement as an
+    // `unknown`/`internal-error` with a descriptive message. Treat those as a
+    // hard sign-out so the app doesn't keep routing with a stale session.
+    final msg = (e.message ?? '').toLowerCase();
+    if (msg.isEmpty) return false;
+
+    final looksDeleted = msg.contains('has been deleted') ||
+        msg.contains('user has been deleted') ||
+        msg.contains('no user record') ||
+        msg.contains('user record') && msg.contains('not found') ||
+        msg.contains('user not found') ||
+        msg.contains('account has been deleted');
+
+    final looksRevoked = msg.contains('invalid user token') ||
+        msg.contains('user token') && msg.contains('expired') ||
+        msg.contains('token is no longer valid') ||
+        msg.contains('revoked');
+
+    final looksAuthApiBlocked =
+        msg.contains('securetoken.googleapis.com') && msg.contains('blocked') ||
+            msg.contains('securetoken') && msg.contains('granttoken') ||
+            msg.contains('identitytoolkit') && msg.contains('blocked');
+
+    return looksDeleted || looksRevoked || looksAuthApiBlocked;
   }
 
   Future<void> updateProfile({
@@ -366,6 +399,9 @@ class AuthProvider extends ChangeNotifier {
         final msg = (e.message ?? '').toLowerCase();
         if (msg.contains('identitytoolkit') && msg.contains('blocked')) {
           return 'Firebase Auth API is blocked for this project. In Google Cloud Console, enable Identity Toolkit API and remove API key restrictions for it.';
+        }
+        if (msg.contains('securetoken') && msg.contains('blocked')) {
+          return 'Firebase token API is blocked for this project. In Google Cloud Console, remove API key restrictions for securetoken.googleapis.com (Secure Token) and ensure Firebase Auth works.';
         }
         return 'Unable to complete the request. Please try again.';
       case 'too-many-requests':

@@ -8,6 +8,7 @@ import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/features/owner/services/salon_lookup_service.dart';
 import 'package:cutline/shared/screens/update_required_screen.dart';
 import 'package:cutline/shared/services/update_gate_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -72,25 +73,77 @@ class _SplashScreenState extends State<SplashScreen> {
       if (!mounted) return;
       final user = auth.currentUser;
       if (user == null) {
-        Navigator.pushReplacementNamed(context, AppRoutes.roleSelection);
+        final msg = (auth.lastError ?? '').trim();
+        Navigator.pushReplacementNamed(
+          context,
+          AppRoutes.roleSelection,
+          arguments: msg.isEmpty ? null : msg,
+        );
         return;
       }
 
-      final profile = await auth
-          .fetchUserProfile(user.uid)
-          .timeout(const Duration(seconds: 12), onTimeout: () => null);
+      Map<String, dynamic>? profile;
+      try {
+        DocumentSnapshot<Map<String, dynamic>>? profileSnap;
+        try {
+          profileSnap = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get(const GetOptions(source: Source.server))
+              .timeout(const Duration(seconds: 12));
+        } on TimeoutException {
+          profileSnap = null;
+        }
+        if (!mounted) return;
+
+        if (profileSnap != null) {
+          if (!profileSnap.exists) {
+            await auth.signOut();
+            if (!mounted) return;
+            Navigator.pushReplacementNamed(
+              context,
+              AppRoutes.roleSelection,
+              arguments:
+                  'Account data was removed. Please sign up again to continue.',
+            );
+            return;
+          }
+          profile = profileSnap.data();
+        }
+      } on FirebaseException {
+        profile = null;
+      } catch (_) {
+        profile = null;
+      }
       if (!mounted) return;
+
+      // If we couldn't fetch the profile from server (timeout/network), fall
+      // back to a normal fetch to avoid logging the user out unnecessarily.
+      if (profile == null) {
+        profile = await auth
+            .fetchUserProfile(user.uid)
+            .timeout(const Duration(seconds: 12), onTimeout: () => null);
+        if (!mounted) return;
+      }
+
+      // If we still can't resolve a profile, fall back to the welcome flow.
+      // (We don't force a sign-out here because it may be a transient network
+      // failure; invalid/deleted auth sessions are handled by refreshCurrentUser
+      // and the server-profile check above.)
+      if (profile == null) {
+        Navigator.pushReplacementNamed(context, AppRoutes.roleSelection);
+        return;
+      }
 
       final hasSalon = await SalonLookupService()
           .salonExists(user.uid)
           .timeout(const Duration(seconds: 12), onTimeout: () => false);
       if (!mounted) return;
 
-      final role = profile?['role'] != null
-          ? UserRoleKey.fromKey(profile!['role'] as String? ?? 'customer')
-          : (hasSalon ? UserRole.owner : UserRole.customer);
-      final profileComplete =
-          profile?['profileComplete'] == true || (profile == null && hasSalon);
+      final roleKey = profile['role'] as String?;
+      final role =
+          roleKey != null ? UserRoleKey.fromKey(roleKey) : UserRole.customer;
+      final profileComplete = profile['profileComplete'] == true;
 
       String target;
       switch (role) {
