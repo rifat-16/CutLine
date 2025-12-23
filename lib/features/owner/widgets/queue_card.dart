@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 class OwnerQueueCard extends StatelessWidget {
   final OwnerQueueItem item;
   final bool showActions;
-  final ValueChanged<OwnerQueueStatus>? onStatusChange;
+  final Future<void> Function(OwnerQueueStatus status)? onStatusChange;
   final VoidCallback? onTap;
 
   const OwnerQueueCard({
@@ -332,7 +332,7 @@ class _InfoBadge extends StatelessWidget {
 
 class _ActionRow extends StatelessWidget {
   final OwnerQueueItem item;
-  final ValueChanged<OwnerQueueStatus>? onStatusChange;
+  final Future<void> Function(OwnerQueueStatus status)? onStatusChange;
 
   const _ActionRow({required this.item, this.onStatusChange});
 
@@ -342,15 +342,57 @@ class _ActionRow extends StatelessWidget {
     if (actions.isEmpty) {
       return const SizedBox(height: 16);
     }
+    return _ActionRowBody(actions: actions, onStatusChange: onStatusChange);
+  }
+}
+
+class _ActionRowBody extends StatefulWidget {
+  final List<QueueActionConfig> actions;
+  final Future<void> Function(OwnerQueueStatus status)? onStatusChange;
+
+  const _ActionRowBody({
+    required this.actions,
+    required this.onStatusChange,
+  });
+
+  @override
+  State<_ActionRowBody> createState() => _ActionRowBodyState();
+}
+
+class _ActionRowBodyState extends State<_ActionRowBody> {
+  OwnerQueueStatus? _pendingStatus;
+
+  Future<void> _handleAction(OwnerQueueStatus nextStatus) async {
+    if (widget.onStatusChange == null) return;
+    if (_pendingStatus != null) return;
+    setState(() => _pendingStatus = nextStatus);
+    try {
+      await widget.onStatusChange!(nextStatus);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update status: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _pendingStatus = null);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Wrap(
         spacing: 12,
         runSpacing: 8,
-        children: actions.map((action) {
-          final VoidCallback? handler = onStatusChange == null
+        children: widget.actions.map((action) {
+          final isLoading = _pendingStatus == action.nextStatus;
+          final VoidCallback? handler = widget.onStatusChange == null ||
+                  _pendingStatus != null
               ? null
-              : () => onStatusChange!(action.nextStatus);
+              : () => _handleAction(action.nextStatus);
           if (action.isOutline) {
             return OutlinedButton(
               style: OutlinedButton.styleFrom(
@@ -363,7 +405,11 @@ class _ActionRow extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16)),
               ),
               onPressed: handler,
-              child: Text(action.label),
+              child: _ActionButtonChild(
+                label: action.label,
+                isLoading: isLoading,
+                progressColor: action.color,
+              ),
             );
           }
           return ElevatedButton(
@@ -376,10 +422,65 @@ class _ActionRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16)),
             ),
             onPressed: handler,
-            child: Text(action.label),
+            child: _ActionButtonChild(
+              label: action.label,
+              isLoading: isLoading,
+              progressColor: Colors.white,
+            ),
           );
         }).toList(),
       ),
+    );
+  }
+}
+
+class _ActionButtonChild extends StatelessWidget {
+  final String label;
+  final bool isLoading;
+  final Color progressColor;
+
+  const _ActionButtonChild({
+    required this.label,
+    required this.isLoading,
+    required this.progressColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.98, end: 1).animate(animation),
+            child: child,
+          ),
+        );
+      },
+      child: isLoading
+          ? Row(
+              key: const ValueKey('loading'),
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(label),
+              ],
+            )
+          : Text(
+              label,
+              key: const ValueKey('idle'),
+            ),
     );
   }
 }

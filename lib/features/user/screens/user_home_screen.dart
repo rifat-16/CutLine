@@ -1,8 +1,10 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/user/providers/user_home_provider.dart';
+import 'package:cutline/features/user/providers/user_location_provider.dart';
 import 'package:cutline/features/user/widgets/home_bottom_navigation.dart';
 import 'package:cutline/features/user/widgets/nearby_salon_card.dart';
-import 'package:cutline/features/user/widgets/user_search_bar.dart';
+import 'package:cutline/features/user/widgets/user_location_picker_bar.dart';
+import 'package:cutline/shared/models/picked_location.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:cutline/shared/widgets/notification_badge_icon.dart';
 import 'package:cutline/routes/app_router.dart';
@@ -18,12 +20,15 @@ class UserHomeScreen extends StatefulWidget {
 }
 
 class _UserHomeScreenState extends State<UserHomeScreen> {
-  final TextEditingController _searchController = TextEditingController();
+  String? _lastAppliedLocationKey;
 
   @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<UserLocationProvider>().initSilently();
+    });
   }
 
   @override
@@ -37,6 +42,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       },
       builder: (context, _) {
         final provider = context.watch<UserHomeProvider>();
+        final locationProvider = context.watch<UserLocationProvider>();
+        final hasLocation = locationProvider.location != null;
+        final locationLabel =
+            locationProvider.location?.address ?? 'Set your location';
+
+        _applyLocation(provider, locationProvider.location);
         return Scaffold(
           backgroundColor: CutlineColors.secondaryBackground,
           appBar: CutlineAppBar(
@@ -58,12 +69,20 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      UserSearchBar(
-                        controller: _searchController,
-                        onChanged: (query) {
-                          context.read<UserHomeProvider>().setSearchQuery(query);
-                        },
+                      UserLocationPickerBar(
+                        label: locationLabel,
+                        isBusy: locationProvider.isBusy,
+                        onTap: () => context
+                            .read<UserLocationProvider>()
+                            .pickLocation(context),
                       ),
+                      if (locationProvider.error != null) ...[
+                        SizedBox(height: 6.h),
+                        Text(
+                          locationProvider.error!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ],
                       SizedBox(height: CutlineSpacing.md),
                       Text(
                         'Nearby Salons',
@@ -103,14 +122,18 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
-                                      children: const [
+                                      children: [
                                         Text(
-                                          'No salons found nearby.',
+                                          hasLocation
+                                              ? 'No salons found nearby.'
+                                              : 'Choose your location',
                                           style: CutlineTextStyles.title,
                                         ),
-                                        SizedBox(height: 6),
+                                        const SizedBox(height: 6),
                                         Text(
-                                          'Pull to refresh or try again later.',
+                                          hasLocation
+                                              ? 'Pull to refresh or try again later.'
+                                              : 'Tap the location bar above to set your area (5km radius).',
                                           style: CutlineTextStyles.subtitle,
                                         ),
                                       ],
@@ -131,6 +154,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                                     child: NearbySalonCard(
                                       salonName: salon.name,
                                       location: salon.locationLabel,
+                                      distanceLabel: salon.distanceLabel,
                                       waitMinutes: salon.waitMinutes,
                                       isOpen: salon.isOpenNow,
                                       isFavorite: salon.isFavorite,
@@ -171,5 +195,18 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     } else if (index == 4) {
       Navigator.pushNamed(context, AppRoutes.userProfile);
     }
+  }
+
+  void _applyLocation(UserHomeProvider homeProvider, PickedLocation? location) {
+    final key = location == null
+        ? null
+        : '${location.latitude.toStringAsFixed(5)},${location.longitude.toStringAsFixed(5)}';
+    if (key == _lastAppliedLocationKey) return;
+    _lastAppliedLocationKey = key;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      homeProvider.setUserLocation(location);
+    });
   }
 }

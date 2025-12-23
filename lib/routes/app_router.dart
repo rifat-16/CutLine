@@ -34,6 +34,7 @@ import 'package:cutline/features/user/screens/my_booking_screen.dart';
 import 'package:cutline/features/user/screens/notification_screen.dart';
 import 'package:cutline/features/user/screens/salon_details_screen.dart';
 import 'package:cutline/features/user/screens/salon_gallery_screen.dart';
+import 'package:cutline/features/user/screens/salon_map_screen.dart';
 import 'package:cutline/features/user/screens/user_home_screen.dart';
 import 'package:cutline/features/user/screens/user_edit_profile_screen.dart';
 import 'package:cutline/features/user/screens/user_profile_screen.dart';
@@ -60,6 +61,7 @@ class AppRoutes {
   static const barberHome = '/barber-home';
 
   static const salonDetails = '/salon-details';
+  static const salonMap = '/salon-map';
   static const booking = '/booking';
   static const bookingSummary = '/booking-summary';
   static const bookingReceipt = '/booking-receipt';
@@ -175,6 +177,18 @@ class AppRouter {
         return _page(
             SalonDetailsScreen(salonId: salonId, salonName: salonName),
             settings);
+      case AppRoutes.salonMap:
+        final args = settings.arguments;
+        final parsedArgs = args is SalonMapArgs ? args : null;
+        return _page(
+          SalonMapScreen(
+            salonName: parsedArgs?.salonName ?? 'Salon',
+            address: parsedArgs?.address ?? 'Address unavailable',
+            salonLat: parsedArgs?.lat ?? 23.8103,
+            salonLng: parsedArgs?.lng ?? 90.4125,
+          ),
+          settings,
+        );
       case AppRoutes.booking:
         final args = settings.arguments;
         final parsedArgs = args is BookingArgs ? args : null;
@@ -324,6 +338,20 @@ class SalonDetailsArgs {
   const SalonDetailsArgs({
     required this.salonId,
     required this.salonName,
+  });
+}
+
+class SalonMapArgs {
+  final String salonName;
+  final String address;
+  final double lat;
+  final double lng;
+
+  const SalonMapArgs({
+    required this.salonName,
+    required this.address,
+    required this.lat,
+    required this.lng,
   });
 }
 

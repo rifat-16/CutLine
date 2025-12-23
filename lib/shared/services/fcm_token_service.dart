@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
@@ -119,8 +121,11 @@ class FcmTokenService {
   }
 
   /// Listen for token refresh and save automatically
-  void listenToTokenRefresh(String userId, Function(String) onTokenSaved) {
-    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+  StreamSubscription<String> listenToTokenRefresh(
+    String userId,
+    Function(String) onTokenSaved,
+  ) {
+    return FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
       try {
         await saveToken(userId, newToken);
         onTokenSaved(newToken);
@@ -129,4 +134,3 @@ class FcmTokenService {
     });
   }
 }
-

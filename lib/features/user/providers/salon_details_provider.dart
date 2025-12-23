@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -180,10 +179,15 @@ class SalonDetailsProvider extends ChangeNotifier {
           .toList();
     }
 
+    final locationField = data['location'];
+    final GeoPoint? geoPoint =
+        locationField is GeoPoint ? locationField : null;
+
     return SalonDetailsData(
       id: id,
       name: (data['name'] as String?) ?? salonName,
       address: (data['address'] as String?) ?? 'Address unavailable',
+      location: geoPoint,
       contact: (data['contact'] as String?) ?? '',
       email: (data['email'] as String?) ?? '',
       rating: (data['rating'] as num?)?.toDouble() ?? 4.6,
@@ -1009,6 +1013,7 @@ class SalonDetailsData {
   final String id;
   final String name;
   final String address;
+  final GeoPoint? location;
   final String contact;
   final String email;
   final double rating;
@@ -1028,6 +1033,7 @@ class SalonDetailsData {
     required this.id,
     required this.name,
     required this.address,
+    required this.location,
     required this.contact,
     required this.email,
     required this.rating,
@@ -1056,6 +1062,7 @@ class SalonDetailsData {
     String? id,
     String? name,
     String? address,
+    GeoPoint? location,
     String? contact,
     String? email,
     double? rating,
@@ -1075,6 +1082,7 @@ class SalonDetailsData {
       id: id ?? this.id,
       name: name ?? this.name,
       address: address ?? this.address,
+      location: location ?? this.location,
       contact: contact ?? this.contact,
       email: email ?? this.email,
       rating: rating ?? this.rating,

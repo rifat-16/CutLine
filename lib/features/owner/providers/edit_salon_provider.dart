@@ -28,6 +28,8 @@ class EditSalonProvider extends ChangeNotifier {
   String email = '';
   String phone = '';
   String address = '';
+  GeoPoint? location;
+  String? geohash;
   String about = '';
   String? photoUrl;
 
@@ -52,6 +54,8 @@ class EditSalonProvider extends ChangeNotifier {
       email = (data['email'] as String?) ?? '';
       phone = (data['contact'] as String?) ?? '';
       address = (data['address'] as String?) ?? '';
+      location = data['location'] as GeoPoint?;
+      geohash = (data['geohash'] as String?)?.trim();
       about = (data['description'] as String?) ?? '';
       photoUrl = (data['photoUrl'] as String?)?.trim();
       final userDoc = await _firestore.collection('users').doc(ownerId).get();
@@ -89,6 +93,8 @@ class EditSalonProvider extends ChangeNotifier {
     required String phone,
     required String address,
     required String about,
+    GeoPoint? location,
+    String? geohash,
   }) async {
     final ownerId = _authProvider.currentUser?.uid;
     if (ownerId == null) {
@@ -98,20 +104,28 @@ class EditSalonProvider extends ChangeNotifier {
     _setSaving(true);
     _setError(null);
     try {
-      await _firestore.collection('salons').doc(ownerId).set({
-        'name': salonName,
-        'ownerName': ownerName,
-        'email': email,
-        'contact': phone,
-        'address': address,
-        'description': about,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      await _firestore.collection('salons').doc(ownerId).set(
+        {
+          'name': salonName,
+          'ownerName': ownerName,
+          'email': email,
+          'contact': phone,
+          'address': address,
+          if (location != null) 'location': location,
+          if (geohash != null && geohash.trim().isNotEmpty)
+            'geohash': geohash.trim(),
+          'description': about,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
       this.salonName = salonName;
       this.ownerName = ownerName;
       this.email = email;
       this.phone = phone;
       this.address = address;
+      if (location != null) this.location = location;
+      if (geohash != null && geohash.trim().isNotEmpty) this.geohash = geohash;
       this.about = about;
       // keep existing photoUrl as-is
       return true;

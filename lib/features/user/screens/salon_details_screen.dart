@@ -5,7 +5,6 @@ import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:cutline/shared/widgets/web_safe_image.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
@@ -268,32 +267,23 @@ class SalonInfoSection extends StatelessWidget {
               ),
               TextButton(
                 onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                  final point = details.location;
+                  if (point == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Location is not available for this salon.'),
                       ),
-                      title: const Text(
-                        'Coming Soon',
-                        style: CutlineTextStyles.title,
-                      ),
-                      content: const Text(
-                        'This feature is coming soon. It will be available in the next update.',
-                        style: CutlineTextStyles.body,
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: Text(
-                            'OK',
-                            style: CutlineTextStyles.body.copyWith(
-                              color: CutlineColors.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
+                    );
+                    return;
+                  }
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.salonMap,
+                    arguments: SalonMapArgs(
+                      salonName: details.name,
+                      address: details.address,
+                      lat: point.latitude,
+                      lng: point.longitude,
                     ),
                   );
                 },

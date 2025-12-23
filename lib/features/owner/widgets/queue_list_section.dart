@@ -7,7 +7,7 @@ class OwnerQueueListSection extends StatelessWidget {
   final List<String> filters;
   final String selectedFilter;
   final ValueChanged<String> onFilterChange;
-  final void Function(String id, OwnerQueueStatus status) onStatusChange;
+  final Future<void> Function(String id, OwnerQueueStatus status) onStatusChange;
   final VoidCallback onViewAll;
   final ValueChanged<OwnerQueueItem>? onOpenCustomer;
 

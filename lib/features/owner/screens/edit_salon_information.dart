@@ -1,6 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/providers/edit_salon_provider.dart';
+import 'package:cutline/shared/models/picked_location.dart';
+import 'package:cutline/shared/screens/address_picker_screen.dart';
+import 'package:cutline/shared/services/geohash_service.dart';
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 
 class EditSalonInfoScreen extends StatefulWidget {
@@ -18,6 +23,8 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
   late final TextEditingController _addressController;
   late final TextEditingController _aboutController;
   bool _initialized = false;
+  GeoPoint? _pickedGeoPoint;
+  String? _pickedGeohash;
 
   @override
   void initState() {
@@ -109,6 +116,9 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
                               label: 'Address',
                               icon: Icons.location_on_outlined,
                               maxLines: 2,
+                              readOnly: true,
+                              onTap: () => _openAddressPicker(provider),
+                              suffixIcon: const Icon(Icons.map_outlined),
                             ),
                             const SizedBox(height: 18),
                             _buildField(
@@ -164,6 +174,9 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
     int maxLines = 1,
     TextInputType keyboardType = TextInputType.text,
     bool isRequired = false,
+    bool readOnly = false,
+    VoidCallback? onTap,
+    Widget? suffixIcon,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -176,6 +189,8 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
           controller: controller,
           maxLines: maxLines,
           keyboardType: keyboardType,
+          readOnly: readOnly,
+          onTap: onTap,
           validator: isRequired
               ? (value) =>
                   (value == null || value.trim().isEmpty) ? 'Required' : null
@@ -194,6 +209,7 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
             fillColor: const Color(0xFFF9FAFB),
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+            suffixIcon: suffixIcon,
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(24),
               borderSide: BorderSide(
@@ -222,6 +238,16 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
 
   Future<void> _submit(EditSalonProvider provider) async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    if ((provider.location == null && _pickedGeoPoint == null) &&
+        _addressController.text.trim().isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please set your salon location on the map.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     final success = await provider.save(
       salonName: _salonNameController.text.trim(),
       ownerName: provider.ownerName,
@@ -229,6 +255,8 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
       phone: _phoneController.text.trim(),
       address: _addressController.text.trim(),
       about: _aboutController.text.trim(),
+      location: _pickedGeoPoint,
+      geohash: _pickedGeohash,
     );
     if (!mounted) return;
     if (success) {
@@ -241,5 +269,32 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
         SnackBar(content: Text(provider.error!), backgroundColor: Colors.red),
       );
     }
+  }
+
+  Future<void> _openAddressPicker(EditSalonProvider provider) async {
+    final existing = provider.location;
+    final result = await Navigator.of(context).push<PickedLocation>(
+      MaterialPageRoute(
+        builder: (_) => AddressPickerScreen(
+          initialAddress: _addressController.text.trim(),
+          initialLocation: existing == null
+              ? null
+              : LatLng(existing.latitude, existing.longitude),
+        ),
+      ),
+    );
+
+    if (!mounted || result == null) return;
+
+    final geohash = GeohashService().geohashFor(
+      latitude: result.latitude,
+      longitude: result.longitude,
+    );
+
+    setState(() {
+      _addressController.text = result.address;
+      _pickedGeoPoint = GeoPoint(result.latitude, result.longitude);
+      _pickedGeohash = geohash;
+    });
   }
 }

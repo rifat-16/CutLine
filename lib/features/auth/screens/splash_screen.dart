@@ -36,62 +36,91 @@ class _SplashScreenState extends State<SplashScreen> {
     await Future<void>.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
 
-    final updateResult = await UpdateGateService().checkForUpdate();
-    if (!mounted) return;
-    if (updateResult.isRequired) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => UpdateRequiredScreen(
-            message: updateResult.message,
+    try {
+      final updateResult = await UpdateGateService()
+          .checkForUpdate()
+          .timeout(const Duration(seconds: 12), onTimeout: () {
+        return const UpdateGateResult(
+          isRequired: false,
+          message: '',
+          minBuildNumber: 0,
+          minVersion: '',
+        );
+      });
+      if (!mounted) return;
+      if (updateResult.isRequired) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => UpdateRequiredScreen(
+              message: updateResult.message,
+            ),
           ),
-        ),
-      );
-      return;
-    }
+        );
+        return;
+      }
 
-    final auth = context.read<AuthProvider>();
-    await auth.refreshCurrentUser();
+      final auth = context.read<AuthProvider>();
+      try {
+        await auth.refreshCurrentUser().timeout(const Duration(seconds: 12));
+      } on TimeoutException {
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, AppRoutes.roleSelection);
+        return;
+      }
 
-    if (!mounted) return;
-    final user = auth.currentUser;
-    if (user == null) {
+      if (!mounted) return;
+      final user = auth.currentUser;
+      if (user == null) {
+        Navigator.pushReplacementNamed(context, AppRoutes.roleSelection);
+        return;
+      }
+
+      final profile = await auth
+          .fetchUserProfile(user.uid)
+          .timeout(const Duration(seconds: 12), onTimeout: () => null);
+      if (!mounted) return;
+
+      final hasSalon = await SalonLookupService()
+          .salonExists(user.uid)
+          .timeout(const Duration(seconds: 12), onTimeout: () => false);
+      if (!mounted) return;
+
+      final role = profile?['role'] != null
+          ? UserRoleKey.fromKey(profile!['role'] as String? ?? 'customer')
+          : (hasSalon ? UserRole.owner : UserRole.customer);
+      final profileComplete =
+          profile?['profileComplete'] == true || (profile == null && hasSalon);
+
+      String target;
+      switch (role) {
+        case UserRole.owner:
+          if (!hasSalon) {
+            unawaited(
+              auth.setProfileComplete(false).timeout(
+                    const Duration(seconds: 8),
+                    onTimeout: () => null,
+                  ),
+            );
+          }
+          target = profileComplete && hasSalon
+              ? AppRoutes.ownerHome
+              : AppRoutes.ownerSalonSetup;
+          break;
+        case UserRole.barber:
+          target = AppRoutes.barberHome;
+          break;
+        default:
+          target = AppRoutes.userHome;
+          break;
+      }
+
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, target);
+    } catch (_) {
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, AppRoutes.roleSelection);
-      return;
     }
-
-    final profile = await auth.fetchUserProfile(user.uid);
-    if (!mounted) return;
-
-    // Fallback: if no profile is found but a salon document exists,
-    // treat the user as an owner so we don’t drop them into the customer app.
-    final hasSalon = await SalonLookupService().salonExists(user.uid);
-    final role = profile?['role'] != null
-        ? UserRoleKey.fromKey(profile!['role'] as String? ?? 'customer')
-        : (hasSalon ? UserRole.owner : UserRole.customer);
-    final profileComplete =
-        profile?['profileComplete'] == true || (profile == null && hasSalon);
-
-    String target;
-    switch (role) {
-      case UserRole.owner:
-        if (!hasSalon) {
-          await auth.setProfileComplete(false);
-        }
-        target = profileComplete && hasSalon
-            ? AppRoutes.ownerHome
-            : AppRoutes.ownerSalonSetup;
-        break;
-      case UserRole.barber:
-        target = AppRoutes.barberHome;
-        break;
-      default:
-        target = AppRoutes.userHome;
-        break;
-    }
-
-    if (!mounted) return;
-    Navigator.pushReplacementNamed(context, target);
   }
 
   @override

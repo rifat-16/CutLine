@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/services/barber_service.dart';
 import 'package:cutline/features/owner/services/salon_service.dart';
@@ -130,6 +131,8 @@ class SalonSetupProvider extends ChangeNotifier {
   Future<bool> saveSalon({
     required String name,
     required String address,
+    required GeoPoint location,
+    required String geohash,
     required String contact,
     required String email,
   }) async {
@@ -172,6 +175,8 @@ class SalonSetupProvider extends ChangeNotifier {
         ownerId: ownerId,
         name: name,
         address: address,
+        location: location,
+        geohash: geohash,
         contact: contact,
         email: email,
         workingHours: _mapWorkingHours(),

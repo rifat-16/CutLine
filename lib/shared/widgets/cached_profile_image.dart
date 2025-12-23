@@ -38,8 +38,6 @@ class CachedProfileImage extends StatelessWidget {
         fit: BoxFit.cover,
         httpHeaders: kIsWeb ? {'Access-Control-Allow-Origin': '*'} : null,
         placeholder: (context, url) {
-          if (kDebugMode && kIsWeb) {
-          }
           return Container(
             width: radius * 2,
             height: radius * 2,
@@ -51,8 +49,6 @@ class CachedProfileImage extends StatelessWidget {
           );
         },
         errorWidget: (context, url, error) {
-          if (kDebugMode && kIsWeb) {
-          }
           return Container(
             width: radius * 2,
             height: radius * 2,

@@ -48,8 +48,6 @@ class WebSafeImage extends StatelessWidget {
               );
         },
         errorBuilder: (context, error, stackTrace) {
-          if (kDebugMode) {
-          }
           // Fallback to CachedNetworkImage if Image.network fails
           return _buildCachedNetworkImage();
         },
@@ -79,8 +77,6 @@ class WebSafeImage extends StatelessWidget {
             );
       },
       errorWidget: (context, url, error) {
-        if (kDebugMode) {
-        }
         return errorWidget ??
             Container(
               width: width,

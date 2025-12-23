@@ -74,6 +74,16 @@ service firebase.storage {
 
 The Android app is already configured with `google-services.json`.
 
+#### Google Maps API Key (Required for location picking)
+
+1. Enable these APIs in Google Cloud Console:
+   - Maps SDK for Android
+   - Maps SDK for iOS
+   - (Optional) Geocoding API (only if you later use Google geocoding instead of device geocoder)
+2. Create **separate** API keys for Maps (recommended). Don’t reuse the Firebase auto-created keys from `google-services.json` / `GoogleService-Info.plist`—restricting them can break Firebase Auth/Firestore and keep the app stuck on splash.
+3. Add your Android Maps key to `android/local.properties` (create if missing):
+   - `MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY`
+
 To build and run:
 ```bash
 flutter run
@@ -82,6 +92,11 @@ flutter run
 ### 6. iOS Configuration
 
 The iOS app is already configured with `GoogleService-Info.plist`.
+
+#### Google Maps API Key (Required for location picking)
+
+1. Copy `ios/Flutter/Secrets.xcconfig.example` to `ios/Flutter/Secrets.xcconfig`
+2. Set your **iOS Maps** key: `MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY`
 
 To build and run:
 ```bash

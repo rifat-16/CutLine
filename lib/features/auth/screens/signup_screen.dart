@@ -210,7 +210,8 @@ class _SignupScreenState extends State<SignupScreen> {
                             if (!context.mounted) return;
                             if (success) {
                               _showSnack(
-                                  'Account created successfully. Please log in.');
+                                'Account created successfully. Please log in.',
+                              );
                               if (widget.signOutAfterSignup) {
                                 await auth.signOut();
                               }
@@ -221,7 +222,7 @@ class _SignupScreenState extends State<SignupScreen> {
                                 (_) => false,
                               );
                             } else if (auth.lastError != null) {
-                              _showSnack(auth.lastError!);
+                              _showSnack(auth.lastError!, isError: true);
                             }
                           },
                     style: ElevatedButton.styleFrom(
@@ -324,12 +325,12 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  void _showSnack(String message) {
+  void _showSnack(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message, style: GoogleFonts.poppins()),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: Colors.green,
+        backgroundColor: isError ? Colors.red : Colors.green,
       ),
     );
   }

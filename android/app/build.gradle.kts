@@ -1,4 +1,5 @@
 import java.io.FileInputStream
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -17,6 +18,39 @@ val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
+val hasReleaseKeystore = keystorePropertiesFile.exists() &&
+        listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+            .all { keystoreProperties.containsKey(it) }
+
+val isReleaseTaskRequested = gradle.startParameter.taskNames.any { name ->
+    name.contains("release", ignoreCase = true)
+}
+
+if (isReleaseTaskRequested && !hasReleaseKeystore) {
+    throw GradleException(
+        """
+        Missing Android release signing config.
+        
+        Create `android/key.properties` with:
+          storeFile=/absolute/path/to/upload-keystore.jks
+          storePassword=YOUR_PASSWORD
+          keyAlias=upload
+          keyPassword=YOUR_PASSWORD
+        
+        Then rebuild with:
+          flutter build appbundle --release
+        """.trimIndent()
+    )
+}
+
+val localPropertiesFile = rootProject.file("local.properties")
+val localProperties = Properties()
+if (localPropertiesFile.exists()) {
+    localProperties.load(FileInputStream(localPropertiesFile))
+}
+val mapsApiKey = localProperties.getProperty("MAPS_API_KEY")
+    ?: System.getenv("MAPS_API_KEY")
+    ?: ""
 
 android {
     namespace = "com.cutline"
@@ -25,8 +59,14 @@ android {
 
     signingConfigs {
         create("release") {
-            if (keystorePropertiesFile.exists()) {
-                storeFile = file(keystoreProperties["storeFile"] as String)
+            if (hasReleaseKeystore) {
+                val storeFilePath = keystoreProperties["storeFile"] as String
+                val storeFileObj = File(storeFilePath)
+                storeFile = if (storeFileObj.isAbsolute) {
+                    storeFileObj
+                } else {
+                    rootProject.file(storeFilePath)
+                }
                 storePassword = keystoreProperties["storePassword"] as String
                 keyAlias = keystoreProperties["keyAlias"] as String
                 keyPassword = keystoreProperties["keyPassword"] as String
@@ -54,6 +94,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     buildTypes {

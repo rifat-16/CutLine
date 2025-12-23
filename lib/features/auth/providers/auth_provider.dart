@@ -19,20 +19,19 @@ class AuthProvider extends ChangeNotifier {
   })  : _authService = authService ?? AuthService(),
         _userProfileService = userProfileService ?? UserProfileService() {
     _currentUser = _authService.currentUser;
-    _authSubscription = _authService.authStateChanges.listen((user) {
-      _currentUser = user;
-      _loadProfile();
-      if (user != null) {
-        _saveFcmToken(user.uid);
-      }
-      notifyListeners();
-    });
+    _authSubscription = _authService.authStateChanges.listen(_onAuthState);
+    // Ensure initial state (e.g., app relaunch with cached session) is applied
+    // even if screens query `currentUser` before the first stream event arrives.
+    _onAuthState(_currentUser);
   }
 
   final AuthService _authService;
   final UserProfileService _userProfileService;
   final FcmTokenService _fcmTokenService = FcmTokenService();
   StreamSubscription<User?>? _authSubscription;
+  StreamSubscription<String>? _tokenRefreshSubscription;
+  String? _tokenRefreshUserId;
+  int _authGeneration = 0;
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final ImagePicker _picker = ImagePicker();
 
@@ -55,9 +54,11 @@ class AuthProvider extends ChangeNotifier {
   }) async {
     return _runAuthFlow(() async {
       await _authService.signIn(email: email.trim(), password: password);
-      final user = _authService.currentUser;
-      if (user != null) {
-        await _saveFcmToken(user.uid);
+      // Make `currentUser` available synchronously after sign-in so callers can
+      // route immediately without waiting for the authStateChanges event.
+      _currentUser = _authService.currentUser;
+      if (_currentUser != null) {
+        _onAuthState(_currentUser);
       }
     });
   }
@@ -79,6 +80,7 @@ class AuthProvider extends ChangeNotifier {
 
       final uid = credential.user?.uid;
       if (uid != null) {
+        _currentUser = credential.user;
         await _userProfileService.createUserProfile(
           uid: uid,
           email: email,
@@ -86,7 +88,8 @@ class AuthProvider extends ChangeNotifier {
           phone: phone,
           role: role,
         );
-        await _saveFcmToken(uid);
+        // Ensure the freshly-created profile is reflected in app state.
+        _onAuthState(_currentUser);
       }
     });
   }
@@ -99,6 +102,8 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> signOut() {
     _profile = null;
+    notificationService.setUserRole(null);
+    unawaited(_stopTokenRefresh());
     return _authService.signOut();
   }
 
@@ -115,8 +120,22 @@ class AuthProvider extends ChangeNotifier {
   Future<void> setProfileComplete(bool value) async {
     final uid = _currentUser?.uid;
     if (uid == null) return;
-    await _userProfileService.setProfileComplete(uid, value);
-    await _loadProfile();
+    try {
+      await _userProfileService
+          .setProfileComplete(uid, value)
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Best effort; don't block routing if Firestore/auth is unavailable.
+    }
+    try {
+      final generation = _authGeneration;
+      await _loadProfileForUid(uid: uid, generation: generation);
+      if (_authGeneration == generation) {
+        notifyListeners();
+      }
+    } catch (_) {
+      // Best effort.
+    }
   }
 
   Future<void> refreshCurrentUser() async {
@@ -126,8 +145,12 @@ class AuthProvider extends ChangeNotifier {
       await _loadProfile();
       notifyListeners();
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found' || e.code == 'user-disabled') {
-        await _authService.signOut();
+      final shouldForceSignOut = e.code == 'user-not-found' ||
+          e.code == 'user-disabled' ||
+          e.code == 'invalid-user-token' ||
+          e.code == 'user-token-expired';
+      if (shouldForceSignOut) {
+        await signOut();
         _currentUser = null;
         notifyListeners();
         return;
@@ -234,13 +257,62 @@ class AuthProvider extends ChangeNotifier {
       notificationService.setUserRole(null);
       return;
     }
-    final data = await fetchUserProfile(uid);
-    if (data != null) {
-      _profile = CutlineUser.fromMap(data);
-      // Update notification service with user role
-      final role = _profile?.role ?? UserRole.customer;
-      notificationService.setUserRole(role);
-    } else {
+    await _loadProfileForUid(uid: uid, generation: _authGeneration);
+  }
+
+  void _onAuthState(User? user) {
+    final generation = ++_authGeneration;
+    unawaited(_applyAuthState(user, generation));
+  }
+
+  Future<void> _applyAuthState(User? user, int generation) async {
+    final previousUid = _currentUser?.uid;
+    final newUid = user?.uid;
+
+    // If the user changes, clear any user-scoped state immediately.
+    if (previousUid != newUid) {
+      _profile = null;
+      notificationService.setUserRole(null);
+      await _stopTokenRefresh();
+    }
+
+    _currentUser = user;
+    if (_authGeneration != generation) return;
+    notifyListeners();
+
+    if (user == null) {
+      return;
+    }
+
+    await _loadProfileForUid(uid: user.uid, generation: generation);
+    if (_authGeneration != generation) return;
+
+    await _ensureFcmTokenWired(user.uid);
+    if (_authGeneration != generation) return;
+
+    notifyListeners();
+  }
+
+  Future<void> _loadProfileForUid({
+    required String uid,
+    required int generation,
+  }) async {
+    try {
+      final data = await fetchUserProfile(uid);
+      if (_authGeneration != generation) return;
+      // If the auth user changed while we were fetching, ignore this result.
+      if (_currentUser?.uid != uid) return;
+
+      if (data != null) {
+        _profile = CutlineUser.fromMap(data);
+        notificationService.setUserRole(_profile?.role ?? UserRole.customer);
+      } else {
+        _profile = null;
+        notificationService.setUserRole(null);
+      }
+    } catch (_) {
+      if (_authGeneration != generation) return;
+      if (_currentUser?.uid != uid) return;
       _profile = null;
       notificationService.setUserRole(null);
     }
@@ -272,16 +344,30 @@ class AuthProvider extends ChangeNotifier {
     switch (e.code) {
       case 'invalid-email':
         return 'Please enter a valid email address.';
+      case 'missing-email':
+        return 'Please enter your email address.';
       case 'user-disabled':
         return 'This account has been disabled.';
       case 'user-not-found':
         return 'No user found for that email.';
       case 'wrong-password':
         return 'Incorrect password. Try again.';
+      case 'invalid-credential':
+      case 'invalid-login-credentials':
+        return 'Incorrect email or password. Try again.';
       case 'email-already-in-use':
         return 'An account already exists for that email.';
       case 'weak-password':
         return 'Choose a stronger password.';
+      case 'operation-not-allowed':
+        return 'Email/password sign-in is not enabled for this project.';
+      case 'internal-error':
+      case 'unknown':
+        final msg = (e.message ?? '').toLowerCase();
+        if (msg.contains('identitytoolkit') && msg.contains('blocked')) {
+          return 'Firebase Auth API is blocked for this project. In Google Cloud Console, enable Identity Toolkit API and remove API key restrictions for it.';
+        }
+        return 'Unable to complete the request. Please try again.';
       case 'too-many-requests':
         return 'Too many attempts. Try again later.';
       case 'network-request-failed':
@@ -303,23 +389,36 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Save FCM token for the current user
-  Future<void> _saveFcmToken(String userId) async {
+  Future<void> _ensureFcmTokenWired(String userId) async {
+    if (_tokenRefreshUserId == userId && _tokenRefreshSubscription != null) {
+      return;
+    }
     try {
       final token = await _fcmTokenService.initializeToken();
       if (token != null) {
         await _fcmTokenService.saveToken(userId, token);
         // Listen for token refresh
-        _fcmTokenService.listenToTokenRefresh(userId, (newToken) {
-        });
+        await _stopTokenRefresh();
+        _tokenRefreshUserId = userId;
+        _tokenRefreshSubscription =
+            _fcmTokenService.listenToTokenRefresh(userId, (_) {});
       }
     } catch (e) {
       // Don't throw - token saving is best effort
     }
   }
 
+  Future<void> _stopTokenRefresh() async {
+    final sub = _tokenRefreshSubscription;
+    _tokenRefreshSubscription = null;
+    _tokenRefreshUserId = null;
+    await sub?.cancel();
+  }
+
   @override
   void dispose() {
     _authSubscription?.cancel();
+    unawaited(_stopTokenRefresh());
     super.dispose();
   }
 }

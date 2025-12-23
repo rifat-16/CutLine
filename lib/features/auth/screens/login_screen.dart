@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/services/salon_lookup_service.dart';
@@ -284,30 +286,49 @@ class _LoginScreenState extends State<LoginScreen> {
     final uid = auth.currentUser?.uid;
     if (uid == null) return;
 
-    final profile = await auth.fetchUserProfile(uid);
+    Map<String, dynamic>? profile;
+    try {
+      profile = await auth
+          .fetchUserProfile(uid)
+          .timeout(const Duration(seconds: 12), onTimeout: () => null);
+    } catch (_) {
+      profile = null;
+    }
     if (!mounted) return;
 
     final roleKey = profile?['role'] as String?;
-    final resolvedRole =
-        roleKey != null ? UserRoleKey.fromKey(roleKey) : widget.role;
-    final profileComplete = profile?['profileComplete'] == true;
+    final hasSalon = await SalonLookupService()
+        .salonExists(uid)
+        .timeout(const Duration(seconds: 12), onTimeout: () => false);
+    if (!mounted) return;
+
+    final resolvedRole = roleKey != null
+        ? UserRoleKey.fromKey(roleKey)
+        : (hasSalon ? UserRole.owner : widget.role);
+    final profileComplete =
+        profile?['profileComplete'] == true || (profile == null && hasSalon);
 
     String target;
     switch (resolvedRole) {
       case UserRole.owner:
-        final hasSalon = await SalonLookupService().salonExists(uid);
         if (!hasSalon) {
-          await auth.setProfileComplete(false);
+          try {
+            await auth
+                .setProfileComplete(false)
+                .timeout(const Duration(seconds: 8), onTimeout: () => null);
+          } catch (_) {
+            // Best-effort; routing still works without it.
+          }
         }
         target = profileComplete && hasSalon
-            ? AppRoutes.ownerHome
+            ? widget.successRoute
             : AppRoutes.ownerSalonSetup;
         break;
       case UserRole.barber:
-        target = AppRoutes.barberHome;
+        target = widget.successRoute;
         break;
       default:
-        target = AppRoutes.userHome;
+        target = widget.successRoute;
         break;
     }
 

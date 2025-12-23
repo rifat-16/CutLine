@@ -1,12 +1,12 @@
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:cutline/shared/widgets/web_safe_image.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class NearbySalonCard extends StatelessWidget {
   final String salonName;
   final String location;
+  final String distanceLabel;
   final int waitMinutes;
   final bool isOpen;
   final bool isFavorite;
@@ -18,6 +18,7 @@ class NearbySalonCard extends StatelessWidget {
     super.key,
     required this.salonName,
     required this.location,
+    required this.distanceLabel,
     required this.waitMinutes,
     required this.isOpen,
     this.isFavorite = false,
@@ -148,7 +149,7 @@ class NearbySalonCard extends StatelessWidget {
                       SizedBox(width: 4.w),
                       Expanded(
                         child: Text(
-                          '$location • nearby',
+                          '$location • $distanceLabel',
                           style: CutlineTextStyles.body,
                         ),
                       ),

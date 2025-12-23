@@ -134,60 +134,73 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                       icon: Icons.fact_check_outlined,
                       color: const Color(0xFF6366F1),
                       badgeCount: pendingRequests,
-                      onTap: () => _guardVerification(
-                        provider,
-                        onAllowed: () =>
-                            _openScreen(const BookingRequestsScreen()),
-                      ),
+                      onTap: () async {
+                        await _guardVerification(
+                          provider,
+                          onAllowed: () async =>
+                              _openScreen(const BookingRequestsScreen()),
+                        );
+                      },
                     ),
                     OwnerQuickAction(
                       label: 'Queue board',
                       icon: Icons.queue_play_next_outlined,
                       color: const Color(0xFF0EA5E9),
-                      onTap: () => _guardVerification(
-                        provider,
-                        onAllowed: () => _openScreen(const ManageQueueScreen()),
-                      ),
+                      onTap: () async {
+                        await _guardVerification(
+                          provider,
+                          onAllowed: () async =>
+                              _openScreen(const ManageQueueScreen()),
+                        );
+                      },
                     ),
                     OwnerQuickAction(
                       label: 'Manage services',
                       icon: Icons.design_services_outlined,
                       color: const Color(0xFF10B981),
-                      onTap: () => _guardVerification(
-                        provider,
-                        onAllowed: () =>
-                            _openScreen(const ManageServicesScreen()),
-                      ),
+                      onTap: () async {
+                        await _guardVerification(
+                          provider,
+                          onAllowed: () async =>
+                              _openScreen(const ManageServicesScreen()),
+                        );
+                      },
                     ),
                     OwnerQuickAction(
                       label: 'Working hours',
                       icon: Icons.schedule_outlined,
                       color: const Color(0xFFF97316),
-                      onTap: () => _guardVerification(
-                        provider,
-                        onAllowed: () =>
-                            _openScreen(const WorkingHoursScreen()),
-                      ),
+                      onTap: () async {
+                        await _guardVerification(
+                          provider,
+                          onAllowed: () async =>
+                              _openScreen(const WorkingHoursScreen()),
+                        );
+                      },
                     ),
                     OwnerQuickAction(
                       label: 'Barbers',
                       icon: Icons.people_outline,
                       color: const Color(0xFF2563EB),
-                      onTap: () => _guardVerification(
-                        provider,
-                        onAllowed: () =>
-                            _openScreen(const OwnerBarbersScreen()),
-                      ),
+                      onTap: () async {
+                        await _guardVerification(
+                          provider,
+                          onAllowed: () async =>
+                              _openScreen(const OwnerBarbersScreen()),
+                        );
+                      },
                     ),
                     OwnerQuickAction(
                       label: 'Dashboard',
                       icon: Icons.dashboard_customize_outlined,
                       color: const Color(0xFF2563EB),
-                      onTap: () => _guardVerification(
-                        provider,
-                        onAllowed: () =>
-                            _openScreen(const OwnerDashboardScreen()),
-                      ),
+                      onTap: () async {
+                        await _guardVerification(
+                          provider,
+                          onAllowed: () async =>
+                              _openScreen(const OwnerDashboardScreen()),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -273,10 +286,13 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                     provider,
                     onAllowed: () => _handleStatusChange(context, id, status),
                   ),
-                  onViewAll: () => _guardVerification(
-                    provider,
-                    onAllowed: () => _openScreen(const ManageQueueScreen()),
-                  ),
+                  onViewAll: () async {
+                    await _guardVerification(
+                      provider,
+                      onAllowed: () async =>
+                          _openScreen(const ManageQueueScreen()),
+                    );
+                  },
                 ),
               ],
             ),
@@ -462,21 +478,21 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
     return queue.where((element) => element.status == status).length;
   }
 
-  void _handleNavTap(OwnerHomeProvider provider, int index) {
+  Future<void> _handleNavTap(OwnerHomeProvider provider, int index) async {
     switch (index) {
       case 1:
-        _guardVerification(
+        await _guardVerification(
           provider,
-          onAllowed: () {
+          onAllowed: () async {
             setState(() => _selectedIndex = index);
             _openScreen(const ManageQueueScreen());
           },
         );
         break;
       case 2:
-        _guardVerification(
+        await _guardVerification(
           provider,
-          onAllowed: () {
+          onAllowed: () async {
             setState(() => _selectedIndex = index);
             _openScreen(const BookingsScreen());
           },
@@ -540,12 +556,12 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
     );
   }
 
-  void _guardVerification(
+  Future<void> _guardVerification(
     OwnerHomeProvider provider, {
-    required VoidCallback onAllowed,
-  }) {
+    required Future<void> Function() onAllowed,
+  }) async {
     if (provider.isVerified) {
-      onAllowed();
+      await onAllowed();
       return;
     }
 

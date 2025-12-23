@@ -30,21 +30,23 @@ class NotificationBadgeIcon extends StatelessWidget {
       stream: _storageService.getUnreadCount(userId),
       builder: (context, snapshot) {
         final count = snapshot.data ?? 0;
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            IconButton(
-              icon: Icon(icon),
-              tooltip: 'Notifications',
-              onPressed: onTap,
-            ),
-            if (count > 0)
-              Positioned(
-                right: 8,
-                top: 8,
-                child: _NotificationBadge(count: count),
-              ),
-          ],
+        return IconButton(
+          tooltip: 'Notifications',
+          onPressed: onTap,
+          icon: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Icon(icon),
+              if (count > 0)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: IgnorePointer(
+                    child: _NotificationBadge(count: count),
+                  ),
+                ),
+            ],
+          ),
         );
       },
     );

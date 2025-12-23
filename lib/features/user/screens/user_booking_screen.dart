@@ -58,7 +58,6 @@ class _BookingScreenState extends State<BookingScreen> {
                           location: provider.address.isNotEmpty
                               ? provider.address
                               : 'Location unavailable',
-                          rating: provider.rating,
                           workingHours: provider.workingHoursLabel,
                           imageUrl: provider.coverImageUrl ??
                               'https://images.unsplash.com/photo-1600891964093-3b40cc0d2c7e',
@@ -194,14 +193,12 @@ class _BookingScreenState extends State<BookingScreen> {
 class _SalonInfoCard extends StatelessWidget {
   final String salonName;
   final String location;
-  final double rating;
   final String workingHours;
   final String imageUrl;
 
   const _SalonInfoCard({
     required this.salonName,
     required this.location,
-    required this.rating,
     required this.workingHours,
     required this.imageUrl,
   });
@@ -254,7 +251,6 @@ class _SalonInfoCard extends StatelessWidget {
                   spacing: 12,
                   runSpacing: 4,
                   children: [
-                    _IconText(icon: Icons.star, text: rating.toStringAsFixed(1)),
                     _IconText(icon: Icons.schedule, text: workingHours),
                   ],
                 ),
@@ -399,7 +395,7 @@ class _BarberGrid extends StatelessWidget {
                 const SizedBox(height: 3),
                 Flexible(
                   child: Text(
-                    '⭐ ${barber.rating} • Specialist',
+                    'Specialist',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,

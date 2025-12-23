@@ -63,38 +63,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                       ],
                     ),
                   ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: _buildStatusCard(
-                        "Waiting",
-                        provider.waitingCount,
-                        "clients",
-                        Colors.orange,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildStatusCard(
-                        "Serving",
-                        provider.servingCount,
-                        "in chairs",
-                        Colors.blue,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildStatusCard(
-                        "Completed",
-                        provider.completedCount,
-                        "today",
-                        Colors.green,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 8),
                 const Text(
                   "Today's queue",
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -298,42 +267,6 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
   }
 }
 
-Widget _buildStatusCard(String title, int count, String label, Color color) {
-  return Container(
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        colors: [Colors.white, Colors.grey.shade100],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: Colors.grey.shade300, width: 1),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-        const SizedBox(height: 6),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              '$count',
-              style: TextStyle(
-                  fontSize: 24, fontWeight: FontWeight.bold, color: color),
-            ),
-            const SizedBox(width: 6),
-            Text(label,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-          ],
-        ),
-      ],
-    ),
-  );
-}
-
 class _AvailabilityToggle extends StatelessWidget {
   final BarberHomeProvider provider;
 
@@ -423,11 +356,13 @@ Widget _queueTab(String title, bool isSelected) {
   );
 }
 
+enum _QueueActionKind { startServing, cancel, markDone }
+
 class _QueueCard extends StatefulWidget {
   final BarberQueueItem item;
-  final VoidCallback? onStartServing;
-  final VoidCallback? onMarkDone;
-  final VoidCallback? onCancel;
+  final Future<void> Function()? onStartServing;
+  final Future<void> Function()? onMarkDone;
+  final Future<void> Function()? onCancel;
 
   const _QueueCard({
     required this.item,
@@ -443,6 +378,7 @@ class _QueueCard extends StatefulWidget {
 class _QueueCardState extends State<_QueueCard> {
   Timer? _timer;
   int _elapsedMinutes = 0;
+  _QueueActionKind? _pendingAction;
 
   @override
   void initState() {
@@ -495,6 +431,27 @@ class _QueueCardState extends State<_QueueCard> {
       _elapsedMinutes = elapsed.inMinutes;
     } else {
       _elapsedMinutes = 0;
+    }
+  }
+
+  Future<void> _runAction(
+    _QueueActionKind kind,
+    Future<void> Function()? action,
+  ) async {
+    if (action == null) return;
+    if (_pendingAction != null) return;
+    setState(() => _pendingAction = kind);
+    try {
+      await action();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Action failed: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _pendingAction = null);
+      }
     }
   }
 
@@ -626,6 +583,9 @@ class _QueueCardState extends State<_QueueCard> {
 
   List<Widget> _buildActions() {
     if (widget.onStartServing != null && widget.onCancel != null) {
+      final isBusy = _pendingAction != null;
+      final isCanceling = _pendingAction == _QueueActionKind.cancel;
+      final isStarting = _pendingAction == _QueueActionKind.startServing;
       return [
         ElevatedButton(
           style: ElevatedButton.styleFrom(
@@ -635,14 +595,49 @@ class _QueueCardState extends State<_QueueCard> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             shape: const StadiumBorder(),
           ),
-          onPressed: _confirmCancel,
-          child: const Text(
-            "Cancel",
-            style: TextStyle(fontWeight: FontWeight.w700),
+          onPressed: isBusy ? null : _confirmCancel,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.98, end: 1).animate(animation),
+                child: child,
+              ),
+            ),
+            child: isCanceling
+                ? Row(
+                    key: const ValueKey('cancel-loading'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        "Cancel",
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  )
+                : const Text(
+                    "Cancel",
+                    key: ValueKey('cancel-idle'),
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
           ),
         ),
         const SizedBox(width: 10),
-        ElevatedButton.icon(
+        ElevatedButton(
           style: ElevatedButton.styleFrom(
             elevation: 0,
             backgroundColor: Colors.blueAccent,
@@ -650,18 +645,68 @@ class _QueueCardState extends State<_QueueCard> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             shape: const StadiumBorder(),
           ),
-          onPressed: widget.onStartServing,
-          icon: const Icon(Icons.play_arrow_rounded, size: 20),
-          label: const Text(
-            "Start Serving",
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          onPressed: isBusy
+              ? null
+              : () => _runAction(
+                    _QueueActionKind.startServing,
+                    widget.onStartServing,
+                  ),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.98, end: 1).animate(animation),
+                child: child,
+              ),
+            ),
+            child: isStarting
+                ? Row(
+                    key: const ValueKey('start-loading'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        "Start Serving",
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  )
+                : Row(
+                    key: const ValueKey('start-idle'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.play_arrow_rounded, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        "Start Serving",
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
           ),
         ),
       ];
     }
     if (widget.onMarkDone != null) {
+      final isBusy = _pendingAction != null;
+      final isCompleting = _pendingAction == _QueueActionKind.markDone;
       return [
-        ElevatedButton.icon(
+        ElevatedButton(
           style: ElevatedButton.styleFrom(
             elevation: 0,
             backgroundColor: Colors.green.shade600,
@@ -669,11 +714,56 @@ class _QueueCardState extends State<_QueueCard> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             shape: const StadiumBorder(),
           ),
-          onPressed: widget.onMarkDone,
-          icon: const Icon(Icons.check_circle_rounded, size: 20),
-          label: const Text(
-            "Mark Completed",
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          onPressed: isBusy
+              ? null
+              : () => _runAction(_QueueActionKind.markDone, widget.onMarkDone),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.98, end: 1).animate(animation),
+                child: child,
+              ),
+            ),
+            child: isCompleting
+                ? Row(
+                    key: const ValueKey('done-loading'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        "Mark Completed",
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  )
+                : Row(
+                    key: const ValueKey('done-idle'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.check_circle_rounded, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        "Mark Completed",
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
           ),
         ),
       ];
@@ -707,7 +797,7 @@ class _QueueCardState extends State<_QueueCard> {
     );
 
     if (confirmed == true) {
-      widget.onCancel!();
+      await _runAction(_QueueActionKind.cancel, widget.onCancel);
     }
   }
 

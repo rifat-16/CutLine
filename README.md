@@ -164,6 +164,39 @@ For detailed setup instructions, see [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.
 
 For running instructions, see [RUN_INSTRUCTIONS.md](RUN_INSTRUCTIONS.md)
 
+## 🏁 Play Store Release (Android AAB)
+
+### 1) Google Maps API key
+
+This app reads the Maps key from:
+- `android/local.properties` (`MAPS_API_KEY=...`) **or**
+- an environment variable `MAPS_API_KEY`
+
+### 2) Configure release signing (required for Play Store)
+
+Generate an upload keystore and create `android/key.properties` (this repo ignores it via `.gitignore`):
+
+```properties
+storeFile=/absolute/path/to/upload-keystore.jks
+storePassword=YOUR_PASSWORD
+keyAlias=upload
+keyPassword=YOUR_PASSWORD
+```
+
+### 3) Build the App Bundle (AAB)
+
+```bash
+flutter clean
+flutter pub get
+flutter build appbundle --release
+```
+
+Output: `build/app/outputs/bundle/release/app-release.aab`
+
+Notes:
+- If you change `applicationId` in `android/app/build.gradle.kts`, regenerate `android/app/google-services.json` for the same package name.
+- Update app version in `pubspec.yaml` before every release.
+
 ## 📱 User Flows
 
 ### User Journey
@@ -291,7 +324,10 @@ flutter run
 flutter run -d <device-id>
 
 # Build APK (Android)
-flutter build apk
+flutter build apk --release
+
+# Build AAB (Play Store)
+flutter build appbundle --release
 
 # Build iOS
 flutter build ios

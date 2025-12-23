@@ -12,6 +12,9 @@ class AuthService {
   Future<User?> reloadCurrentUser() async {
     final user = _firebaseAuth.currentUser;
     if (user == null) return null;
+    // Force-refresh the ID token so server-side account deletion/disablement is
+    // detected quickly (otherwise cached tokens may remain valid for a while).
+    await user.getIdToken(true);
     await user.reload();
     return _firebaseAuth.currentUser;
   }

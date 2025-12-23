@@ -7,7 +7,13 @@ class SalonLookupService {
   final FirebaseFirestore _firestore;
 
   Future<bool> salonExists(String ownerId) async {
-    final doc = await _firestore.collection('salons').doc(ownerId).get();
-    return doc.exists;
+    try {
+      final doc = await _firestore.collection('salons').doc(ownerId).get();
+      return doc.exists;
+    } on FirebaseException {
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 }

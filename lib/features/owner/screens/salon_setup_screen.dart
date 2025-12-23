@@ -6,7 +6,11 @@ import 'package:cutline/features/owner/widgets/setup/photo_manager.dart';
 import 'package:cutline/features/owner/widgets/setup/setup_bottom_action_bar.dart';
 import 'package:cutline/features/owner/widgets/setup/working_hours_section.dart';
 import 'package:cutline/routes/app_router.dart';
+import 'package:cutline/shared/models/picked_location.dart';
+import 'package:cutline/shared/screens/address_picker_screen.dart';
+import 'package:cutline/shared/services/geohash_service.dart';
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 
 class SalonSetupScreen extends StatefulWidget {
@@ -23,6 +27,8 @@ class _SalonSetupScreenState extends State<SalonSetupScreen> {
   final _contactController = TextEditingController();
   final _emailController = TextEditingController();
   bool _isProcessing = false;
+  PickedLocation? _pickedLocation;
+  String? _pickedGeohash;
 
   @override
   Widget build(BuildContext context) {
@@ -128,9 +134,18 @@ class _SalonSetupScreenState extends State<SalonSetupScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _addressController,
-            decoration: _fieldDecoration('Address', Icons.location_on_outlined),
-            validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'Required' : null,
+            readOnly: true,
+            onTap: _openAddressPicker,
+            decoration: _fieldDecoration('Address', Icons.location_on_outlined)
+                .copyWith(
+              suffixIcon: const Icon(Icons.map_outlined),
+            ),
+            validator: (_) {
+              if (_pickedLocation == null) return 'Pick location on map';
+              final text = _addressController.text.trim();
+              if (text.isEmpty) return 'Required';
+              return null;
+            },
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -254,9 +269,19 @@ class _SalonSetupScreenState extends State<SalonSetupScreen> {
   }
 
   Future<void> _saveAndFinish(SalonSetupProvider provider) async {
+    final picked = _pickedLocation;
+    final geohash = _pickedGeohash;
+    if (picked == null || geohash == null || geohash.trim().isEmpty) {
+      _showSnack('Please set your salon location on the map.');
+      setState(() => _isProcessing = false);
+      return;
+    }
+
     final success = await provider.saveSalon(
       name: _nameController.text,
       address: _addressController.text,
+      location: picked.toGeoPoint(),
+      geohash: geohash,
       contact: _contactController.text,
       email: _emailController.text,
     );
@@ -302,6 +327,32 @@ class _SalonSetupScreenState extends State<SalonSetupScreen> {
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
     );
+  }
+
+  Future<void> _openAddressPicker() async {
+    final current = _pickedLocation;
+    final result = await Navigator.of(context).push<PickedLocation>(
+      MaterialPageRoute(
+        builder: (_) => AddressPickerScreen(
+          initialAddress: _addressController.text.trim(),
+          initialLocation: current == null
+              ? null
+              : LatLng(current.latitude, current.longitude),
+        ),
+      ),
+    );
+
+    if (!mounted || result == null) return;
+
+    final geohash = GeohashService().geohashFor(
+      latitude: result.latitude,
+      longitude: result.longitude,
+    );
+    setState(() {
+      _pickedLocation = result;
+      _pickedGeohash = geohash;
+      _addressController.text = result.address;
+    });
   }
 }
 
