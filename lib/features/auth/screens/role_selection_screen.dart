@@ -1,69 +1,16 @@
 import 'package:cutline/features/auth/models/user_role.dart';
-import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/routes/app_router.dart';
-import 'package:cutline/shared/services/auth_session_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
 
-class RoleSelectionScreen extends StatefulWidget {
+class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({super.key, this.message});
 
   final String? message;
 
   @override
-  State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
-}
-
-class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _maybeRestoreSession();
-    });
-  }
-
-  Future<void> _maybeRestoreSession() async {
-    final auth = context.read<AuthProvider>();
-    try {
-      await auth.waitForAuthReady();
-    } catch (_) {
-      // Best-effort.
-    }
-    if (!mounted) return;
-
-    if (auth.currentUser != null) {
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        AppRoutes.sessionRestore,
-        (_) => false,
-        arguments: 'Restoring your session…',
-      );
-      return;
-    }
-
-    // If we have evidence the device previously had a signed-in session, route
-    // to restore first (helps with slow auth hydration on some OEM devices).
-    try {
-      final lastUid = await AuthSessionStorage().getLastSignedInUid();
-      if (!mounted) return;
-      if (lastUid != null && lastUid.isNotEmpty) {
-        Navigator.pushNamedAndRemoveUntil(
-          context,
-          AppRoutes.sessionRestore,
-          (_) => false,
-          arguments: 'Restoring your session…',
-        );
-      }
-    } catch (_) {
-      // Ignore.
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final bannerMessage = (widget.message ?? '').trim();
+    final bannerMessage = (message ?? '').trim();
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       body: SafeArea(
