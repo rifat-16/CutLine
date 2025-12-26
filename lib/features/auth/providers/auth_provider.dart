@@ -47,6 +47,7 @@ class AuthProvider extends ChangeNotifier {
   CutlineUser? _profile;
   bool _isLoading = false;
   String? _lastError;
+  String? _lastAuthErrorCode;
   bool _uploadingPhoto = false;
 
   User? get currentUser => _currentUser;
@@ -54,6 +55,7 @@ class AuthProvider extends ChangeNotifier {
   bool get isAuthenticated => _currentUser != null;
   bool get isLoading => _isLoading;
   String? get lastError => _lastError;
+  String? get lastAuthErrorCode => _lastAuthErrorCode;
   bool get isUploadingPhoto => _uploadingPhoto;
 
   Future<void> waitForAuthReady({Duration timeout = const Duration(seconds: 6)}) {
@@ -411,12 +413,25 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> _runAuthFlow(Future<void> Function() action) async {
     _setLoading(true);
     _setError(null);
+    _lastAuthErrorCode = null;
 
     try {
       await action();
       return true;
     } on FirebaseAuthException catch (e) {
-      _setError(_mapFirebaseError(e));
+      _lastAuthErrorCode = e.code;
+      SessionDebug.log(
+        'FirebaseAuthException: ${e.code}',
+        error: e.message,
+        stackTrace: e.stackTrace,
+      );
+      var message = _mapFirebaseError(e);
+      if (SessionDebug.enabled) {
+        final raw = (e.message ?? '').trim();
+        message =
+            '${message} (code: ${e.code}${raw.isEmpty ? '' : ', msg: $raw'})';
+      }
+      _setError(message);
       return false;
     } on FirebaseException catch (e) {
       _setError(

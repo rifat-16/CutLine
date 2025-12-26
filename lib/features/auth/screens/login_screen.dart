@@ -60,9 +60,8 @@ class _LoginScreenState extends State<LoginScreen> {
     if (auth.currentUser != null) {
       Navigator.pushNamedAndRemoveUntil(
         context,
-        AppRoutes.sessionRestore,
+        AppRoutes.splash,
         (_) => false,
-        arguments: 'Already signed in. Restoring session…',
       );
     }
   }

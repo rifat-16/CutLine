@@ -5,6 +5,7 @@ import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/services/salon_lookup_service.dart';
 import 'package:cutline/routes/app_router.dart';
+import 'package:cutline/shared/services/auth_session_storage.dart';
 import 'package:cutline/shared/services/session_debug.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -22,6 +23,8 @@ class _SessionRestoreScreenState extends State<SessionRestoreScreen>
     with WidgetsBindingObserver {
   bool _isRestoring = false;
   String? _lastError;
+  bool _attemptedRememberedLogin = false;
+  bool _hadRememberedCredentials = false;
 
   @override
   void initState() {
@@ -58,14 +61,50 @@ class _SessionRestoreScreenState extends State<SessionRestoreScreen>
     } catch (_) {
       // Best-effort.
     }
-    final user = auth.currentUser;
+    var user = auth.currentUser;
+    if (user == null) {
+      // Fallback for OEM devices that wipe FirebaseAuth sessions: if the user
+      // opted into "Remember me", try a silent sign-in once per screen mount.
+      if (!_attemptedRememberedLogin) {
+        _attemptedRememberedLogin = true;
+        try {
+          final storage = AuthSessionStorage();
+          final creds = await storage.getRememberedCredentials();
+          _hadRememberedCredentials = creds != null;
+          if (creds != null) {
+            final ok = await auth
+                .signIn(email: creds.email, password: creds.password)
+                .timeout(const Duration(seconds: 12), onTimeout: () => false);
+            if (ok) {
+              user = auth.currentUser;
+            } else {
+              final code = auth.lastAuthErrorCode ?? '';
+              final invalid = code == 'wrong-password' ||
+                  code == 'user-not-found' ||
+                  code == 'invalid-credential' ||
+                  code == 'invalid-login-credentials';
+              // Clear only when credentials are definitely invalid. For
+              // transient failures (network/Play services), keep them so the
+              // user can tap Retry without retyping.
+              if (invalid) {
+                await storage.clearRememberedCredentials();
+              }
+            }
+          }
+        } catch (_) {
+          // Ignore; user can still manually sign in.
+        }
+      }
+    }
+
     if (user == null) {
       if (!mounted) return;
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        AppRoutes.roleSelection,
-        (_) => false,
-      );
+      setState(() {
+        _lastError = auth.lastError ??
+            (_hadRememberedCredentials
+                ? 'Could not sign you in automatically. Tap Retry or sign in manually.'
+                : 'Please sign in to continue.');
+      });
       return;
     }
 
@@ -193,15 +232,13 @@ class _SessionRestoreScreenState extends State<SessionRestoreScreen>
                   onPressed: _isRestoring
                       ? null
                       : () async {
-                          await context.read<AuthProvider>().signOut();
-                          if (!context.mounted) return;
                           Navigator.pushNamedAndRemoveUntil(
                             context,
                             AppRoutes.roleSelection,
                             (_) => false,
                           );
                         },
-                  child: const Text('Sign out'),
+                  child: const Text('Go to login'),
                 ),
               ),
             ],

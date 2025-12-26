@@ -80,7 +80,7 @@ class _SplashScreenState extends State<SplashScreen> {
       }
 
       if (!mounted) return;
-      final user = auth.currentUser;
+      var user = auth.currentUser;
       if (user == null) {
         final msg = (auth.lastError ?? '').trim();
         String? banner = msg.isEmpty ? null : msg;
@@ -102,37 +102,24 @@ class _SplashScreenState extends State<SplashScreen> {
         }
         // If we have remembered credentials (opt-in), attempt a silent login.
         // This is a fallback for OEM devices that wipe FirebaseAuth sessions.
-        if (lastUid == null) {
-          final restored = await _tryRememberedLogin(auth);
-          if (!mounted) return;
-          if (restored) {
-            Navigator.pushReplacementNamed(
-              context,
-              AppRoutes.sessionRestore,
-              arguments: 'Restoring your session…',
-            );
-            return;
-          }
+        final restored = await _tryRememberedLogin(auth);
+        if (!mounted) return;
+        if (restored) {
+          user = auth.currentUser;
         }
-        // If we have evidence that a user previously signed in, route to a
-        // restore screen first. Some OEM devices (e.g. MIUI) can be slow to
-        // hydrate FirebaseAuth on cold start, making `currentUser` appear null
-        // for a short period.
-        if (lastUid != null) {
-          Navigator.pushReplacementNamed(
-            context,
-            AppRoutes.sessionRestore,
-            arguments: banner ??
-                'Restoring your session… If this keeps happening on Xiaomi/Redmi, disable battery restrictions for CutLine.',
-          );
-        } else {
+
+        if (user == null) {
+          if (lastUid != null) {
+            banner ??=
+                'Please sign in again. If you are on Xiaomi/Redmi, set Battery saver for CutLine to "No restrictions" and enable Autostart.';
+          }
           Navigator.pushReplacementNamed(
             context,
             AppRoutes.roleSelection,
             arguments: banner,
           );
+          return;
         }
-        return;
       }
 
       Map<String, dynamic>? profile;
@@ -186,9 +173,9 @@ class _SplashScreenState extends State<SplashScreen> {
       if (profile == null) {
         Navigator.pushReplacementNamed(
           context,
-          AppRoutes.sessionRestore,
+          AppRoutes.roleSelection,
           arguments:
-              'Signed in, but account data could not be loaded yet. This can happen on slow networks or aggressive background restrictions.',
+              'Signed in, but account data could not be loaded yet. Please try again.',
         );
         return;
       }
@@ -238,16 +225,32 @@ class _SplashScreenState extends State<SplashScreen> {
     try {
       final creds = await AuthSessionStorage().getRememberedCredentials();
       if (creds == null) return false;
-      final ok = await auth
-          .signIn(email: creds.email, password: creds.password)
-          .timeout(const Duration(seconds: 12), onTimeout: () => false);
-      if (!ok) {
-        // Credentials might be outdated; clear so we don't loop.
-        await AuthSessionStorage().clearRememberedCredentials();
+
+      const transientCodes = {'network-request-failed', 'internal-error', 'unknown'};
+      for (var attempt = 0; attempt < 2; attempt++) {
+        final ok = await auth
+            .signIn(email: creds.email, password: creds.password)
+            .timeout(const Duration(seconds: 12), onTimeout: () => false);
+        if (ok) return true;
+
+        final code = auth.lastAuthErrorCode ?? '';
+        final invalid = code == 'wrong-password' ||
+            code == 'user-not-found' ||
+            code == 'invalid-credential' ||
+            code == 'invalid-login-credentials';
+        if (invalid) {
+          await AuthSessionStorage().clearRememberedCredentials();
+          return false;
+        }
+        if (!transientCodes.contains(code)) {
+          return false;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
       }
-      return ok;
+      return false;
     } catch (e, st) {
-      SessionDebug.log('Remembered login attempt failed', error: e, stackTrace: st);
+      SessionDebug.log('Remembered login attempt failed',
+          error: e, stackTrace: st);
       return false;
     }
   }
