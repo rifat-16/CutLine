@@ -7,10 +7,11 @@
     "shell": "firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "backfill:owner-salonId": "node scripts/backfill_owner_salon_id.js"
   },
   "engines": {
-    "node": "24"
+    "node": "20"
   },
   "main": "index.js",
   "dependencies": {

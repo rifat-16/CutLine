@@ -9,6 +9,7 @@ import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/user/providers/user_location_provider.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/services/notification_service.dart';
+import 'package:cutline/shared/widgets/auth_lifecycle_watcher.dart';
 import 'package:google_maps_flutter_android/google_maps_flutter_android.dart';
 import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart';
 
@@ -60,12 +61,14 @@ class CutLineApp extends StatelessWidget {
       child: ScreenUtilInit(
         designSize: const Size(390, 844),
         minTextAdapt: true,
-        builder: (context, child) => MaterialApp(
-          navigatorKey: AppRouter.navigatorKey,
-          debugShowCheckedModeBanner: false,
-          title: 'CutLine',
-          initialRoute: AppRoutes.splash,
-          onGenerateRoute: AppRouter.onGenerateRoute,
+        builder: (context, child) => AuthLifecycleWatcher(
+          child: MaterialApp(
+            navigatorKey: AppRouter.navigatorKey,
+            debugShowCheckedModeBanner: false,
+            title: 'CutLine',
+            initialRoute: AppRoutes.splash,
+            onGenerateRoute: AppRouter.onGenerateRoute,
+          ),
         ),
       ),
     );

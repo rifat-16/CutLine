@@ -9,12 +9,13 @@ class AuthService {
   Stream<User?> get authStateChanges => _firebaseAuth.authStateChanges();
   User? get currentUser => _firebaseAuth.currentUser;
 
-  Future<User?> reloadCurrentUser() async {
+  Future<User?> reloadCurrentUser({bool forceRefreshIdToken = false}) async {
     final user = _firebaseAuth.currentUser;
     if (user == null) return null;
-    // Force-refresh the ID token so server-side account deletion/disablement is
-    // detected quickly (otherwise cached tokens may remain valid for a while).
-    await user.getIdToken(true);
+    // Optionally force-refresh the ID token so server-side account
+    // deletion/disablement is detected quickly (otherwise cached tokens may
+    // remain valid for a while).
+    await user.getIdToken(forceRefreshIdToken);
     await user.reload();
     return _firebaseAuth.currentUser;
   }

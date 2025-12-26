@@ -5,9 +5,12 @@ import 'package:cutline/features/auth/models/user_model.dart';
 import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cutline/features/auth/services/auth_service.dart';
 import 'package:cutline/features/auth/services/user_profile_service.dart';
+import 'package:cutline/shared/services/auth_session_storage.dart';
 import 'package:cutline/shared/services/fcm_token_service.dart';
 import 'package:cutline/shared/services/notification_service.dart';
+import 'package:cutline/shared/services/session_debug.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -19,15 +22,20 @@ class AuthProvider extends ChangeNotifier {
   })  : _authService = authService ?? AuthService(),
         _userProfileService = userProfileService ?? UserProfileService() {
     _currentUser = _authService.currentUser;
-    _authSubscription = _authService.authStateChanges.listen(_onAuthState);
-    // Ensure initial state (e.g., app relaunch with cached session) is applied
-    // even if screens query `currentUser` before the first stream event arrives.
+    _authSubscription = _authService.authStateChanges.listen((user) {
+      if (!_authReady.isCompleted) _authReady.complete();
+      _onAuthState(user);
+    });
+    // Apply the synchronous snapshot quickly, but treat the first stream event
+    // as the "ready" signal for slow OEM devices.
     _onAuthState(_currentUser);
   }
 
   final AuthService _authService;
   final UserProfileService _userProfileService;
   final FcmTokenService _fcmTokenService = FcmTokenService();
+  final AuthSessionStorage _sessionStorage = AuthSessionStorage();
+  final Completer<void> _authReady = Completer<void>();
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<String>? _tokenRefreshSubscription;
   String? _tokenRefreshUserId;
@@ -48,6 +56,11 @@ class AuthProvider extends ChangeNotifier {
   String? get lastError => _lastError;
   bool get isUploadingPhoto => _uploadingPhoto;
 
+  Future<void> waitForAuthReady({Duration timeout = const Duration(seconds: 6)}) {
+    if (_authReady.isCompleted) return Future<void>.value();
+    return _authReady.future.timeout(timeout);
+  }
+
   Future<bool> signIn({
     required String email,
     required String password,
@@ -57,6 +70,15 @@ class AuthProvider extends ChangeNotifier {
       // Make `currentUser` available synchronously after sign-in so callers can
       // route immediately without waiting for the authStateChanges event.
       _currentUser = _authService.currentUser;
+      final uid = _currentUser?.uid;
+      if (uid != null) {
+        try {
+          await _sessionStorage.setLastSignedInUid(uid);
+        } catch (e, st) {
+          SessionDebug.log('Failed to persist last signed-in uid (signIn)',
+              error: e, stackTrace: st);
+        }
+      }
       if (_currentUser != null) {
         _onAuthState(_currentUser);
       }
@@ -81,6 +103,12 @@ class AuthProvider extends ChangeNotifier {
       final uid = credential.user?.uid;
       if (uid != null) {
         _currentUser = credential.user;
+        try {
+          await _sessionStorage.setLastSignedInUid(uid);
+        } catch (e, st) {
+          SessionDebug.log('Failed to persist last signed-in uid (signUp)',
+              error: e, stackTrace: st);
+        }
         await _userProfileService.createUserProfile(
           uid: uid,
           email: email,
@@ -101,14 +129,31 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signOut() {
+    final uid = _currentUser?.uid;
     _profile = null;
     notificationService.setUserRole(null);
     unawaited(_stopTokenRefresh());
+    if (uid != null) {
+      unawaited(_removeCurrentDeviceTokenFromUser(uid));
+    }
+    unawaited(_sessionStorage.clearLastSignedInUid());
+    unawaited(_sessionStorage.clearRememberedCredentials());
     // Clear local auth state immediately so routing/UI can't use a stale user
     // while FirebaseAuth completes sign-out.
     _currentUser = null;
     notifyListeners();
     return _authService.signOut();
+  }
+
+  Future<void> _removeCurrentDeviceTokenFromUser(String uid) async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null || token.isEmpty) return;
+      await _fcmTokenService.removeToken(uid, token);
+    } catch (e, st) {
+      SessionDebug.log('Failed to remove FCM token on sign out',
+          error: e, stackTrace: st);
+    }
   }
 
   Future<Map<String, dynamic>?> fetchUserProfile(String uid) async {
@@ -148,7 +193,12 @@ class AuthProvider extends ChangeNotifier {
       _currentUser = user;
       await _loadProfile();
       notifyListeners();
-    } on FirebaseAuthException catch (e) {
+    } on FirebaseAuthException catch (e, st) {
+      SessionDebug.log(
+        'refreshCurrentUser failed: ${e.code}',
+        error: e.message,
+        stackTrace: st,
+      );
       final shouldForceSignOut = e.code == 'user-not-found' ||
           e.code == 'user-disabled' ||
           e.code == 'invalid-user-token' ||
@@ -315,6 +365,13 @@ class AuthProvider extends ChangeNotifier {
 
     if (user == null) {
       return;
+    }
+
+    try {
+      await _sessionStorage.setLastSignedInUid(user.uid);
+    } catch (e, st) {
+      SessionDebug.log('Failed to persist last signed-in uid',
+          error: e, stackTrace: st);
     }
 
     await _loadProfileForUid(uid: user.uid, generation: generation);

@@ -22,29 +22,13 @@ class FcmTokenService {
       final userDoc = await userRef.get();
 
       if (userDoc.exists) {
-        final data = userDoc.data() ?? {};
-        final existingTokens = data['fcmTokens'] as List<dynamic>?;
-        final singleToken = data['fcmToken'] as String?;
-
-        List<String> tokens = [];
-        if (existingTokens != null) {
-          tokens = existingTokens
-              .whereType<String>()
-              .where((t) => t.isNotEmpty)
-              .toList();
-        } else if (singleToken != null && singleToken.isNotEmpty) {
-          tokens = [singleToken];
-        }
-
-        // Add new token if not already present
-        if (!tokens.contains(token)) {
-          tokens.add(token);
-        }
-
-        // Update document with array of tokens
+        // Keep the token set tight to avoid stale tokens on shared devices
+        // causing notifications to reach the wrong account.
+        // If you need multi-device notifications per account, replace this with
+        // a server-side token registry that enforces unique ownership.
         await userRef.update({
-          'fcmTokens': tokens,
-          'fcmToken': token, // Keep single token for backward compatibility
+          'fcmTokens': [token],
+          'fcmToken': token,
           'updatedAt': FieldValue.serverTimestamp(),
         });
       } else {

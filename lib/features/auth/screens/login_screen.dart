@@ -4,6 +4,7 @@ import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/services/salon_lookup_service.dart';
 import 'package:cutline/routes/app_router.dart';
+import 'package:cutline/shared/services/auth_session_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -38,6 +39,33 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
+  bool _rememberMe = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeSkipLogin();
+    });
+  }
+
+  Future<void> _maybeSkipLogin() async {
+    final auth = context.read<AuthProvider>();
+    try {
+      await auth.waitForAuthReady();
+    } catch (_) {
+      // Best-effort.
+    }
+    if (!mounted) return;
+    if (auth.currentUser != null) {
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        AppRoutes.sessionRestore,
+        (_) => false,
+        arguments: 'Already signed in. Restoring session…',
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -149,6 +177,25 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 30),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: _rememberMe,
+                      onChanged: auth.isLoading
+                          ? null
+                          : (v) => setState(() => _rememberMe = v ?? false),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Remember me on this device',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 SizedBox(
                   width: double.infinity,
                   height: 55,
@@ -157,13 +204,28 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? null
                         : () async {
                             if (!_formKey.currentState!.validate()) return;
+                            final email = _emailController.text.trim();
+                            final password = _passwordController.text;
                             final success = await auth.signIn(
-                              email: _emailController.text,
-                              password: _passwordController.text,
+                              email: email,
+                              password: password,
                             );
 
                             if (!context.mounted) return;
                             if (success) {
+                              try {
+                                final storage = AuthSessionStorage();
+                                if (_rememberMe) {
+                                  await storage.setRememberedCredentials(
+                                    email: email,
+                                    password: password,
+                                  );
+                                } else {
+                                  await storage.clearRememberedCredentials();
+                                }
+                              } catch (_) {
+                                // Best-effort; don't block login.
+                              }
                               await _routeByRole(auth);
                             } else if (auth.lastError != null) {
                               _showSnack(auth.lastError!);

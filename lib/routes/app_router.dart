@@ -2,6 +2,7 @@ import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cutline/features/auth/screens/forgot_password_screen.dart';
 import 'package:cutline/features/auth/screens/login_screen.dart';
 import 'package:cutline/features/auth/screens/role_selection_screen.dart';
+import 'package:cutline/features/auth/screens/session_restore_screen.dart';
 import 'package:cutline/features/auth/screens/signup_screen.dart';
 import 'package:cutline/features/auth/screens/splash_screen.dart';
 import 'package:cutline/features/barber/screens/barber_home_screen.dart';
@@ -48,6 +49,7 @@ import '../features/owner/screens/owner_chats_screen.dart';
 class AppRoutes {
   static const splash = '/';
   static const roleSelection = '/welcome';
+  static const sessionRestore = '/session-restore';
   static const login = '/login';
   static const forgotPassword = '/forgot-password';
   static const signup = '/signup';
@@ -109,6 +111,10 @@ class AppRouter {
         final args = settings.arguments;
         final message = args is String ? args : null;
         return _page(RoleSelectionScreen(message: message), settings);
+      case AppRoutes.sessionRestore:
+        final args = settings.arguments;
+        final reason = args is String ? args : null;
+        return _page(SessionRestoreScreen(reason: reason), settings);
       case AppRoutes.login:
         final roleArg = settings.arguments;
         final selectedRole = roleArg is UserRole ? roleArg : UserRole.customer;

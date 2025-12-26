@@ -7,6 +7,8 @@ import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/features/owner/services/salon_lookup_service.dart';
 import 'package:cutline/shared/screens/update_required_screen.dart';
+import 'package:cutline/shared/services/auth_session_storage.dart';
+import 'package:cutline/shared/services/session_debug.dart';
 import 'package:cutline/shared/services/update_gate_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -63,22 +65,73 @@ class _SplashScreenState extends State<SplashScreen> {
 
       final auth = context.read<AuthProvider>();
       try {
-        await auth.refreshCurrentUser().timeout(const Duration(seconds: 12));
-      } on TimeoutException {
-        if (!mounted) return;
-        Navigator.pushReplacementNamed(context, AppRoutes.roleSelection);
-        return;
+        await auth.waitForAuthReady();
+      } catch (_) {
+        // Best-effort: on some devices FirebaseAuth may be slow to hydrate the
+        // cached session. We'll still continue with whatever state we have.
+      }
+      // Best-effort refresh (do not block startup if network/Play services
+      // are slow or restricted on some OEM devices).
+      try {
+        await auth.refreshCurrentUser()
+            .timeout(const Duration(seconds: 12), onTimeout: () => null);
+      } catch (_) {
+        // Ignore.
       }
 
       if (!mounted) return;
       final user = auth.currentUser;
       if (user == null) {
         final msg = (auth.lastError ?? '').trim();
-        Navigator.pushReplacementNamed(
-          context,
-          AppRoutes.roleSelection,
-          arguments: msg.isEmpty ? null : msg,
-        );
+        String? banner = msg.isEmpty ? null : msg;
+        String? lastUid;
+        try {
+          lastUid = await AuthSessionStorage().getLastSignedInUid();
+          if (!mounted) return;
+          if (lastUid != null) {
+            banner ??=
+                'Session was cleared on this device. If you are on Xiaomi/Redmi, set Battery saver for CutLine to "No restrictions" and enable Autostart, then try again.';
+            SessionDebug.log('currentUser is null but last uid exists: $lastUid');
+            SessionDebug.snack(context, 'Auth session missing; last uid: $lastUid');
+          }
+        } catch (e, st) {
+          SessionDebug.log('Failed reading last signed-in uid',
+              error: e, stackTrace: st);
+          if (!mounted) return;
+          SessionDebug.snack(context, 'Error reading session storage: $e');
+        }
+        // If we have remembered credentials (opt-in), attempt a silent login.
+        // This is a fallback for OEM devices that wipe FirebaseAuth sessions.
+        if (lastUid == null) {
+          final restored = await _tryRememberedLogin(auth);
+          if (!mounted) return;
+          if (restored) {
+            Navigator.pushReplacementNamed(
+              context,
+              AppRoutes.sessionRestore,
+              arguments: 'Restoring your session…',
+            );
+            return;
+          }
+        }
+        // If we have evidence that a user previously signed in, route to a
+        // restore screen first. Some OEM devices (e.g. MIUI) can be slow to
+        // hydrate FirebaseAuth on cold start, making `currentUser` appear null
+        // for a short period.
+        if (lastUid != null) {
+          Navigator.pushReplacementNamed(
+            context,
+            AppRoutes.sessionRestore,
+            arguments: banner ??
+                'Restoring your session… If this keeps happening on Xiaomi/Redmi, disable battery restrictions for CutLine.',
+          );
+        } else {
+          Navigator.pushReplacementNamed(
+            context,
+            AppRoutes.roleSelection,
+            arguments: banner,
+          );
+        }
         return;
       }
 
@@ -131,7 +184,12 @@ class _SplashScreenState extends State<SplashScreen> {
       // failure; invalid/deleted auth sessions are handled by refreshCurrentUser
       // and the server-profile check above.)
       if (profile == null) {
-        Navigator.pushReplacementNamed(context, AppRoutes.roleSelection);
+        Navigator.pushReplacementNamed(
+          context,
+          AppRoutes.sessionRestore,
+          arguments:
+              'Signed in, but account data could not be loaded yet. This can happen on slow networks or aggressive background restrictions.',
+        );
         return;
       }
 
@@ -173,6 +231,24 @@ class _SplashScreenState extends State<SplashScreen> {
     } catch (_) {
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, AppRoutes.roleSelection);
+    }
+  }
+
+  Future<bool> _tryRememberedLogin(AuthProvider auth) async {
+    try {
+      final creds = await AuthSessionStorage().getRememberedCredentials();
+      if (creds == null) return false;
+      final ok = await auth
+          .signIn(email: creds.email, password: creds.password)
+          .timeout(const Duration(seconds: 12), onTimeout: () => false);
+      if (!ok) {
+        // Credentials might be outdated; clear so we don't loop.
+        await AuthSessionStorage().clearRememberedCredentials();
+      }
+      return ok;
+    } catch (e, st) {
+      SessionDebug.log('Remembered login attempt failed', error: e, stackTrace: st);
+      return false;
     }
   }
 
