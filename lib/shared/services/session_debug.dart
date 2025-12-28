@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class SessionDebug {
@@ -5,6 +6,7 @@ class SessionDebug {
       bool.fromEnvironment('SESSION_DEBUG', defaultValue: false);
 
   static void log(String message, {Object? error, StackTrace? stackTrace}) {
+    if (!enabled && !kDebugMode) return;
     debugPrint('[session] $message');
     if (error != null) debugPrint('[session] error: $error');
     if (stackTrace != null) debugPrint('[session] stack: $stackTrace');
