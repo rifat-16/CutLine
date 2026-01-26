@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cutline/shared/services/booking_reminder_service.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 
 class MyBookingProvider extends ChangeNotifier {
   MyBookingProvider({
@@ -202,10 +203,9 @@ class MyBookingProvider extends ChangeNotifier {
 
       // Try customerUid first
       try {
-        final snap = await _firestore
+        final snap = await FirestoreCache.getQuery(_firestore
             .collectionGroup('bookings')
-            .where('customerUid', isEqualTo: userId)
-            .get();
+            .where('customerUid', isEqualTo: userId));
 
 
         if (snap.docs.isNotEmpty) {
@@ -228,10 +228,9 @@ class MyBookingProvider extends ChangeNotifier {
 
       // Fallback: try userId field
       try {
-        final snap = await _firestore
+        final snap = await FirestoreCache.getQuery(_firestore
             .collectionGroup('bookings')
-            .where('userId', isEqualTo: userId)
-            .get();
+            .where('userId', isEqualTo: userId));
 
 
         final coverCache = await _loadCoverCache(snap.docs);
@@ -256,104 +255,47 @@ class MyBookingProvider extends ChangeNotifier {
 
   Future<void> _loadWithFallback() async {
     try {
-
-      // Method 1: Try collectionGroup without filter
-      try {
-        final snap = await _firestore.collectionGroup('bookings').get();
-
-
-        final coverCache = await _loadCoverCache(snap.docs);
-
-        final allItems = snap.docs
-            .map((doc) => _mapBooking(doc, coverCache))
-            .whereType<UserBooking>()
-            .toList();
-
-
-        final items = allItems.where(_isCurrentUser).toList();
-
-        if (items.isNotEmpty) {
-          _categorize(items);
-          _setError(null);
-          return;
-        }
-      } catch (e) {
-      }
-
-      // Method 2: Load all salons and query each salon's bookings individually
-      try {
-        final salonsSnap = await _firestore
-            .collection('salons')
-            .where('verificationStatus', isEqualTo: 'verified')
-            .get();
-
-        final allBookings = <UserBooking>[];
-        final coverCache = <String, String?>{};
-
-        // Load cover images
-        for (final salonDoc in salonsSnap.docs) {
-          final salonId = salonDoc.id;
-          final salonData = salonDoc.data();
-          coverCache[salonId] = (salonData['coverImageUrl'] as String?) ??
-              (salonData['coverPhoto'] as String?);
-        }
-
-
-        // Query bookings from each salon
-        for (final salonDoc in salonsSnap.docs) {
-          try {
-            final salonId = salonDoc.id;
-
-            // Try with customerUid filter
-            try {
-              final bookingsSnap = await _firestore
-                  .collection('salons')
-                  .doc(salonId)
-                  .collection('bookings')
-                  .where('customerUid', isEqualTo: userId)
-                  .get();
-
-
-              for (final doc in bookingsSnap.docs) {
-                final booking = _mapBooking(doc, coverCache);
-                if (booking != null && _isCurrentUser(booking)) {
-                  allBookings.add(booking);
-                }
-              }
-            } catch (e) {
-              // Try without filter
-              try {
-                final bookingsSnap = await _firestore
-                    .collection('salons')
-                    .doc(salonId)
-                    .collection('bookings')
-                    .get();
-
-
-                for (final doc in bookingsSnap.docs) {
-                  final booking = _mapBooking(doc, coverCache);
-                  if (booking != null && _isCurrentUser(booking)) {
-                    allBookings.add(booking);
-                  }
-                }
-              } catch (e2) {
-              }
-            }
-          } catch (e) {
-            continue;
+      // Fallback 1: Match by email if available
+      if (userEmail.isNotEmpty) {
+        try {
+          final snap = await FirestoreCache.getQuery(_firestore
+              .collectionGroup('bookings')
+              .where('customerEmail', isEqualTo: userEmail));
+          final coverCache = await _loadCoverCache(snap.docs);
+          final items = snap.docs
+              .map((doc) => _mapBooking(doc, coverCache))
+              .whereType<UserBooking>()
+              .where(_isCurrentUser)
+              .toList();
+          if (items.isNotEmpty) {
+            _categorize(items);
+            _setError(null);
+            return;
           }
-        }
-
-
-        if (allBookings.isNotEmpty) {
-          _categorize(allBookings);
-          _setError(null);
-          return;
-        }
-      } catch (e) {
+        } catch (_) {}
       }
 
-      // If both methods fail
+      // Fallback 2: Match by phone if available
+      if (userPhone.isNotEmpty) {
+        try {
+          final snap = await FirestoreCache.getQuery(_firestore
+              .collectionGroup('bookings')
+              .where('customerPhone', isEqualTo: userPhone));
+          final coverCache = await _loadCoverCache(snap.docs);
+          final items = snap.docs
+              .map((doc) => _mapBooking(doc, coverCache))
+              .whereType<UserBooking>()
+              .where(_isCurrentUser)
+              .toList();
+          if (items.isNotEmpty) {
+            _categorize(items);
+            _setError(null);
+            return;
+          }
+        } catch (_) {}
+      }
+
+      // If fallback filters fail
       _setError('No bookings found for this account.');
       _upcoming = [];
       _completed = [];
@@ -407,7 +349,8 @@ class MyBookingProvider extends ChangeNotifier {
     final Map<String, String?> cache = {};
     for (final id in ids) {
       try {
-        final snap = await _firestore.collection('salons').doc(id).get();
+        final snap = await FirestoreCache.getDoc(
+            _firestore.collection('salons').doc(id));
         final data = snap.data();
         if (data != null) {
           cache[id] = (data['coverImageUrl'] as String?) ??

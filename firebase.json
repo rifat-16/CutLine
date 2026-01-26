@@ -1,1 +1,139 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"cutline-526aa","appId":"1:766335706711:android:3f26173cdaf25f2db06512","fileOutput":"android/app/google-services.json"}},"ios":{"default":{"projectId":"cutline-526aa","appId":"1:766335706711:ios:89abe79810720f1cb06512","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}},"dart":{"lib/firebase_options.dart":{"projectId":"cutline-526aa","configurations":{"android":"1:766335706711:android:3f26173cdaf25f2db06512"}}}}},"functions":[{"source":"functions","codebase":"default","disallowLegacyRuntimeConfig":true,"ignore":["node_modules",".git","firebase-debug.log","firebase-debug.*.log","*.local"],"predeploy":["npm --prefix \"$RESOURCE_DIR\" run lint"]}],"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "cutline-526aa",
+          "appId": "1:766335706711:android:c7a128ae2fed9130b06512",
+          "fileOutput": "android/app/src/staging/google-services.json"
+        },
+        "buildConfigurations": {
+          "src/dev": {
+            "projectId": "cutline-dev",
+            "appId": "1:725476828136:android:e3893a3bfac815737aba5d",
+            "fileOutput": "android/app/src/dev/google-services.json"
+          },
+          "src/staging": {
+            "projectId": "cutline-526aa",
+            "appId": "1:766335706711:android:c7a128ae2fed9130b06512",
+            "fileOutput": "android/app/src/staging/google-services.json"
+          },
+          "src/prod": {
+            "projectId": "cutline-prod-a55b9",
+            "appId": "1:266702152062:android:8581052ff35fbd2d11532f",
+            "fileOutput": "android/app/src/prod/google-services.json"
+          }
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "cutline-526aa",
+          "appId": "1:766335706711:ios:7674d1e5fd5f615db06512",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/Firebase/GoogleService-Info-staging.plist"
+        },
+        "buildConfigurations": {
+          "Debug-dev": {
+            "projectId": "cutline-dev",
+            "appId": "1:725476828136:ios:d319a14fa9f6a7c47aba5d",
+            "uploadDebugSymbols": true,
+            "fileOutput": "ios/Runner/Firebase/GoogleService-Info-dev.plist"
+          },
+          "Release-dev": {
+            "projectId": "cutline-dev",
+            "appId": "1:725476828136:ios:d319a14fa9f6a7c47aba5d",
+            "uploadDebugSymbols": true,
+            "fileOutput": "ios/Runner/Firebase/GoogleService-Info-dev.plist"
+          },
+          "Profile-dev": {
+            "projectId": "cutline-dev",
+            "appId": "1:725476828136:ios:d319a14fa9f6a7c47aba5d",
+            "uploadDebugSymbols": true,
+            "fileOutput": "ios/Runner/Firebase/GoogleService-Info-dev.plist"
+          },
+          "Debug-staging": {
+            "projectId": "cutline-526aa",
+            "appId": "1:766335706711:ios:7674d1e5fd5f615db06512",
+            "uploadDebugSymbols": true,
+            "fileOutput": "ios/Runner/Firebase/GoogleService-Info-staging.plist"
+          },
+          "Release-staging": {
+            "projectId": "cutline-526aa",
+            "appId": "1:766335706711:ios:7674d1e5fd5f615db06512",
+            "uploadDebugSymbols": true,
+            "fileOutput": "ios/Runner/Firebase/GoogleService-Info-staging.plist"
+          },
+          "Profile-staging": {
+            "projectId": "cutline-526aa",
+            "appId": "1:766335706711:ios:7674d1e5fd5f615db06512",
+            "uploadDebugSymbols": true,
+            "fileOutput": "ios/Runner/Firebase/GoogleService-Info-staging.plist"
+          },
+          "Debug": {
+            "projectId": "cutline-prod-a55b9",
+            "appId": "1:266702152062:ios:4d57608c3e085a4111532f",
+            "uploadDebugSymbols": true,
+            "fileOutput": "ios/Runner/Firebase/GoogleService-Info-prod.plist"
+          },
+          "Release": {
+            "projectId": "cutline-prod-a55b9",
+            "appId": "1:266702152062:ios:4d57608c3e085a4111532f",
+            "uploadDebugSymbols": true,
+            "fileOutput": "ios/Runner/Firebase/GoogleService-Info-prod.plist"
+          },
+          "Profile": {
+            "projectId": "cutline-prod-a55b9",
+            "appId": "1:266702152062:ios:4d57608c3e085a4111532f",
+            "uploadDebugSymbols": true,
+            "fileOutput": "ios/Runner/Firebase/GoogleService-Info-prod.plist"
+          }
+        }
+      },
+      "dart": {
+        "lib/firebase_options_dev.dart": {
+          "projectId": "cutline-dev",
+          "configurations": {
+            "android": "1:725476828136:android:e3893a3bfac815737aba5d",
+            "web": "1:725476828136:web:8fda3fc6a28c12197aba5d"
+          }
+        },
+        "lib/firebase_options_staging.dart": {
+          "projectId": "cutline-526aa",
+          "configurations": {
+            "android": "1:766335706711:android:c7a128ae2fed9130b06512",
+            "ios": "1:766335706711:ios:7674d1e5fd5f615db06512",
+            "web": "1:766335706711:web:aa1ab9c695932fc9b06512"
+          }
+        },
+        "lib/firebase_options.dart": {
+          "projectId": "cutline-prod-a55b9",
+          "configurations": {
+            "android": "1:266702152062:android:8581052ff35fbd2d11532f",
+            "web": "1:266702152062:web:44c709c855047de811532f"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
+      ]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}

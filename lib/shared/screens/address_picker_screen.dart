@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:cutline/shared/models/picked_location.dart';
+import 'package:cutline/shared/services/google_maps_js_loader.dart';
+import 'package:cutline/shared/services/maps_reverse_geocoder.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
@@ -26,6 +29,7 @@ class AddressPickerScreen extends StatefulWidget {
 
 class _AddressPickerScreenState extends State<AddressPickerScreen> {
   static const _defaultLocation = LatLng(23.8103, 90.4125); // Dhaka
+  static const _latLngDecimals = 6;
 
   late final TextEditingController _searchController;
   GoogleMapController? _mapController;
@@ -44,6 +48,8 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
   @override
   void dispose() {
     _reverseGeocodeDebounce?.cancel();
+    if (!kIsWeb) _mapController?.dispose();
+    _mapController = null;
     _searchController.dispose();
     super.dispose();
   }
@@ -81,25 +87,37 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
           Expanded(
             child: Stack(
               children: [
-                GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: selected ?? _defaultLocation,
-                    zoom: selected == null ? 12 : 16,
-                  ),
-                  onMapCreated: (controller) => _mapController = controller,
-                  myLocationButtonEnabled: false,
-                  myLocationEnabled: false,
-                  zoomControlsEnabled: false,
-                  markers: {
-                    if (selected != null)
-                      Marker(
-                        markerId: const MarkerId('selected'),
-                        position: selected,
-                        draggable: true,
-                        onDragEnd: (pos) => _setSelected(pos, reverseGeocode: true),
+                FutureBuilder<void>(
+                  future: GoogleMapsJsLoader.ensureLoaded(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return _WebMapsError(message: '${snapshot.error}');
+                    }
+                    return GoogleMap(
+                      initialCameraPosition: CameraPosition(
+                        target: selected ?? _defaultLocation,
+                        zoom: selected == null ? 12 : 16,
                       ),
+                      onMapCreated: (controller) => _mapController = controller,
+                      myLocationButtonEnabled: false,
+                      myLocationEnabled: false,
+                      zoomControlsEnabled: false,
+                      markers: {
+                        if (selected != null)
+                          Marker(
+                            markerId: const MarkerId('selected'),
+                            position: selected,
+                            draggable: true,
+                            onDragEnd: (pos) =>
+                                _setSelected(pos, reverseGeocode: true),
+                          ),
+                      },
+                      onTap: (pos) => _setSelected(pos, reverseGeocode: true),
+                    );
                   },
-                  onTap: (pos) => _setSelected(pos, reverseGeocode: true),
                 ),
                 if (_isBusy)
                   Positioned.fill(
@@ -191,7 +209,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
         final pos = LatLng(first.latitude, first.longitude);
         await _moveCamera(pos);
         _setSelected(pos, reverseGeocode: true);
-      } on Exception {
+      } catch (_) {
         setState(() => _error = 'Could not search that address. Try another.');
       }
     });
@@ -219,20 +237,25 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
         final latLng = LatLng(pos.latitude, pos.longitude);
         await _moveCamera(latLng);
         _setSelected(latLng, reverseGeocode: true);
-      } on Exception {
+      } catch (_) {
         setState(() => _error = 'Could not get your current location.');
       }
     });
   }
 
   Future<void> _moveCamera(LatLng target) async {
+    if (!mounted) return;
     final controller = _mapController;
     if (controller == null) return;
-    await controller.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: target, zoom: 16),
-      ),
-    );
+    try {
+      await controller.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(target: target, zoom: 16),
+        ),
+      );
+    } catch (_) {
+      // Ignore camera updates when the map widget gets disposed/recreated.
+    }
   }
 
   void _setSelected(LatLng pos, {required bool reverseGeocode}) {
@@ -247,45 +270,43 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
       final current = _selected;
       if (current == null) return;
       try {
-        final placemarks = await placemarkFromCoordinates(
-          current.latitude,
-          current.longitude,
+        final address = await MapsReverseGeocoder.reverseGeocode(
+          latitude: current.latitude,
+          longitude: current.longitude,
         );
-        final address = _formatPlacemark(placemarks);
         if (!mounted) return;
         if (address.isNotEmpty) {
           _searchController.text = address;
+        } else if (MapsReverseGeocoder.lastError == 'REQUEST_DENIED') {
+          setState(() {
+            _error =
+                'Web geocoding not enabled. Enable Google "Geocoding API" for this API key.';
+          });
+        } else if (_searchController.text.trim().isEmpty) {
+          _searchController.text = _formatLatLng(current);
         }
-      } on Exception {
-        // Ignore reverse geocode failures; user can still confirm.
+      } catch (_) {
+        if (!mounted) return;
+        if (_searchController.text.trim().isEmpty) {
+          _searchController.text = _formatLatLng(current);
+        }
       }
     });
   }
 
-  String _formatPlacemark(List<Placemark> placemarks) {
-    if (placemarks.isEmpty) return '';
-    final p = placemarks.first;
-    final parts = <String>[
-      if ((p.name ?? '').trim().isNotEmpty) p.name!.trim(),
-      if ((p.subLocality ?? '').trim().isNotEmpty) p.subLocality!.trim(),
-      if ((p.locality ?? '').trim().isNotEmpty) p.locality!.trim(),
-      if ((p.administrativeArea ?? '').trim().isNotEmpty)
-        p.administrativeArea!.trim(),
-      if ((p.postalCode ?? '').trim().isNotEmpty) p.postalCode!.trim(),
-      if ((p.country ?? '').trim().isNotEmpty) p.country!.trim(),
-    ];
-    return parts.join(', ');
+  String _formatLatLng(LatLng latLng) {
+    final lat = latLng.latitude.toStringAsFixed(_latLngDecimals);
+    final lng = latLng.longitude.toStringAsFixed(_latLngDecimals);
+    return '$lat, $lng';
   }
 
   Future<void> _confirm() async {
     final selected = _selected;
     if (selected == null) return;
 
-    final address = _searchController.text.trim();
-    if (address.isEmpty) {
-      setState(() => _error = 'Please enter or confirm the address.');
-      return;
-    }
+    final address = _searchController.text.trim().isEmpty
+        ? _formatLatLng(selected)
+        : _searchController.text.trim();
 
     Navigator.pop(
       context,
@@ -305,5 +326,41 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
     } finally {
       if (mounted) setState(() => _isBusy = false);
     }
+  }
+}
+
+class _WebMapsError extends StatelessWidget {
+  const _WebMapsError({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFF9FAFB),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(20),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.map_outlined, size: 44, color: Colors.black54),
+            const SizedBox(height: 12),
+            const Text(
+              'Map is unavailable on web',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: const TextStyle(color: Colors.black54),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -19,7 +19,7 @@ flutter doctor
 ## 2. Install Dependencies
 
 ```bash
-cd /Users/rifat/StudioProjects/cutline
+cd /Users/rifat/StudioProjects/CutLine
 flutter pub get
 ```
 
@@ -41,7 +41,77 @@ open -a Simulator
 ## 4. Run the App
 
 ```bash
-flutter run
+flutter run --flavor staging -t lib/main_staging.dart
+```
+
+## Flavors (dev / staging / prod)
+
+This project uses 3 separate environments, and each environment uses a separate Firebase project.
+
+### Android Firebase config (required per flavor)
+
+- `android/app/src/dev/google-services.json`
+- `android/app/src/staging/google-services.json`
+- `android/app/src/prod/google-services.json`
+
+Android package names:
+- `dev`: `com.cutline.dev`
+- `staging`: `com.cutline.staging`
+- `prod`: `com.cutline.prod`
+
+### iOS Firebase config (required per flavor)
+
+- `ios/Runner/Firebase/GoogleService-Info-dev.plist`
+- `ios/Runner/Firebase/GoogleService-Info-staging.plist`
+- `ios/Runner/Firebase/GoogleService-Info-prod.plist`
+
+iOS bundle identifiers:
+- `dev`: `com.cutline.dev`
+- `staging`: `com.cutline.staging`
+- `prod`: `com.cutline.prod`
+
+After adding/updating iOS configs, run:
+```bash
+cd ios
+pod install
+cd ..
+```
+
+### FlutterFire (web only)
+
+Web initialization uses `lib/firebase_options*.dart`. Generate per environment:
+
+```bash
+flutterfire configure --project <dev-project-id> --out lib/firebase_options_dev.dart
+flutterfire configure --project <staging-project-id> --out lib/firebase_options_staging.dart
+flutterfire configure --project <prod-project-id> --out lib/firebase_options.dart
+```
+
+### Run commands
+
+```bash
+# DEV
+flutter run --flavor dev -t lib/main_dev.dart
+
+# STAGING
+flutter run --flavor staging -t lib/main_staging.dart
+
+# PROD
+flutter run --flavor prod -t lib/main.dart
+```
+
+### Run on Web (Chrome)
+
+Google Maps on web requires a Maps JS API key:
+```bash
+# DEV
+flutter run -d chrome -t lib/main_dev.dart --dart-define=MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
+
+# STAGING
+flutter run -d chrome -t lib/main_staging.dart --dart-define=MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
+
+# PROD
+flutter run -d chrome -t lib/main.dart --dart-define=MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 ```
 
 ### Alternative: Run on specific device
@@ -57,18 +127,26 @@ flutter run -d <device-id>
 
 Before the app will work fully, you need to:
 
-1. **Enable Firebase services**:
+1. **Enable Firebase services (for each environment)**:
    - Go to https://console.firebase.google.com/
-   - Select your project "cutline-526aa"
-   - Enable Authentication > Email/Password
-   - Enable Firestore Database
-   - Enable Cloud Messaging
-   - Enable Storage
+   - Enable the same services in all 3 projects:
+     - `cutline-dev` (dev)
+     - `cutline-526aa` (staging)
+     - `cutline-prod-a55b9` (prod)
+   - Common required services:
+     - Authentication (Email/Password)
+     - Firestore Database (create the database if it doesn’t exist)
+     - Cloud Messaging (if you use FCM)
+     - Storage (if you upload images/files)
 
 2. **Configure Firestore Rules**:
-   - Copy rules from `firestore.rules`
-   - Go to Firestore > Rules in Firebase Console
-   - Paste and publish
+   - Recommended (CLI): deploy to each Firebase project:
+     ```bash
+     firebase deploy --only firestore:rules,firestore:indexes --project dev
+     firebase deploy --only firestore:rules,firestore:indexes --project staging
+     firebase deploy --only firestore:rules,firestore:indexes --project prod
+     ```
+   - Alternative (Console): copy rules from `firestore.rules` and publish
 
 3. **Configure Storage Rules**:
    - Go to Storage > Rules in Firebase Console

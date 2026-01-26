@@ -103,6 +103,15 @@ To build and run:
 flutter run
 ```
 
+### 7. Web Configuration (Google Maps)
+
+Flutter web needs the **Maps JavaScript API** loaded before `google_maps_flutter` can render maps.
+
+1. Enable **Maps JavaScript API** in Google Cloud Console.
+2. Provide a Web API key using either option:
+   - Run with a define: `flutter run -d chrome --dart-define=MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY`
+   - Or set it in `web/index.html`: `<meta name="google-maps-api-key" content="YOUR_GOOGLE_MAPS_API_KEY">`
+
 ### 7. Testing
 
 #### Create Test Accounts

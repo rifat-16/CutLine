@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
@@ -51,7 +52,8 @@ class BarberHomeProvider extends ChangeNotifier {
     try {
       // Verify user document exists and has barber role
       try {
-        final userDoc = await _firestore.collection('users').doc(uid).get();
+        final userDoc = await FirestoreCache.getDoc(
+            _firestore.collection('users').doc(uid));
         if (!userDoc.exists) {
           _setError('User profile not found. Please contact the salon owner.');
           _setLoading(false);
@@ -64,6 +66,7 @@ class BarberHomeProvider extends ChangeNotifier {
           _setLoading(false);
           return;
         }
+        _profile = _profileFromUserData(uid, userData);
       } catch (e, stackTrace) {
         if (e is FirebaseException && e.code == 'permission-denied') {
           _setError('Permission denied. Please check Firestore rules are deployed.');
@@ -71,26 +74,15 @@ class BarberHomeProvider extends ChangeNotifier {
           return;
         }
       }
-      
-      final profile = await _fetchProfile(uid);
+
+      final profile = _profile;
       if (profile == null) {
         _setError('Could not load your profile. Please contact the salon owner.');
         _setLoading(false);
         return;
       }
-      
-      _profile = profile;
-      
-      try {
-        _salonOpen = await _fetchSalonOpen(profile.ownerId);
-      } catch (e) {
-        _salonOpen = false; // Default to closed
-      }
-      
-      try {
-        _salonName = await _fetchSalonName(profile.ownerId);
-      } catch (e) {
-      }
+
+      await _loadSalonMeta(profile.ownerId);
       
       try {
         _isAvailable = await _fetchAvailability(profile);
@@ -121,87 +113,79 @@ class BarberHomeProvider extends ChangeNotifier {
     }
   }
 
-  Future<BarberProfile?> _fetchProfile(String uid) async {
-    try {
-      final snap = await _firestore.collection('users').doc(uid).get();
-      if (!snap.exists) {
-        return null;
-      }
-      final data = snap.data() ?? {};
-      final ownerId = data['ownerId'] as String?;
-      if (ownerId == null || ownerId.isEmpty) {
-        return null;
-      }
-      final profile = BarberProfile(
-        uid: uid,
-        ownerId: ownerId,
-        name: (data['name'] as String?) ?? '',
-        photoUrl: (data['photoUrl'] as String?) ?? '',
-      );
-      return profile;
-    } catch (e, stackTrace) {
-      if (e is FirebaseException && e.code == 'permission-denied') {
-      }
+  BarberProfile? _profileFromUserData(
+      String uid, Map<String, dynamic>? data) {
+    if (data == null) return null;
+    final ownerId = data['ownerId'] as String?;
+    if (ownerId == null || ownerId.isEmpty) {
       return null;
     }
+    return BarberProfile(
+      uid: uid,
+      ownerId: ownerId,
+      name: (data['name'] as String?) ?? '',
+      photoUrl: (data['photoUrl'] as String?) ?? '',
+    );
   }
 
   void _startQueueListener(BarberProfile profile) {
     _queueSubscription?.cancel();
     try {
-      _queueSubscription = _firestore
+      final queueRef = _firestore
           .collection('salons')
           .doc(profile.ownerId)
-          .collection('queue')
+          .collection('queue');
+      final activeStatuses = ['waiting', 'serving', 'turn_ready', 'arrived'];
+
+      _queueSubscription = queueRef
+          .where('barberUid', isEqualTo: profile.uid)
+          .where('status', whereIn: activeStatuses)
           .snapshots()
           .listen((snapshot) {
         _queue = snapshot.docs
-            .where((doc) => _isForBarber(doc.data(), profile))
             .map((doc) => _mapQueue(doc.id, doc.data(), profile))
             .whereType<BarberQueueItem>()
             .toList()
           ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
         notifyListeners();
-      }, onError: (e) {
-        // Fallback to top-level queue collection
-        try {
-          _queueSubscription = _firestore
-              .collection('queue')
+      }, onError: (_) {
+        _queueSubscription?.cancel();
+        _queueSubscription = queueRef
+            .where('barberId', isEqualTo: profile.uid)
+            .where('status', whereIn: activeStatuses)
+            .snapshots()
+            .listen((snapshot) {
+          _queue = snapshot.docs
+              .map((doc) => _mapQueue(doc.id, doc.data(), profile))
+              .whereType<BarberQueueItem>()
+              .toList()
+            ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
+          notifyListeners();
+        }, onError: (_) {
+          if (profile.name.isEmpty) {
+            _setError('Failed to load queue. Pull to refresh.');
+            return;
+          }
+          _queueSubscription?.cancel();
+          _queueSubscription = queueRef
+              .where('barberName', isEqualTo: profile.name)
+              .where('status', whereIn: activeStatuses)
               .snapshots()
               .listen((snapshot) {
             _queue = snapshot.docs
-                .where((doc) => _isForBarber(doc.data(), profile))
                 .map((doc) => _mapQueue(doc.id, doc.data(), profile))
                 .whereType<BarberQueueItem>()
                 .toList()
               ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
             notifyListeners();
-          }, onError: (e2) {
+          }, onError: (_) {
             _setError('Failed to load queue. Pull to refresh.');
           });
-        } catch (e3) {
-          _setError('Failed to load queue. Pull to refresh.');
-        }
+        });
       });
     } catch (e) {
       _setError('Failed to load queue. Pull to refresh.');
     }
-  }
-
-  bool _isForBarber(Map<String, dynamic> data, BarberProfile profile) {
-    final barberId = data['barberId'] ?? data['barberUid'];
-    if (barberId is String && barberId.isNotEmpty && barberId == profile.uid) {
-      return true;
-    }
-    final barberName =
-        (data['barberName'] as String?) ?? (data['barber'] as String?);
-    if (barberName != null &&
-        profile.name.isNotEmpty &&
-        barberName.toLowerCase() == profile.name.toLowerCase()) {
-      return true;
-    }
-    // allow unassigned queue items to surface so barbers can claim them
-    return barberId == null && barberName == null;
   }
 
   BarberQueueItem? _mapQueue(
@@ -245,40 +229,26 @@ class BarberHomeProvider extends ChangeNotifier {
     );
   }
 
-  Future<bool> _fetchSalonOpen(String ownerId) async {
+  Future<void> _loadSalonMeta(String ownerId) async {
     if (ownerId.isEmpty) {
-      return false;
+      _salonOpen = false;
+      _salonName = null;
+      return;
     }
     try {
-      final doc = await _firestore.collection('salons').doc(ownerId).get();
+      final doc = await FirestoreCache.getDoc(
+          _firestore.collection('salons').doc(ownerId));
       if (!doc.exists) {
-        return false;
+        _salonOpen = false;
+        _salonName = null;
+        return;
       }
       final data = doc.data() ?? {};
-      final isOpen = data['isOpen'];
-      if (isOpen is bool) {
-        return isOpen;
-      }
-      return false;
+      _salonOpen = (data['isOpen'] as bool?) ?? false;
+      _salonName = data['name'] as String?;
     } catch (e) {
-      return false;
-    }
-  }
-
-  Future<String?> _fetchSalonName(String ownerId) async {
-    if (ownerId.isEmpty) {
-      return null;
-    }
-    try {
-      final doc = await _firestore.collection('salons').doc(ownerId).get();
-      if (!doc.exists) {
-        return null;
-      }
-      final data = doc.data() ?? {};
-      final name = data['name'] as String?;
-      return name;
-    } catch (e) {
-      return null;
+      _salonOpen = false;
+      _salonName = null;
     }
   }
 

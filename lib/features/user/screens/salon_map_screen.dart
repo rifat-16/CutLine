@@ -1,5 +1,7 @@
 import 'package:cutline/features/user/providers/user_location_provider.dart';
+import 'package:cutline/shared/services/google_maps_js_loader.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -37,7 +39,7 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
 
   @override
   void dispose() {
-    _controller?.dispose();
+    if (!kIsWeb) _controller?.dispose();
     super.dispose();
   }
 
@@ -56,16 +58,21 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
   }
 
   Future<void> _fitToMarkers(UserLocationProvider locationProvider) async {
+    if (!mounted) return;
     final controller = _controller;
     if (controller == null) return;
 
     final user = locationProvider.location;
     if (user == null) {
-      await controller.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(target: _salonLatLng, zoom: 16),
-        ),
-      );
+      try {
+        await controller.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(target: _salonLatLng, zoom: 16),
+          ),
+        );
+      } catch (_) {
+        // Ignore camera updates when the map widget gets disposed/recreated.
+      }
       return;
     }
 
@@ -83,12 +90,16 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
       points.map((p) => p.longitude).reduce((a, b) => a > b ? a : b),
     );
 
-    await controller.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(southwest: southWest, northeast: northEast),
-        70,
-      ),
-    );
+    try {
+      await controller.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          LatLngBounds(southwest: southWest, northeast: northEast),
+          70,
+        ),
+      );
+    } catch (_) {
+      // Ignore camera updates when the map widget gets disposed/recreated.
+    }
   }
 
   @override
@@ -123,16 +134,28 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
       ),
       body: Stack(
         children: [
-          GoogleMap(
-            initialCameraPosition: CameraPosition(target: _salonLatLng, zoom: 16),
-            onMapCreated: (controller) {
-              _controller = controller;
-              _fitToMarkers(locationProvider);
+          FutureBuilder<void>(
+            future: GoogleMapsJsLoader.ensureLoaded(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return _WebMapsError(message: '${snapshot.error}');
+              }
+              return GoogleMap(
+                initialCameraPosition:
+                    CameraPosition(target: _salonLatLng, zoom: 16),
+                onMapCreated: (controller) {
+                  _controller = controller;
+                  _fitToMarkers(locationProvider);
+                },
+                markers: markers,
+                myLocationEnabled: _myLocationEnabled,
+                myLocationButtonEnabled: _myLocationEnabled,
+                zoomControlsEnabled: false,
+              );
             },
-            markers: markers,
-            myLocationEnabled: _myLocationEnabled,
-            myLocationButtonEnabled: _myLocationEnabled,
-            zoomControlsEnabled: false,
           ),
           Positioned(
             left: 16,
@@ -179,3 +202,38 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
   }
 }
 
+class _WebMapsError extends StatelessWidget {
+  const _WebMapsError({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: CutlineColors.background,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(20),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.map_outlined, size: 44, color: Colors.black54),
+            const SizedBox(height: 12),
+            const Text(
+              'Map is unavailable on web',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: const TextStyle(color: Colors.black54),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

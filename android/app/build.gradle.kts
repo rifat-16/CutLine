@@ -48,9 +48,43 @@ val localProperties = Properties()
 if (localPropertiesFile.exists()) {
     localProperties.load(FileInputStream(localPropertiesFile))
 }
-val mapsApiKey = localProperties.getProperty("MAPS_API_KEY")
-    ?: System.getenv("MAPS_API_KEY")
-    ?: ""
+fun resolveMapKey(name: String): String {
+    val fromProps = localProperties.getProperty(name)?.trim().orEmpty()
+    if (fromProps.isNotEmpty()) {
+        return fromProps
+    }
+    val fromEnv = System.getenv(name)?.trim().orEmpty()
+    if (fromEnv.isNotEmpty()) {
+        return fromEnv
+    }
+    return ""
+}
+
+val mapsApiKeyDefault = resolveMapKey("MAPS_API_KEY")
+val mapsApiKeyDev = resolveMapKey("MAPS_API_KEY_DEV").ifEmpty { mapsApiKeyDefault }
+val mapsApiKeyStaging = resolveMapKey("MAPS_API_KEY_STAGING").ifEmpty { mapsApiKeyDefault }
+val mapsApiKeyProd = resolveMapKey("MAPS_API_KEY_PROD").ifEmpty { mapsApiKeyDefault }
+
+val requestedFlavors = listOf("dev", "staging", "prod").filter { flavor ->
+    gradle.startParameter.taskNames.any { name -> name.contains(flavor, ignoreCase = true) }
+}
+
+requestedFlavors.forEach { flavor ->
+    val configFile = project.file("src/$flavor/google-services.json")
+    if (!configFile.exists()) {
+        throw GradleException(
+            """
+            Missing Firebase config for Android flavor "$flavor".
+            
+            Expected file:
+              android/app/src/$flavor/google-services.json
+            
+            Download the correct google-services.json from:
+              Firebase Console → Project Settings → Your apps (Android)
+            """.trimIndent()
+        )
+    }
+}
 
 android {
     namespace = "com.cutline"
@@ -87,14 +121,39 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.cutline"
+        applicationId = "com.cutline.prod"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKeyDefault
+        resValue("string", "app_name", "CutLine")
+    }
+
+    flavorDimensions += "env"
+    productFlavors {
+        create("dev") {
+            dimension = "env"
+            applicationId = "com.cutline.dev"
+            versionNameSuffix = "-dev"
+            resValue("string", "app_name", "CutLine Dev")
+            manifestPlaceholders["MAPS_API_KEY"] = mapsApiKeyDev
+        }
+        create("staging") {
+            dimension = "env"
+            applicationId = "com.cutline.staging"
+            versionNameSuffix = "-staging"
+            resValue("string", "app_name", "CutLine Staging")
+            manifestPlaceholders["MAPS_API_KEY"] = mapsApiKeyStaging
+        }
+        create("prod") {
+            dimension = "env"
+            applicationId = "com.cutline.prod"
+            resValue("string", "app_name", "CutLine")
+            manifestPlaceholders["MAPS_API_KEY"] = mapsApiKeyProd
+        }
     }
 
     buildTypes {

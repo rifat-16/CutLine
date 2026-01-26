@@ -4,10 +4,10 @@ import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
-/// PROD Firebase project options.
+/// DEV Firebase project options.
 ///
 /// Replace this file by running:
-/// `flutterfire configure --project <prod-project-id> --out lib/firebase_options.dart`
+/// `flutterfire configure --project <dev-project-id> --out lib/firebase_options_dev.dart`
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
@@ -26,21 +26,21 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyC_ZsxnVvW0_Fql4U0fy_KjSym6OQmaOAA',
-    appId: '1:266702152062:web:44c709c855047de811532f',
-    messagingSenderId: '266702152062',
-    projectId: 'cutline-prod-a55b9',
-    authDomain: 'cutline-prod-a55b9.firebaseapp.com',
-    storageBucket: 'cutline-prod-a55b9.firebasestorage.app',
-    measurementId: 'G-CX2ELDM3JZ',
+    apiKey: 'AIzaSyC44a4TLt-NsGmT3XG3PBcxS4TF4VocfXM',
+    appId: '1:725476828136:web:8fda3fc6a28c12197aba5d',
+    messagingSenderId: '725476828136',
+    projectId: 'cutline-dev',
+    authDomain: 'cutline-dev.firebaseapp.com',
+    storageBucket: 'cutline-dev.firebasestorage.app',
+    measurementId: 'G-5TPGWB1K0M',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBGBXhRAKU2b5CTYhilmKYEnXIH2hymXZk',
-    appId: '1:266702152062:android:8581052ff35fbd2d11532f',
-    messagingSenderId: '266702152062',
-    projectId: 'cutline-prod-a55b9',
-    storageBucket: 'cutline-prod-a55b9.firebasestorage.app',
+    apiKey: 'AIzaSyCGYH5CrI2g3nNe2wxxJIsVib4L_3GD_5Q',
+    appId: '1:725476828136:android:e3893a3bfac815737aba5d',
+    messagingSenderId: '725476828136',
+    projectId: 'cutline-dev',
+    storageBucket: 'cutline-dev.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
@@ -49,6 +49,6 @@ class DefaultFirebaseOptions {
     messagingSenderId: '',
     projectId: '',
     storageBucket: '',
-    iosBundleId: 'com.cutline.prod',
+    iosBundleId: 'com.cutline.dev',
   );
 }
