@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "266702152062",
+    "project_id": "cutline-prod-a55b9",
+    "storage_bucket": "cutline-prod-a55b9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:266702152062:android:8581052ff35fbd2d11532f",
+        "android_client_info": {
+          "package_name": "com.cutline.prod"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBGBXhRAKU2b5CTYhilmKYEnXIH2hymXZk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

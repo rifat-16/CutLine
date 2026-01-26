@@ -144,10 +144,20 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                             : ListView.separated(
                                 padding: CutlineSpacing.section
                                     .copyWith(bottom: 20.h),
-                                itemCount: provider.salons.length,
+                                itemCount: provider.salons.length +
+                                    (provider.canLoadMore ? 1 : 0),
                                 separatorBuilder: (_, __) =>
                                     SizedBox(height: CutlineSpacing.md),
                                 itemBuilder: (context, index) {
+                                  if (index >= provider.salons.length) {
+                                    provider.loadMore();
+                                    return const Center(
+                                      child: Padding(
+                                        padding: EdgeInsets.all(16),
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    );
+                                  }
                                   final salon = provider.salons[index];
                                   return CutlineAnimations.staggeredList(
                                     index: index,

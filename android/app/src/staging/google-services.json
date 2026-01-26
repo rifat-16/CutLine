@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "766335706711",
+    "firebase_url": "https://cutline-526aa-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "cutline-526aa",
+    "storage_bucket": "cutline-526aa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:766335706711:android:3f26173cdaf25f2db06512",
+        "android_client_info": {
+          "package_name": "com.cutline"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBKc37zt5h-CS6hBCMFJv0x1Ip3uwf9B1c"
+        },
+        {
+          "current_key": "AIzaSyD26uQLfEwo7nRym4g5RQCIEPJnA3X__zc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:766335706711:android:c7a128ae2fed9130b06512",
+        "android_client_info": {
+          "package_name": "com.cutline.staging"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBKc37zt5h-CS6hBCMFJv0x1Ip3uwf9B1c"
+        },
+        {
+          "current_key": "AIzaSyD26uQLfEwo7nRym4g5RQCIEPJnA3X__zc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

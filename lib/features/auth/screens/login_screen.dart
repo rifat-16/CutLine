@@ -4,7 +4,9 @@ import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/services/salon_lookup_service.dart';
 import 'package:cutline/routes/app_router.dart';
+import 'package:cutline/shared/services/auth_session_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -37,6 +39,32 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
+  bool _rememberMe = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeSkipLogin();
+    });
+  }
+
+  Future<void> _maybeSkipLogin() async {
+    final auth = context.read<AuthProvider>();
+    try {
+      await auth.waitForAuthReady();
+    } catch (_) {
+      // Best-effort.
+    }
+    if (!mounted) return;
+    if (auth.currentUser != null) {
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        AppRoutes.splash,
+        (_) => false,
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -148,6 +176,25 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 30),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: _rememberMe,
+                      onChanged: auth.isLoading
+                          ? null
+                          : (v) => setState(() => _rememberMe = v ?? false),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Remember me on this device',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 SizedBox(
                   width: double.infinity,
                   height: 55,
@@ -156,13 +203,28 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? null
                         : () async {
                             if (!_formKey.currentState!.validate()) return;
+                            final email = _emailController.text.trim();
+                            final password = _passwordController.text;
                             final success = await auth.signIn(
-                              email: _emailController.text,
-                              password: _passwordController.text,
+                              email: email,
+                              password: password,
                             );
 
                             if (!context.mounted) return;
                             if (success) {
+                              try {
+                                final storage = AuthSessionStorage();
+                                if (_rememberMe) {
+                                  await storage.setRememberedCredentials(
+                                    email: email,
+                                    password: password,
+                                  );
+                                } else {
+                                  await storage.clearRememberedCredentials();
+                                }
+                              } catch (_) {
+                                // Best-effort; don't block login.
+                              }
                               await _routeByRole(auth);
                             } else if (auth.lastError != null) {
                               _showSnack(auth.lastError!);
@@ -287,14 +349,42 @@ class _LoginScreenState extends State<LoginScreen> {
     if (uid == null) return;
 
     Map<String, dynamic>? profile;
+    DocumentSnapshot<Map<String, dynamic>>? snap;
     try {
-      profile = await auth
-          .fetchUserProfile(uid)
-          .timeout(const Duration(seconds: 12), onTimeout: () => null);
+      snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 12));
+    } on TimeoutException {
+      snap = null;
     } catch (_) {
-      profile = null;
+      snap = null;
     }
     if (!mounted) return;
+
+    if (snap != null && !snap.exists) {
+      await auth.signOut();
+      if (!mounted) return;
+      _showSnack('Account data was removed. Please sign up again.');
+      return;
+    }
+
+    profile = snap?.data();
+    if (!mounted) return;
+
+    // If server fetch timed out/failed, fall back to a normal read (may hit
+    // cache) so we can still route on slow networks.
+    if (profile == null) {
+      try {
+        profile = await auth
+            .fetchUserProfile(uid)
+            .timeout(const Duration(seconds: 12), onTimeout: () => null);
+      } catch (_) {
+        profile = null;
+      }
+      if (!mounted) return;
+    }
 
     final roleKey = profile?['role'] as String?;
     final hasSalon = await SalonLookupService()
@@ -304,7 +394,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final resolvedRole = roleKey != null
         ? UserRoleKey.fromKey(roleKey)
-        : (hasSalon ? UserRole.owner : widget.role);
+        : widget.role;
     final profileComplete =
         profile?['profileComplete'] == true || (profile == null && hasSalon);
 

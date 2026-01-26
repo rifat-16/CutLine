@@ -5,9 +5,12 @@ import 'package:cutline/features/auth/models/user_model.dart';
 import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cutline/features/auth/services/auth_service.dart';
 import 'package:cutline/features/auth/services/user_profile_service.dart';
+import 'package:cutline/shared/services/auth_session_storage.dart';
 import 'package:cutline/shared/services/fcm_token_service.dart';
 import 'package:cutline/shared/services/notification_service.dart';
+import 'package:cutline/shared/services/session_debug.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -19,15 +22,20 @@ class AuthProvider extends ChangeNotifier {
   })  : _authService = authService ?? AuthService(),
         _userProfileService = userProfileService ?? UserProfileService() {
     _currentUser = _authService.currentUser;
-    _authSubscription = _authService.authStateChanges.listen(_onAuthState);
-    // Ensure initial state (e.g., app relaunch with cached session) is applied
-    // even if screens query `currentUser` before the first stream event arrives.
+    _authSubscription = _authService.authStateChanges.listen((user) {
+      if (!_authReady.isCompleted) _authReady.complete();
+      _onAuthState(user);
+    });
+    // Apply the synchronous snapshot quickly, but treat the first stream event
+    // as the "ready" signal for slow OEM devices.
     _onAuthState(_currentUser);
   }
 
   final AuthService _authService;
   final UserProfileService _userProfileService;
   final FcmTokenService _fcmTokenService = FcmTokenService();
+  final AuthSessionStorage _sessionStorage = AuthSessionStorage();
+  final Completer<void> _authReady = Completer<void>();
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<String>? _tokenRefreshSubscription;
   String? _tokenRefreshUserId;
@@ -39,6 +47,7 @@ class AuthProvider extends ChangeNotifier {
   CutlineUser? _profile;
   bool _isLoading = false;
   String? _lastError;
+  String? _lastAuthErrorCode;
   bool _uploadingPhoto = false;
 
   User? get currentUser => _currentUser;
@@ -46,7 +55,13 @@ class AuthProvider extends ChangeNotifier {
   bool get isAuthenticated => _currentUser != null;
   bool get isLoading => _isLoading;
   String? get lastError => _lastError;
+  String? get lastAuthErrorCode => _lastAuthErrorCode;
   bool get isUploadingPhoto => _uploadingPhoto;
+
+  Future<void> waitForAuthReady({Duration timeout = const Duration(seconds: 6)}) {
+    if (_authReady.isCompleted) return Future<void>.value();
+    return _authReady.future.timeout(timeout);
+  }
 
   Future<bool> signIn({
     required String email,
@@ -57,6 +72,15 @@ class AuthProvider extends ChangeNotifier {
       // Make `currentUser` available synchronously after sign-in so callers can
       // route immediately without waiting for the authStateChanges event.
       _currentUser = _authService.currentUser;
+      final uid = _currentUser?.uid;
+      if (uid != null) {
+        try {
+          await _sessionStorage.setLastSignedInUid(uid);
+        } catch (e, st) {
+          SessionDebug.log('Failed to persist last signed-in uid (signIn)',
+              error: e, stackTrace: st);
+        }
+      }
       if (_currentUser != null) {
         _onAuthState(_currentUser);
       }
@@ -81,6 +105,12 @@ class AuthProvider extends ChangeNotifier {
       final uid = credential.user?.uid;
       if (uid != null) {
         _currentUser = credential.user;
+        try {
+          await _sessionStorage.setLastSignedInUid(uid);
+        } catch (e, st) {
+          SessionDebug.log('Failed to persist last signed-in uid (signUp)',
+              error: e, stackTrace: st);
+        }
         await _userProfileService.createUserProfile(
           uid: uid,
           email: email,
@@ -101,10 +131,31 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signOut() {
+    final uid = _currentUser?.uid;
     _profile = null;
     notificationService.setUserRole(null);
     unawaited(_stopTokenRefresh());
+    if (uid != null) {
+      unawaited(_removeCurrentDeviceTokenFromUser(uid));
+    }
+    unawaited(_sessionStorage.clearLastSignedInUid());
+    unawaited(_sessionStorage.clearRememberedCredentials());
+    // Clear local auth state immediately so routing/UI can't use a stale user
+    // while FirebaseAuth completes sign-out.
+    _currentUser = null;
+    notifyListeners();
     return _authService.signOut();
+  }
+
+  Future<void> _removeCurrentDeviceTokenFromUser(String uid) async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null || token.isEmpty) return;
+      await _fcmTokenService.removeToken(uid, token);
+    } catch (e, st) {
+      SessionDebug.log('Failed to remove FCM token on sign out',
+          error: e, stackTrace: st);
+    }
   }
 
   Future<Map<String, dynamic>?> fetchUserProfile(String uid) async {
@@ -144,12 +195,19 @@ class AuthProvider extends ChangeNotifier {
       _currentUser = user;
       await _loadProfile();
       notifyListeners();
-    } on FirebaseAuthException catch (e) {
+    } on FirebaseAuthException catch (e, st) {
+      SessionDebug.log(
+        'refreshCurrentUser failed: ${e.code}',
+        error: e.message,
+        stackTrace: st,
+      );
       final shouldForceSignOut = e.code == 'user-not-found' ||
           e.code == 'user-disabled' ||
           e.code == 'invalid-user-token' ||
-          e.code == 'user-token-expired';
+          e.code == 'user-token-expired' ||
+          _isStaleAuthSessionError(e);
       if (shouldForceSignOut) {
+        _setError(_mapFirebaseError(e));
         await signOut();
         _currentUser = null;
         notifyListeners();
@@ -157,6 +215,33 @@ class AuthProvider extends ChangeNotifier {
       }
       _setError(_mapFirebaseError(e));
     }
+  }
+
+  bool _isStaleAuthSessionError(FirebaseAuthException e) {
+    // Some platform implementations surface account deletion/disablement as an
+    // `unknown`/`internal-error` with a descriptive message. Treat those as a
+    // hard sign-out so the app doesn't keep routing with a stale session.
+    final msg = (e.message ?? '').toLowerCase();
+    if (msg.isEmpty) return false;
+
+    final looksDeleted = msg.contains('has been deleted') ||
+        msg.contains('user has been deleted') ||
+        msg.contains('no user record') ||
+        msg.contains('user record') && msg.contains('not found') ||
+        msg.contains('user not found') ||
+        msg.contains('account has been deleted');
+
+    final looksRevoked = msg.contains('invalid user token') ||
+        msg.contains('user token') && msg.contains('expired') ||
+        msg.contains('token is no longer valid') ||
+        msg.contains('revoked');
+
+    final looksAuthApiBlocked =
+        msg.contains('securetoken.googleapis.com') && msg.contains('blocked') ||
+            msg.contains('securetoken') && msg.contains('granttoken') ||
+            msg.contains('identitytoolkit') && msg.contains('blocked');
+
+    return looksDeleted || looksRevoked || looksAuthApiBlocked;
   }
 
   Future<void> updateProfile({
@@ -284,6 +369,13 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
 
+    try {
+      await _sessionStorage.setLastSignedInUid(user.uid);
+    } catch (e, st) {
+      SessionDebug.log('Failed to persist last signed-in uid',
+          error: e, stackTrace: st);
+    }
+
     await _loadProfileForUid(uid: user.uid, generation: generation);
     if (_authGeneration != generation) return;
 
@@ -321,12 +413,25 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> _runAuthFlow(Future<void> Function() action) async {
     _setLoading(true);
     _setError(null);
+    _lastAuthErrorCode = null;
 
     try {
       await action();
       return true;
     } on FirebaseAuthException catch (e) {
-      _setError(_mapFirebaseError(e));
+      _lastAuthErrorCode = e.code;
+      SessionDebug.log(
+        'FirebaseAuthException: ${e.code}',
+        error: e.message,
+        stackTrace: e.stackTrace,
+      );
+      var message = _mapFirebaseError(e);
+      if (SessionDebug.enabled) {
+        final raw = (e.message ?? '').trim();
+        message =
+            '${message} (code: ${e.code}${raw.isEmpty ? '' : ', msg: $raw'})';
+      }
+      _setError(message);
       return false;
     } on FirebaseException catch (e) {
       _setError(
@@ -366,6 +471,9 @@ class AuthProvider extends ChangeNotifier {
         final msg = (e.message ?? '').toLowerCase();
         if (msg.contains('identitytoolkit') && msg.contains('blocked')) {
           return 'Firebase Auth API is blocked for this project. In Google Cloud Console, enable Identity Toolkit API and remove API key restrictions for it.';
+        }
+        if (msg.contains('securetoken') && msg.contains('blocked')) {
+          return 'Firebase token API is blocked for this project. In Google Cloud Console, remove API key restrictions for securetoken.googleapis.com (Secure Token) and ensure Firebase Auth works.';
         }
         return 'Unable to complete the request. Please try again.';
       case 'too-many-requests':

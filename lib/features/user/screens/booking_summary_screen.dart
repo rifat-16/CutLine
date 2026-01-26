@@ -81,7 +81,6 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                           salonName: widget.salonName,
                           address: provider.address,
                           contact: provider.contact,
-                          rating: provider.rating,
                           barberName: widget.barberName,
                           dateLabel: provider.formattedDate,
                           timeLabel: widget.time,
@@ -149,7 +148,6 @@ class _SummaryCard extends StatelessWidget {
   final String salonName;
   final String address;
   final String contact;
-  final double rating;
   final String barberName;
   final String dateLabel;
   final String timeLabel;
@@ -165,7 +163,6 @@ class _SummaryCard extends StatelessWidget {
     required this.salonName,
     required this.address,
     required this.contact,
-    required this.rating,
     required this.barberName,
     required this.dateLabel,
     required this.timeLabel,
@@ -193,7 +190,6 @@ class _SummaryCard extends StatelessWidget {
             salonName: salonName,
             address: address,
             contact: contact,
-            rating: rating,
           ),
           const Divider(height: 32),
           _BookingDetails(
@@ -234,13 +230,11 @@ class _SalonOverview extends StatelessWidget {
   final String salonName;
   final String address;
   final String contact;
-  final double rating;
 
   const _SalonOverview({
     required this.salonName,
     required this.address,
     required this.contact,
-    required this.rating,
   });
 
   @override
@@ -253,23 +247,31 @@ class _SalonOverview extends StatelessWidget {
           child: Icon(Icons.store, color: Colors.white),
         ),
         const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(salonName.isNotEmpty ? salonName : 'Salon',
-                style: CutlineTextStyles.subtitleBold),
-            const SizedBox(height: 2),
-            Text(
-              address.isNotEmpty ? address : 'Address unavailable',
-              style: CutlineTextStyles.subtitle,
-            ),
-            Text(
-              contact.isNotEmpty ? '📞 $contact' : 'Contact unavailable',
-              style: CutlineTextStyles.subtitle,
-            ),
-            Text('⭐ ${rating.toStringAsFixed(1)}',
-                style: CutlineTextStyles.caption),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                salonName.isNotEmpty ? salonName : 'Salon',
+                style: CutlineTextStyles.subtitleBold,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                address.isNotEmpty ? address : 'Address unavailable',
+                style: CutlineTextStyles.subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                contact.isNotEmpty ? '📞 $contact' : 'Contact unavailable',
+                style: CutlineTextStyles.subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ],
     );

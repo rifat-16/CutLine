@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/shared/models/picked_location.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -10,18 +11,25 @@ class UserHomeProvider extends ChangeNotifier {
   final FirebaseFirestore _firestore;
   final String userId;
 
+  static const int _pageSize = 12;
+
   bool _isLoading = false;
+  bool _isLoadingMore = false;
   String? _error;
   List<UserSalon> _allSalons = [];
   List<UserSalon> _visibleSalons = [];
   Set<String> _favoriteIds = {};
   String _searchQuery = '';
   PickedLocation? _userLocation;
+  DocumentSnapshot<Map<String, dynamic>>? _lastSalonDoc;
+  bool _hasMore = true;
 
   bool get isLoading => _isLoading;
+  bool get isLoadingMore => _isLoadingMore;
   String? get error => _error;
   List<UserSalon> get salons => _visibleSalons;
   String get searchQuery => _searchQuery;
+  bool get canLoadMore => _hasMore && !_isLoadingMore;
 
   void setUserLocation(PickedLocation? location) {
     final current = _userLocation;
@@ -47,7 +55,10 @@ class UserHomeProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-
+      _allSalons = [];
+      _visibleSalons = [];
+      _lastSalonDoc = null;
+      _hasMore = true;
       // Load favorites first
       try {
         _favoriteIds = await _loadFavoriteIds();
@@ -55,24 +66,7 @@ class UserHomeProvider extends ChangeNotifier {
         _favoriteIds = {}; // Continue without favorites
       }
 
-      // Load salons collection
-      final snapshot = await _firestore
-          .collection('salons')
-          .where('verificationStatus', isEqualTo: 'verified')
-          .get();
-
-      if (snapshot.docs.isEmpty) {
-        _allSalons = [];
-        _visibleSalons = [];
-        _setError(null); // No error, just empty list
-        return;
-      }
-
-      final salons = await Future.wait(
-        snapshot.docs.map((doc) => _mapSalon(doc.id, doc.data())),
-      );
-      _allSalons = salons;
-      _recomputeVisibleSalons();
+      await _loadNextPage();
     } catch (e) {
       _allSalons = [];
       _visibleSalons = [];
@@ -94,15 +88,71 @@ class UserHomeProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> loadMore() async {
+    if (!_hasMore || _isLoadingMore) return;
+    _isLoadingMore = true;
+    notifyListeners();
+    try {
+      await _loadNextPage();
+    } catch (_) {
+      // Ignore incremental load failures; keep existing data.
+    } finally {
+      _isLoadingMore = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _loadNextPage() async {
+    if (!_hasMore) return;
+    try {
+      Query<Map<String, dynamic>> query = _firestore
+          .collection('salons')
+          .where('verificationStatus', isEqualTo: 'verified')
+          .limit(_pageSize);
+
+      if (_lastSalonDoc != null) {
+        query = query.startAfterDocument(_lastSalonDoc!);
+      }
+
+      final snapshot = await FirestoreCache.getQuery(query);
+
+      if (snapshot.docs.isEmpty) {
+        _hasMore = false;
+        if (_allSalons.isEmpty) {
+          _setError(null);
+        }
+        return;
+      }
+
+      _lastSalonDoc = snapshot.docs.last;
+      if (snapshot.docs.length < _pageSize) {
+        _hasMore = false;
+      }
+
+      final salons = await Future.wait(
+        snapshot.docs.map((doc) => _mapSalon(doc.id, doc.data())),
+      );
+
+      final merged = <String, UserSalon>{
+        for (final salon in _allSalons) salon.id: salon,
+      };
+      for (final salon in salons) {
+        merged[salon.id] = salon;
+      }
+      _allSalons = merged.values.toList();
+      _recomputeVisibleSalons();
+    } catch (e) {
+      _hasMore = false;
+      rethrow;
+    }
+  }
+
   Future<UserSalon> _mapSalon(String id, Map<String, dynamic> data) async {
     try {
-      final servicesField = data['services'];
-      final services = servicesField is List
-          ? servicesField
-              .map((item) => _parseServiceName(item))
-              .where((name) => name.isNotEmpty)
-              .toList()
-          : <String>[];
+      final topServices = _parseTopServices(data['topServices']);
+      final services = topServices.isNotEmpty
+          ? topServices
+          : _parseFallbackServices(data['services']);
 
       final isOpenFlag = data['isOpen'];
       final bool isOpenNow = isOpenFlag is bool ? isOpenFlag : false;
@@ -111,13 +161,7 @@ class UserHomeProvider extends ChangeNotifier {
       final GeoPoint? geoPoint =
           locationField is GeoPoint ? locationField : null;
 
-      // Estimate wait time (this may fail due to permissions, but shouldn't break salon loading)
-      int waitMinutes = 0;
-      try {
-        waitMinutes = await _estimateWaitMinutes(id);
-      } catch (e) {
-        // Continue without wait time
-      }
+      final waitMinutes = _summaryWaitMinutes(data);
 
       final salon = UserSalon(
         id: id,
@@ -159,41 +203,45 @@ class UserHomeProvider extends ChangeNotifier {
     return '';
   }
 
-  // Working-hours parsing retained for future use; the card now relies solely
-  // on the salon's `isOpen` flag from Firestore.
-
-  Future<int> _estimateWaitMinutes(String salonId) async {
-    try {
-      final snap = await _firestore
-          .collection('salons')
-          .doc(salonId)
-          .collection('queue')
-          .where('status', isEqualTo: 'waiting')
-          .get();
-
-      if (snap.docs.isEmpty) {
-        return 0;
-      }
-
-      var collected = 0;
-      var items = 0;
-      for (final doc in snap.docs) {
-        final wait = (doc.data()['waitMinutes'] as num?)?.toInt();
-        if (wait != null && wait > 0) {
-          collected += wait;
-          items++;
-        }
-      }
-      if (items > 0) {
-        final avg = (collected / items).ceil();
-        return avg;
-      }
-      final fallback = snap.size * 10;
-      return fallback;
-    } catch (e) {
-      // Return 0 if queue read fails - users can still see salons without wait time
-      return 0;
+  List<String> _parseTopServices(dynamic field) {
+    if (field is List) {
+      return field
+          .map((e) => e is String
+              ? e.trim()
+              : e is Map<String, dynamic>
+                  ? (e['name'] as String?)?.trim() ?? ''
+                  : '')
+          .where((e) => e.isNotEmpty)
+          .take(3)
+          .toList();
     }
+    return [];
+  }
+
+  List<String> _parseFallbackServices(dynamic servicesField) {
+    if (servicesField is! List) return const [];
+    return servicesField
+        .map((item) => _parseServiceName(item))
+        .where((name) => name.isNotEmpty)
+        .take(3)
+        .toList();
+  }
+
+  int _summaryWaitMinutes(Map<String, dynamic> data) {
+    final candidates = [
+      data['waitMinutes'],
+      data['waitMinutesEstimate'],
+      data['avgWaitMinutes'],
+      data['estimatedWaitMinutes'],
+    ];
+    for (final value in candidates) {
+      if (value is num) return value.toInt();
+      if (value is String) {
+        final parsed = int.tryParse(value);
+        if (parsed != null) return parsed;
+      }
+    }
+    return 0;
   }
 
   Future<Set<String>> _loadFavoriteIds() async {
@@ -201,11 +249,10 @@ class UserHomeProvider extends ChangeNotifier {
       return {};
     }
     try {
-      final snap = await _firestore
+      final snap = await FirestoreCache.getQuery(_firestore
           .collection('users')
           .doc(userId)
-          .collection('favorites')
-          .get();
+          .collection('favorites'));
       final favorites = snap.docs
           .map((doc) {
             final data = doc.data();

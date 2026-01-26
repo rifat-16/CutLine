@@ -4,16 +4,10 @@ import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
-/// Default [FirebaseOptions] for use with your Firebase apps.
+/// PROD Firebase project options.
 ///
-/// Example:
-/// ```dart
-/// import 'firebase_options.dart';
-/// // ...
-/// await Firebase.initializeApp(
-///   options: DefaultFirebaseOptions.currentPlatform,
-/// );
-/// ```
+/// Replace this file by running:
+/// `flutterfire configure --project <prod-project-id> --out lib/firebase_options.dart`
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
@@ -24,21 +18,6 @@ class DefaultFirebaseOptions {
         return android;
       case TargetPlatform.iOS:
         return ios;
-      case TargetPlatform.macOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
-      case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
-      case TargetPlatform.linux:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
       default:
         throw UnsupportedError(
           'DefaultFirebaseOptions are not supported for this platform.',
@@ -47,30 +26,29 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyCjtEFfuUAdF7blmHm9k-z_P63L0bN3GSo',
-    appId: '1:766335706711:web:aa1ab9c695932fc9b06512',
-    messagingSenderId: '766335706711',
-    projectId: 'cutline-526aa',
-    authDomain: 'cutline-526aa.firebaseapp.com',
-    storageBucket: 'cutline-526aa.firebasestorage.app',
-    measurementId: 'G-ZJQZ9Z5F0L',
+    apiKey: 'AIzaSyC_ZsxnVvW0_Fql4U0fy_KjSym6OQmaOAA',
+    appId: '1:266702152062:web:44c709c855047de811532f',
+    messagingSenderId: '266702152062',
+    projectId: 'cutline-prod-a55b9',
+    authDomain: 'cutline-prod-a55b9.firebaseapp.com',
+    storageBucket: 'cutline-prod-a55b9.firebasestorage.app',
+    measurementId: 'G-CX2ELDM3JZ',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBKc37zt5h-CS6hBCMFJv0x1Ip3uwf9B1c',
-    appId: '1:766335706711:android:3f26173cdaf25f2db06512',
-    messagingSenderId: '766335706711',
-    projectId: 'cutline-526aa',
-    databaseURL: 'https://cutline-526aa-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'cutline-526aa.firebasestorage.app',
+    apiKey: 'AIzaSyBGBXhRAKU2b5CTYhilmKYEnXIH2hymXZk',
+    appId: '1:266702152062:android:8581052ff35fbd2d11532f',
+    messagingSenderId: '266702152062',
+    projectId: 'cutline-prod-a55b9',
+    storageBucket: 'cutline-prod-a55b9.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCzEpcayJJCL8rOaV5M8wO49cZqC40gsuM',
-    appId: '1:766335706711:ios:89abe79810720f1cb06512',
-    messagingSenderId: '766335706711',
-    projectId: 'cutline-526aa',
-    storageBucket: 'cutline-526aa.firebasestorage.app',
-    iosBundleId: 'com.example.cutline',
+    apiKey: '',
+    appId: '',
+    messagingSenderId: '',
+    projectId: '',
+    storageBucket: '',
+    iosBundleId: 'com.cutline.prod',
   );
 }

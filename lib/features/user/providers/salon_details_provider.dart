@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -26,6 +27,8 @@ class SalonDetailsProvider extends ChangeNotifier {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _queueSubscription;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _bookingSubscription;
   String? _currentSalonId;
+  final Map<String, SalonQueueEntry> _queueItemsLive = {};
+  final Map<String, SalonQueueEntry> _bookingItemsLive = {};
 
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -48,13 +51,6 @@ class SalonDetailsProvider extends ChangeNotifier {
 
 
       // Load data with error handling - continue even if some parts fail
-      int waitMinutes = 0;
-      try {
-        waitMinutes = await _estimateWaitMinutes(doc.id);
-      } catch (e) {
-        // Continue without wait time
-      }
-
       try {
         _barbers = await _loadBarbers(doc.id);
       } catch (e) {
@@ -83,6 +79,7 @@ class SalonDetailsProvider extends ChangeNotifier {
       } catch (e) {
       }
 
+      final waitMinutes = _computeWaitMinutes(_queue);
       _details = _mapSalon(doc.id, doc.data() ?? {}, waitMinutes, _queue);
 
       try {
@@ -122,7 +119,8 @@ class SalonDetailsProvider extends ChangeNotifier {
     try {
       DocumentSnapshot<Map<String, dynamic>>? doc;
       if (salonId.isNotEmpty) {
-        doc = await _firestore.collection('salons').doc(salonId).get();
+        doc = await FirestoreCache.getDoc(
+            _firestore.collection('salons').doc(salonId));
         if (doc.exists) {
           return doc;
         } else {
@@ -130,12 +128,11 @@ class SalonDetailsProvider extends ChangeNotifier {
       }
       if (salonName.isNotEmpty) {
         try {
-          final query = await _firestore
+          final query = await FirestoreCache.getQuery(_firestore
               .collection('salons')
               .where('name', isEqualTo: salonName)
               .where('verificationStatus', isEqualTo: 'verified')
-              .limit(1)
-              .get();
+              .limit(1));
           if (query.docs.isNotEmpty) {
             return query.docs.first;
           } else {
@@ -210,11 +207,10 @@ class SalonDetailsProvider extends ChangeNotifier {
 
   Future<List<SalonBarber>> _loadBarbers(String salonId) async {
     try {
-      final snap = await _firestore
+      final snap = await FirestoreCache.getQuery(_firestore
           .collection('salons')
           .doc(salonId)
-          .collection('barbers')
-          .get();
+          .collection('barbers'));
 
       final docs = snap.docs
           .map((doc) => _mapBarber(doc.id, doc.data()))
@@ -226,8 +222,8 @@ class SalonDetailsProvider extends ChangeNotifier {
 
       // Fallback: read embedded array "barbers" from salon document
       try {
-        final salonDoc =
-            await _firestore.collection('salons').doc(salonId).get();
+        final salonDoc = await FirestoreCache.getDoc(
+            _firestore.collection('salons').doc(salonId));
         final data = salonDoc.data() ?? {};
         final barbersField = data['barbers'];
 
@@ -461,53 +457,20 @@ class SalonDetailsProvider extends ChangeNotifier {
     return TimeOfDay(hour: hour, minute: minute);
   }
 
-  Future<int> _estimateWaitMinutes(String id) async {
-    try {
-      final snap = await _firestore
-          .collection('salons')
-          .doc(id)
-          .collection('queue')
-          .where('status', isEqualTo: 'waiting')
-          .get();
-      if (snap.docs.isEmpty) {
-        return 0;
-      }
-
-      var collected = 0;
-      var items = 0;
-      for (final doc in snap.docs) {
-        final wait = (doc.data()['waitMinutes'] as num?)?.toInt();
-        if (wait != null && wait > 0) {
-          collected += wait;
-          items++;
-        }
-      }
-      if (items > 0) {
-        final avg = (collected / items).ceil();
-        return avg;
-      }
-      final fallback = snap.size * 10;
-      return fallback;
-    } catch (e) {
-      // Return 0 if queue read fails - users can still see salons without wait time
-      return 0;
-    }
-  }
-
   Future<List<SalonQueueEntry>> _loadQueue(String salonId) async {
     try {
       // Only load active queue items (waiting or serving)
-      final queueSnap = await _firestore
+      final queueSnap = await FirestoreCache.getQuery(_firestore
           .collection('salons')
           .doc(salonId)
           .collection('queue')
-          .where('status', whereIn: ['waiting', 'serving']).get();
+          .where('status', whereIn: ['waiting', 'serving']));
 
-      final bookingSnap = await _firestore
+      final bookingSnap = await FirestoreCache.getQuery(_firestore
           .collection('salons')
           .doc(salonId)
           .collection('bookings')
-          .where('status', whereIn: ['waiting', 'serving']).get();
+          .where('status', whereIn: ['waiting', 'serving']));
 
       final queueEntries = queueSnap.docs
           .map((doc) => _mapQueue(doc.id, doc.data()))
@@ -530,16 +493,14 @@ class SalonDetailsProvider extends ChangeNotifier {
     } catch (e) {
       // Fallback: try without status filter if query fails
       try {
-        final queueSnap = await _firestore
+        final queueSnap = await FirestoreCache.getQuery(_firestore
             .collection('salons')
             .doc(salonId)
-            .collection('queue')
-            .get();
-        final bookingSnap = await _firestore
+            .collection('queue'));
+        final bookingSnap = await FirestoreCache.getQuery(_firestore
             .collection('salons')
             .doc(salonId)
-            .collection('bookings')
-            .get();
+            .collection('bookings'));
 
         final queueEntries = queueSnap.docs
             .map((doc) => _mapQueue(doc.id, doc.data()))
@@ -569,6 +530,8 @@ class SalonDetailsProvider extends ChangeNotifier {
     // Cancel existing subscriptions
     _queueSubscription?.cancel();
     _bookingSubscription?.cancel();
+    _queueItemsLive.clear();
+    _bookingItemsLive.clear();
 
     // Listen to queue collection - only active items
     try {
@@ -578,8 +541,17 @@ class SalonDetailsProvider extends ChangeNotifier {
           .collection('queue')
           .where('status', whereIn: ['waiting', 'serving'])
           .snapshots()
-          .listen((snapshot) async {
-            await _updateQueueFromStream(salonId);
+          .listen((snapshot) {
+            if (_currentSalonId != salonId) return;
+            _queueItemsLive
+              ..clear()
+              ..addEntries(
+                snapshot.docs
+                    .map((doc) => _mapQueue(doc.id, doc.data()))
+                    .whereType<SalonQueueEntry>()
+                    .map((entry) => MapEntry(entry.id, entry)),
+              );
+            _rebuildQueueFromLive();
           }, onError: (_) {
             // Fallback: listen to all queue items and filter
             _queueSubscription?.cancel();
@@ -588,8 +560,17 @@ class SalonDetailsProvider extends ChangeNotifier {
                 .doc(salonId)
                 .collection('queue')
                 .snapshots()
-                .listen((snapshot) async {
-              await _updateQueueFromStream(salonId);
+                .listen((snapshot) {
+              if (_currentSalonId != salonId) return;
+              _queueItemsLive
+                ..clear()
+                ..addEntries(
+                  snapshot.docs
+                      .map((doc) => _mapQueue(doc.id, doc.data()))
+                      .whereType<SalonQueueEntry>()
+                      .map((entry) => MapEntry(entry.id, entry)),
+                );
+              _rebuildQueueFromLive();
             }, onError: (_) {});
           });
     } catch (_) {
@@ -599,8 +580,17 @@ class SalonDetailsProvider extends ChangeNotifier {
           .doc(salonId)
           .collection('queue')
           .snapshots()
-          .listen((snapshot) async {
-        await _updateQueueFromStream(salonId);
+          .listen((snapshot) {
+        if (_currentSalonId != salonId) return;
+        _queueItemsLive
+          ..clear()
+          ..addEntries(
+            snapshot.docs
+                .map((doc) => _mapQueue(doc.id, doc.data()))
+                .whereType<SalonQueueEntry>()
+                .map((entry) => MapEntry(entry.id, entry)),
+          );
+        _rebuildQueueFromLive();
       }, onError: (_) {});
     }
 
@@ -612,8 +602,17 @@ class SalonDetailsProvider extends ChangeNotifier {
           .collection('bookings')
           .where('status', whereIn: ['waiting', 'serving'])
           .snapshots()
-          .listen((snapshot) async {
-            await _updateQueueFromStream(salonId);
+          .listen((snapshot) {
+            if (_currentSalonId != salonId) return;
+            _bookingItemsLive
+              ..clear()
+              ..addEntries(
+                snapshot.docs
+                    .map((doc) => _mapBooking(doc.id, doc.data()))
+                    .whereType<SalonQueueEntry>()
+                    .map((entry) => MapEntry(entry.id, entry)),
+              );
+            _rebuildQueueFromLive();
           }, onError: (_) {
             // Fallback: listen to all bookings and filter
             _bookingSubscription?.cancel();
@@ -622,8 +621,17 @@ class SalonDetailsProvider extends ChangeNotifier {
                 .doc(salonId)
                 .collection('bookings')
                 .snapshots()
-                .listen((snapshot) async {
-              await _updateQueueFromStream(salonId);
+                .listen((snapshot) {
+              if (_currentSalonId != salonId) return;
+              _bookingItemsLive
+                ..clear()
+                ..addEntries(
+                  snapshot.docs
+                      .map((doc) => _mapBooking(doc.id, doc.data()))
+                      .whereType<SalonQueueEntry>()
+                      .map((entry) => MapEntry(entry.id, entry)),
+                );
+              _rebuildQueueFromLive();
             }, onError: (_) {});
           });
     } catch (_) {
@@ -633,34 +641,42 @@ class SalonDetailsProvider extends ChangeNotifier {
           .doc(salonId)
           .collection('bookings')
           .snapshots()
-          .listen((snapshot) async {
-        await _updateQueueFromStream(salonId);
+          .listen((snapshot) {
+        if (_currentSalonId != salonId) return;
+        _bookingItemsLive
+          ..clear()
+          ..addEntries(
+            snapshot.docs
+                .map((doc) => _mapBooking(doc.id, doc.data()))
+                .whereType<SalonQueueEntry>()
+                .map((entry) => MapEntry(entry.id, entry)),
+          );
+        _rebuildQueueFromLive();
       }, onError: (_) {});
     }
   }
 
-  Future<void> _updateQueueFromStream(String salonId) async {
-    if (_currentSalonId != salonId) return;
+  void _rebuildQueueFromLive() {
+    if (_currentSalonId == null) return;
+    final queueEntries = _queueItemsLive.values.toList();
+    final bookingEntries = _bookingItemsLive.values.toList();
+    final merged = _mergeQueue(queueEntries, bookingEntries)
+      ..sort(_queueComparator);
+    _queue = merged;
+
     try {
-      _queue = await _loadQueue(salonId);
-
-      // Update barber waiting counts when queue updates
-      try {
-        _updateBarberWaitingCounts(_barbers, _queue);
-      } catch (e) {
-      }
-
-      if (_details != null) {
-        final waitMinutes = await _estimateWaitMinutes(salonId);
-        _details = _details!.copyWith(
-          waitMinutes: waitMinutes,
-          queue: _queue,
-        );
-      }
-      notifyListeners();
-    } catch (_) {
-      // Ignore errors, will retry on next stream update
+      _updateBarberWaitingCounts(_barbers, _queue);
+    } catch (e) {
     }
+
+    if (_details != null) {
+      final waitMinutes = _computeWaitMinutes(merged);
+      _details = _details!.copyWith(
+        waitMinutes: waitMinutes,
+        queue: merged,
+      );
+    }
+    notifyListeners();
   }
 
   @override
@@ -821,6 +837,24 @@ class SalonDetailsProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e, stackTrace) {
     }
+  }
+
+  int _computeWaitMinutes(List<SalonQueueEntry> queue) {
+    final waiting = queue.where((entry) => entry.isWaiting).toList();
+    if (waiting.isEmpty) return 0;
+    var collected = 0;
+    var items = 0;
+    for (final entry in waiting) {
+      if (entry.waitMinutes > 0) {
+        collected += entry.waitMinutes;
+        items++;
+      }
+    }
+    if (items > 0) {
+      final avg = (collected / items).ceil();
+      return avg;
+    }
+    return waiting.length * 10;
   }
 
   SalonQueueEntry _combineEntries(

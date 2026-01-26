@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class RoleSelectionScreen extends StatelessWidget {
-  const RoleSelectionScreen({super.key});
+  const RoleSelectionScreen({super.key, this.message});
+
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
+    final bannerMessage = (message ?? '').trim();
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       body: SafeArea(
@@ -34,6 +37,28 @@ class RoleSelectionScreen extends StatelessWidget {
                   color: Colors.grey.shade600,
                 ),
               ),
+              if (bannerMessage.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.red.shade100),
+                  ),
+                  child: Text(
+                    bannerMessage,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: Colors.red.shade700,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
               const Spacer(),
               _buildRoleCard(
                 context,

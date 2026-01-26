@@ -55,6 +55,8 @@ class SalonService {
     await _firestore.collection('users').doc(ownerId).set(
       {
         'profileComplete': true,
+        // Keep owner profiles queryable by salonId for targeted FCM notifications.
+        'salonId': ownerId,
         'updatedAt': now,
       },
       SetOptions(merge: true),

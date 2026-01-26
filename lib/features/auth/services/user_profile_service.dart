@@ -20,6 +20,9 @@ class UserProfileService {
       'name': name.trim(),
       'phone': phone.trim(),
       'role': role.key,
+      // Owners are associated to the salon document that uses their uid as id.
+      // This allows server-side notification targeting via `.where('salonId' == bookingSalonId)`.
+      if (role == UserRole.owner) 'salonId': uid,
       'profileComplete': role == UserRole.owner ? false : true,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),

@@ -6,10 +6,10 @@
  * 2. onBookingUpdate - Notifies user and barber when booking status changes
  */
 
-const {onDocumentCreated, onDocumentUpdated} =
+const {onDocumentCreated, onDocumentUpdated, onDocumentWritten} =
   require("firebase-functions/v2/firestore");
-const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {setGlobalOptions} = require("firebase-functions/v2");
+const functionsV1 = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const logger = require("firebase-functions/logger");
 
@@ -17,6 +17,98 @@ admin.initializeApp();
 
 // Set global options for all functions
 setGlobalOptions({maxInstances: 10});
+
+/**
+ * Enforce unique ownership of FCM tokens across user documents.
+ *
+ * If the same device token is present on multiple users (e.g. shared phone,
+ * stale token not removed on logout), push notifications can reach the wrong
+ * account. This trigger removes the token from all other users whenever a user
+ * writes/updates their token.
+ */
+exports.onUserFcmTokenWrite = onDocumentWritten(
+    "users/{userId}",
+    async (event) => {
+      const userId = event.params.userId;
+      const after = event.data.after;
+      if (!after.exists) return null;
+
+      const data = after.data() || {};
+      const rawTokens = Array.isArray(data.fcmTokens) ? data.fcmTokens : [];
+      const tokens = rawTokens
+          .filter((t) => typeof t === "string" && t.length > 0)
+          .slice(0, 5); // sanity cap
+
+      // If no array tokens, fall back to single token field.
+      if (tokens.length === 0 &&
+          typeof data.fcmToken === "string" &&
+          data.fcmToken.length > 0) {
+        tokens.push(data.fcmToken);
+      }
+
+      if (tokens.length === 0) return null;
+
+      try {
+        const firestore = admin.firestore();
+        const batch = firestore.batch();
+        // otherUserId -> {remove:Set, deleteSingle:Set}
+        const toClean = new Map();
+
+        for (const token of tokens) {
+          const bySingle = await firestore
+              .collection("users")
+              .where("fcmToken", "==", token)
+              .get();
+          const byArray = await firestore
+              .collection("users")
+              .where("fcmTokens", "array-contains", token)
+              .get();
+
+          const candidates = [...bySingle.docs, ...byArray.docs];
+          for (const doc of candidates) {
+            if (doc.id === userId) continue;
+            const otherData = doc.data() || {};
+
+            const entry = toClean.get(doc.id) || {
+              remove: new Set(),
+              deleteSingle: new Set(),
+              hasTokensArray: Array.isArray(otherData.fcmTokens),
+            };
+            entry.remove.add(token);
+            if (otherData.fcmToken === token) entry.deleteSingle.add(token);
+            toClean.set(doc.id, entry);
+          }
+        }
+
+        if (toClean.size === 0) return null;
+
+        for (const [otherUserId, entry] of toClean.entries()) {
+          const ref = firestore.collection("users").doc(otherUserId);
+          const update = {
+            fcmTokens: admin.firestore.FieldValue.arrayRemove(
+                ...Array.from(entry.remove),
+            ),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          };
+          // If their single-token field matches one we removed, delete it.
+          if (entry.deleteSingle.size > 0) {
+            update.fcmToken = admin.firestore.FieldValue.delete();
+          }
+          batch.update(ref, update);
+        }
+
+        await batch.commit();
+        logger.log(
+            `Deduped FCM token(s) for userId=${userId}; ` +
+            `cleaned=${toClean.size}`,
+        );
+        return null;
+      } catch (error) {
+        logger.error("Error in onUserFcmTokenWrite:", error);
+        return null;
+      }
+    },
+);
 
 /**
  * Triggered when a new booking is created.
@@ -40,100 +132,179 @@ exports.onBookingCreate = onDocumentCreated(
       }
 
       try {
-        // Get salon document to find ownerId
-        const salonDoc = await admin.firestore()
-            .collection("salons")
-            .doc(salonId)
+        const firestore = admin.firestore();
+
+        // Source of truth for routing: the booking path param.
+        const bookingSalonId = salonId;
+        const bookingSalonIdFromData = bookingData.salonId;
+        if (bookingSalonIdFromData &&
+            bookingSalonIdFromData !== bookingSalonId) {
+          logger.warn(
+              `Booking salonId mismatch: path=${bookingSalonId} ` +
+              `data=${bookingSalonIdFromData} bookingId=${bookingId}`,
+          );
+        }
+
+        // Determine the salon owner. Never rely on `users.salonId` as primary,
+        // because it can be stale and cause cross-salon notifications.
+        let ownerDocs = [];
+        let resolvedOwnerId = null;
+
+        // 1) Prefer salon document's ownerId (works for both docId=ownerUid
+        // and docId=random where ownerId is stored as a field).
+        const salonDoc = await firestore.collection("salons")
+            .doc(bookingSalonId)
             .get();
-        if (!salonDoc.exists) {
-          logger.error(`Salon ${salonId} not found`);
-          return null;
+        if (salonDoc.exists) {
+          const salonData = salonDoc.data() || {};
+          if (salonData.ownerId &&
+              typeof salonData.ownerId === "string" &&
+              salonData.ownerId.length > 0) {
+            resolvedOwnerId = salonData.ownerId;
+          }
+        } else {
+          logger.warn(
+              `Salon ${bookingSalonId} not found for bookingId=${bookingId}`,
+          );
         }
 
-        const salonData = salonDoc.data();
-        // Fallback to salonId if ownerId not set
-        const ownerId = salonData.ownerId || salonId;
+        // 2) If no ownerId field, try the common pattern docId==ownerUid.
+        if (!resolvedOwnerId) {
+          resolvedOwnerId = bookingSalonId;
+        }
 
-        // Get owner's FCM tokens
-        const ownerDoc = await admin.firestore()
-            .collection("users")
-            .doc(ownerId)
+        // 3) Lookup users/{ownerId}.
+        const ownerDoc = await firestore.collection("users")
+            .doc(resolvedOwnerId)
             .get();
-        if (!ownerDoc.exists) {
-          logger.error(`Owner ${ownerId} not found`);
-          return null;
+        if (ownerDoc.exists) {
+          const data = ownerDoc.data() || {};
+          if ((data.role || "").toString().toLowerCase() === "owner") {
+            ownerDocs = [ownerDoc];
+          } else {
+            logger.warn(
+                `Resolved ownerId=${resolvedOwnerId} is not role=owner ` +
+                `(role=${data.role || "unknown"}) salonId=${bookingSalonId}`,
+            );
+          }
+        } else {
+          logger.warn(
+              `Owner user doc not found for ownerId=${resolvedOwnerId} ` +
+              `(salonId=${bookingSalonId})`,
+          );
         }
 
-        const ownerData = ownerDoc.data();
-        const fcmTokens = ownerData.fcmTokens ||
-          (ownerData.fcmToken ? [ownerData.fcmToken] : []);
-
-        if (!fcmTokens || fcmTokens.length === 0) {
-          logger.log(`No FCM tokens found for owner ${ownerId}`);
-          return null;
+        // 4) Last resort: legacy mapping users where salonId==salonId.
+        // Only used when the above couldn't resolve, to avoid stale mappings.
+        if (ownerDocs.length === 0) {
+          const ownersBySalonSnap = await firestore
+              .collection("users")
+              .where("salonId", "==", bookingSalonId)
+              .get();
+          ownerDocs = ownersBySalonSnap.docs.filter((doc) => {
+            const data = doc.data() || {};
+            return (data.role || "").toString().toLowerCase() === "owner";
+          });
         }
 
-        // Filter out invalid tokens
-        const validTokens = fcmTokens.filter(
-            (token) => token && typeof token === "string" && token.length > 0,
-        );
-
-        if (validTokens.length === 0) {
-          logger.log(`No valid FCM tokens for owner ${ownerId}`);
-          return null;
-        }
-
-        // Prepare notification payload
         const customerName = bookingData.customerName || "A customer";
-
-        const message = {
-          notification: {
-            title: "New Booking Request",
-            body: `${customerName} has requested a booking`,
-          },
-          data: {
-            type: "booking_request",
-            bookingId: bookingId,
-            salonId: salonId,
-            customerName: customerName || "",
-          },
-          tokens: validTokens,
+        const title = "New Booking Request";
+        const body = `${customerName} has requested a booking`;
+        const dataPayload = {
+          type: "booking_request",
+          bookingId: bookingId,
+          salonId: bookingSalonId,
+          customerName: customerName || "",
         };
 
-        // Save notification to Firestore
-        await admin.firestore().collection("notifications").add({
-          userId: ownerId,
-          type: "booking_request",
-          title: "New Booking Request",
-          body: `${customerName} has requested a booking`,
-          bookingId: bookingId,
-          salonId: salonId,
-          customerName: customerName || "",
-          isRead: false,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+        // Send to each owner doc separately so token cleanup stays correct per
+        // owner.
+        const results = [];
+        logger.log(
+            `Resolved booking owners for salonId=${bookingSalonId}:`,
+            ownerDocs.map((d) => d.id),
+        );
+        for (const doc of ownerDocs) {
+          const ownerId = doc.id;
+          const ownerData = doc.data() || {};
+          const fcmTokens = ownerData.fcmTokens ||
+            (ownerData.fcmToken ? [ownerData.fcmToken] : []);
 
-        // Send notification
-        const response = await admin.messaging().sendEachForMulticast(message);
+          const validTokens = Array.isArray(fcmTokens) ?
+            fcmTokens.filter(
+                (token) =>
+                  token &&
+                  typeof token === "string" &&
+                  token.length > 0,
+            ) :
+            [];
 
-        // Clean up invalid tokens
-        if (response.failureCount > 0) {
-          const invalidTokens = [];
-          response.responses.forEach((resp, idx) => {
-            if (!resp.success) {
-              invalidTokens.push(validTokens[idx]);
-            }
+          if (validTokens.length === 0) {
+            logger.log(
+                `No valid FCM tokens for owner ${ownerId} ` +
+                `(salonId=${bookingSalonId})`,
+            );
+            continue;
+          }
+
+          // Save notification to Firestore (per owner).
+          await firestore.collection("notifications").add({
+            userId: ownerId,
+            type: "booking_request",
+            title,
+            body,
+            bookingId: bookingId,
+            salonId: bookingSalonId,
+            customerName: customerName || "",
+            isRead: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
           });
 
-          if (invalidTokens.length > 0) {
-            await cleanupInvalidTokens(ownerId, invalidTokens);
+          const message = {
+            notification: {title, body},
+            data: dataPayload,
+            tokens: validTokens,
+          };
+
+          const response = await admin.messaging()
+              .sendEachForMulticast(message);
+          results.push({ownerId, response, validTokens});
+
+          if (response.failureCount > 0) {
+            const invalidTokens = [];
+            response.responses.forEach((resp, idx) => {
+              if (!resp.success) {
+                invalidTokens.push(validTokens[idx]);
+              }
+            });
+            if (invalidTokens.length > 0) {
+              await cleanupInvalidTokens(ownerId, invalidTokens);
+            }
           }
         }
 
+        if (results.length === 0) {
+          logger.log(
+              `No owners with tokens to notify for salonId=${bookingSalonId} ` +
+              `(bookingId=${bookingId})`,
+          );
+          return null;
+        }
+
+        const successCount = results.reduce(
+            (sum, r) => sum + (r.response.successCount || 0),
+            0,
+        );
+        const failureCount = results.reduce(
+            (sum, r) => sum + (r.response.failureCount || 0),
+            0,
+        );
+
         logger.log(
-            `Sent booking request notification to owner ${ownerId}: ` +
-            `${response.successCount} successful, ` +
-            `${response.failureCount} failed`,
+            "Sent booking request notification:",
+            `salonId=${bookingSalonId}`,
+            `success=${successCount}`,
+            `failed=${failureCount}`,
         );
         return null;
       } catch (error) {
@@ -164,7 +335,8 @@ exports.onBookingUpdate = onDocumentUpdated(
       if (beforeStatus !== "waiting" && afterStatus === "turn_ready") {
         logger.log(
             `Booking ${bookingId} status change: ` +
-            `${beforeStatus} -> ${afterStatus}, sending turn_ready notification`,
+            `${beforeStatus} -> ${afterStatus}, ` +
+            "sending turn_ready notification",
         );
         try {
           const customerUid = afterData.customerUid ||
@@ -517,7 +689,11 @@ async function notifyTurnReady(customerUid, bookingId, salonId) {
         .collection("salons")
         .doc(salonId)
         .get();
-    const salonName = salonDoc.exists ? (salonDoc.data().name || "Salon") : "Salon";
+    let salonName = "Salon";
+    if (salonDoc.exists) {
+      const salonData = salonDoc.data() || {};
+      salonName = salonData.name || "Salon";
+    }
 
     // Save notification to Firestore
     await admin.firestore().collection("notifications").add({
@@ -575,105 +751,130 @@ async function notifyTurnReady(customerUid, bookingId, salonId) {
  * Auto-cancel bookings that haven't been confirmed within 3 minutes
  * Runs every minute to check for expired turn_ready bookings
  */
-exports.checkTurnReadyExpiry = onSchedule("every 1 minutes", async (event) => {
-  try {
-    logger.log("Checking for expired turn_ready bookings...");
-    const now = admin.firestore.Timestamp.now();
-    const threeMinutesAgo = admin.firestore.Timestamp.fromMillis(
-        now.toMillis() - 3 * 60 * 1000,
-    );
+exports.checkTurnReadyExpiry = functionsV1.pubsub
+    .schedule("every 1 minutes")
+    .onRun(async () => {
+      try {
+        logger.log("Checking for expired turn_ready bookings...");
+        const now = admin.firestore.Timestamp.now();
+        const threeMinutesAgo = admin.firestore.Timestamp.fromMillis(
+            now.toMillis() - 3 * 60 * 1000,
+        );
 
-    // Query all salons' bookings with turn_ready status
-    const salonsSnapshot = await admin.firestore()
-        .collection("salons")
-        .get();
+        // Query all salons' bookings with turn_ready status
+        const salonsSnapshot = await admin.firestore()
+            .collection("salons")
+            .get();
 
-    let cancelledCount = 0;
-    for (const salonDoc of salonsSnapshot.docs) {
-      const salonId = salonDoc.id;
-      const bookingsSnapshot = await admin.firestore()
-          .collection("salons")
-          .doc(salonId)
-          .collection("bookings")
-          .where("status", "==", "turn_ready")
-          .get();
+        let cancelledCount = 0;
+        for (const salonDoc of salonsSnapshot.docs) {
+          const salonId = salonDoc.id;
+          const bookingsSnapshot = await admin.firestore()
+              .collection("salons")
+              .doc(salonId)
+              .collection("bookings")
+              .where("status", "==", "turn_ready")
+              .get();
 
-      for (const bookingDoc of bookingsSnapshot.docs) {
-        const bookingData = bookingDoc.data();
-        const turnReadyAt = bookingData.turnReadyAt;
+          for (const bookingDoc of bookingsSnapshot.docs) {
+            const bookingData = bookingDoc.data();
+            const turnReadyAt = bookingData.turnReadyAt;
 
-        if (turnReadyAt && turnReadyAt.toMillis() < threeMinutesAgo.toMillis()) {
-          // Check if customer has not arrived
-          if (!bookingData.arrived) {
-            logger.log(
-                `Auto-cancelling booking ${bookingDoc.id} - no response within 3 minutes`,
-            );
-            await cancelBookingAndPromoteNext(salonId, bookingDoc.id, "no_show");
-            cancelledCount++;
+            if (
+              turnReadyAt &&
+              turnReadyAt.toMillis() < threeMinutesAgo.toMillis()
+            ) {
+              // Check if customer has not arrived
+              if (!bookingData.arrived) {
+                logger.log(
+                    `Auto-cancelling booking ${bookingDoc.id} ` +
+                    "- no response within 3 minutes",
+                );
+                await cancelBookingAndPromoteNext(
+                    salonId,
+                    bookingDoc.id,
+                    "no_show",
+                );
+                cancelledCount++;
+              }
+            }
           }
         }
-      }
-    }
 
-    logger.log(`Auto-cancelled ${cancelledCount} expired turn_ready bookings`);
-    return null;
-  } catch (error) {
-    logger.error("Error in checkTurnReadyExpiry:", error);
-    return null;
-  }
-});
+        logger.log(
+            `Auto-cancelled ${cancelledCount} expired turn_ready bookings`,
+        );
+        return null;
+      } catch (error) {
+        logger.error("Error in checkTurnReadyExpiry:", error);
+        return null;
+      }
+    });
 
 /**
- * Auto-cancel bookings where customer arrived but wasn't served within 10 minutes
+ * Auto-cancel bookings where customer arrived but wasn't served within
+ * 10 minutes
  * Runs every minute to check for expired arrived bookings
  */
-exports.checkArrivalExpiry = onSchedule("every 1 minutes", async (event) => {
-  try {
-    logger.log("Checking for expired arrived bookings...");
-    const now = admin.firestore.Timestamp.now();
-    const tenMinutesAgo = admin.firestore.Timestamp.fromMillis(
-        now.toMillis() - 10 * 60 * 1000,
-    );
+exports.checkArrivalExpiry = functionsV1.pubsub
+    .schedule("every 1 minutes")
+    .onRun(async () => {
+      try {
+        logger.log("Checking for expired arrived bookings...");
+        const now = admin.firestore.Timestamp.now();
+        const tenMinutesAgo = admin.firestore.Timestamp.fromMillis(
+            now.toMillis() - 10 * 60 * 1000,
+        );
 
-    // Query all salons' bookings with arrived status
-    const salonsSnapshot = await admin.firestore()
-        .collection("salons")
-        .get();
+        // Query all salons' bookings with arrived status
+        const salonsSnapshot = await admin.firestore()
+            .collection("salons")
+            .get();
 
-    let cancelledCount = 0;
-    for (const salonDoc of salonsSnapshot.docs) {
-      const salonId = salonDoc.id;
-      const bookingsSnapshot = await admin.firestore()
-          .collection("salons")
-          .doc(salonId)
-          .collection("bookings")
-          .where("status", "==", "arrived")
-          .get();
+        let cancelledCount = 0;
+        for (const salonDoc of salonsSnapshot.docs) {
+          const salonId = salonDoc.id;
+          const bookingsSnapshot = await admin.firestore()
+              .collection("salons")
+              .doc(salonId)
+              .collection("bookings")
+              .where("status", "==", "arrived")
+              .get();
 
-      for (const bookingDoc of bookingsSnapshot.docs) {
-        const bookingData = bookingDoc.data();
-        const arrivalTime = bookingData.arrivalTime;
+          for (const bookingDoc of bookingsSnapshot.docs) {
+            const bookingData = bookingDoc.data();
+            const arrivalTime = bookingData.arrivalTime;
 
-        if (arrivalTime && arrivalTime.toMillis() < tenMinutesAgo.toMillis()) {
-          // Check if not yet served
-          if (bookingData.status === "arrived" && !bookingData.served) {
-            logger.log(
-                `Auto-cancelling booking ${bookingDoc.id} - not served within 10 minutes`,
-            );
-            await cancelBookingAndPromoteNext(salonId, bookingDoc.id, "no_show");
-            cancelledCount++;
+            if (
+              arrivalTime &&
+              arrivalTime.toMillis() < tenMinutesAgo.toMillis()
+            ) {
+              // Check if not yet served
+              if (bookingData.status === "arrived" && !bookingData.served) {
+                logger.log(
+                    `Auto-cancelling booking ${bookingDoc.id} ` +
+                    "- not served within 10 minutes",
+                );
+                await cancelBookingAndPromoteNext(
+                    salonId,
+                    bookingDoc.id,
+                    "no_show",
+                );
+                cancelledCount++;
+              }
+            }
           }
         }
-      }
-    }
 
-    logger.log(`Auto-cancelled ${cancelledCount} expired arrived bookings`);
-    return null;
-  } catch (error) {
-    logger.error("Error in checkArrivalExpiry:", error);
-    return null;
-  }
-});
+        logger.log(
+            `Auto-cancelled ${cancelledCount} expired arrived bookings`,
+        );
+        return null;
+      } catch (error) {
+        logger.error("Error in checkArrivalExpiry:", error);
+        return null;
+      }
+    });
 
 /**
  * Cancel a booking and promote the next customer in queue
