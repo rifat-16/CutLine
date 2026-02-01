@@ -22,6 +22,7 @@ import 'package:cutline/features/owner/screens/manage_services_screen.dart';
 import 'package:cutline/features/owner/screens/notifications_screen.dart';
 import 'package:cutline/features/owner/screens/owner_home_screen.dart';
 import 'package:cutline/features/owner/screens/owner_profile_screen.dart';
+import 'package:cutline/features/owner/screens/platform_fee_report_screen.dart';
 import 'package:cutline/features/owner/screens/salon_setup_screen.dart';
 import 'package:cutline/features/owner/screens/settings_screen.dart';
 import 'package:cutline/features/owner/screens/working_hours_screen.dart';
@@ -92,6 +93,7 @@ class AppRoutes {
   static const ownerSalonSetup = '/owner-salon-setup';
   static const ownerEditSalonInfo = '/owner-edit-salon-info';
   static const ownerBookingReceipt = '/owner-booking-receipt';
+  static const ownerPlatformFees = '/owner-platform-fees';
 
   static const barberNotifications = '/barber-notifications';
   static const barberWorkHistory = '/barber-work-history';
@@ -101,7 +103,8 @@ class AppRoutes {
 
 class AppRouter {
   // Global navigator key for navigation from anywhere in the app
-  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
 
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -182,8 +185,7 @@ class AppRouter {
         final parsedArgs = args is SalonDetailsArgs ? args : null;
         final salonName = parsedArgs?.salonName ?? (args is String ? args : '');
         final salonId = parsedArgs?.salonId ?? '';
-        return _page(
-            SalonDetailsScreen(salonId: salonId, salonName: salonName),
+        return _page(SalonDetailsScreen(salonId: salonId, salonName: salonName),
             settings);
       case AppRoutes.salonMap:
         final args = settings.arguments;
@@ -204,6 +206,9 @@ class AppRouter {
             BookingScreen(
               salonId: parsedArgs?.salonId ?? '',
               salonName: parsedArgs?.salonName ?? '',
+              preselectedServices:
+                  parsedArgs?.preselectedServices ?? const <String>[],
+              lockServices: parsedArgs?.lockServices ?? false,
             ),
             settings);
       case AppRoutes.bookingSummary:
@@ -241,7 +246,12 @@ class AppRouter {
         final args = settings.arguments;
         final parsedArgs = args is ViewAllServicesArgs ? args : null;
         final salonName = parsedArgs?.salonName ?? (args is String ? args : '');
-        return _page(ViewAllSalonServices(salonName: salonName), settings);
+        return _page(
+            ViewAllSalonServices(
+              salonId: parsedArgs?.salonId ?? '',
+              salonName: salonName,
+            ),
+            settings);
       case AppRoutes.salonGallery:
         final args = settings.arguments;
         final parsedArgs = args is SalonGalleryArgs ? args : null;
@@ -313,6 +323,8 @@ class AppRouter {
           ),
           settings,
         );
+      case AppRoutes.ownerPlatformFees:
+        return _page(const PlatformFeeReportScreen(), settings);
 
       case AppRoutes.barberNotifications:
         return _page(const BarberNotificationScreen(), settings);
@@ -366,10 +378,14 @@ class SalonMapArgs {
 class BookingArgs {
   final String salonId;
   final String salonName;
+  final List<String> preselectedServices;
+  final bool lockServices;
 
   const BookingArgs({
     required this.salonId,
     required this.salonName,
+    this.preselectedServices = const [],
+    this.lockServices = false,
   });
 }
 
@@ -411,8 +427,12 @@ class BookingReceiptArgs {
 
 class ViewAllServicesArgs {
   final String salonName;
+  final String salonId;
 
-  const ViewAllServicesArgs({required this.salonName});
+  const ViewAllServicesArgs({
+    required this.salonName,
+    required this.salonId,
+  });
 }
 
 class SalonGalleryArgs {

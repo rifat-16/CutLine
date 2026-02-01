@@ -29,12 +29,12 @@ class OwnerQueueService {
 
   Future<void> _hydrateCustomerAvatars(List<OwnerQueueItem> items) async {
     final itemsNeedingAvatars = items
-        .where((item) => item.customerAvatar.isEmpty && item.customerUid.isNotEmpty)
+        .where((item) =>
+            item.customerAvatar.isEmpty && item.customerUid.isNotEmpty)
         .toList();
     if (itemsNeedingAvatars.isEmpty) {
       return;
     }
-
 
     // Use individual document reads instead of whereIn query to work with current rules
     // This is more compatible with Firestore security rules
@@ -44,9 +44,8 @@ class OwnerQueueService {
         .toSet()
         .toList();
 
-
     final avatarMap = <String, String>{};
-    
+
     // Read documents individually - this works better with Firestore rules
     for (final uid in uniqueUids) {
       try {
@@ -59,10 +58,8 @@ class OwnerQueueService {
               '';
           if (photoUrl.isNotEmpty) {
             avatarMap[uid] = photoUrl;
-          } else {
-          }
-        } else {
-        }
+          } else {}
+        } else {}
       } catch (e) {
         // Continue with other UIDs
       }
@@ -81,6 +78,7 @@ class OwnerQueueService {
             service: items[index].service,
             barberName: items[index].barberName,
             price: items[index].price,
+            tipAmount: items[index].tipAmount,
             status: items[index].status,
             waitMinutes: items[index].waitMinutes,
             slotLabel: items[index].slotLabel,
@@ -104,8 +102,11 @@ class OwnerQueueService {
     final queueStatus = status.name;
     final bookingStatus = _bookingStatusString(status);
 
-    final queueRef =
-        _firestore.collection('salons').doc(ownerId).collection('queue').doc(id);
+    final queueRef = _firestore
+        .collection('salons')
+        .doc(ownerId)
+        .collection('queue')
+        .doc(id);
     final bookingRef = _firestore
         .collection('salons')
         .doc(ownerId)
@@ -115,10 +116,12 @@ class OwnerQueueService {
     try {
       final queueSnap = await queueRef.get();
       final bookingSnap = await bookingRef.get();
-      final queueData =
-          queueSnap.data() != null ? Map<String, dynamic>.from(queueSnap.data()!) : <String, dynamic>{};
-      final bookingData =
-          bookingSnap.data() != null ? Map<String, dynamic>.from(bookingSnap.data()!) : <String, dynamic>{};
+      final queueData = queueSnap.data() != null
+          ? Map<String, dynamic>.from(queueSnap.data()!)
+          : <String, dynamic>{};
+      final bookingData = bookingSnap.data() != null
+          ? Map<String, dynamic>.from(bookingSnap.data()!)
+          : <String, dynamic>{};
 
       final merged = _buildQueuePayload(
         status: queueStatus,
@@ -132,6 +135,13 @@ class OwnerQueueService {
       }
 
       await queueRef.set(merged, SetOptions(merge: true));
+      if (status == OwnerQueueStatus.done) {
+        await _createLedgersForBooking(
+          ownerId: ownerId,
+          bookingId: id,
+          data: bookingData.isNotEmpty ? bookingData : merged,
+        );
+      }
     } catch (_) {
       // best-effort status update even if merge fails
       final updateData = <String, dynamic>{'status': queueStatus};
@@ -153,7 +163,96 @@ class OwnerQueueService {
         .doc(id)
         .set(bookingUpdateData, SetOptions(merge: true));
 
+    if (status == OwnerQueueStatus.done) {
+      try {
+        final bookingSnap = await bookingRef.get();
+        final data = bookingSnap.data() ?? <String, dynamic>{};
+        await _createLedgersForBooking(
+          ownerId: ownerId,
+          bookingId: id,
+          data: data,
+        );
+      } catch (_) {
+        // ignore ledger failure
+      }
+    }
+
     _queueUpdates.add(null);
+  }
+
+  Future<void> _createLedgersForBooking({
+    required String ownerId,
+    required String bookingId,
+    required Map<String, dynamic> data,
+  }) async {
+    final salonId = (data['salonId'] as String?) ?? ownerId;
+    final tipAmount = (data['tipAmount'] as num?)?.toInt() ?? 0;
+    final serviceCharge = (data['serviceCharge'] as num?)?.toInt() ?? 0;
+    String barberId =
+        (data['barberId'] as String?) ?? (data['barberUid'] as String?) ?? '';
+    String barberName =
+        (data['barberName'] as String?) ?? (data['barber'] as String?) ?? '';
+    final completedAt = data['completedAt'];
+
+    if (barberId.isEmpty || barberName.isEmpty) {
+      try {
+        final salonDoc = await _firestore.collection('salons').doc(ownerId).get();
+        final salonData = salonDoc.data() ?? <String, dynamic>{};
+        final barbersList = salonData['barbers'] as List?;
+        if (barbersList != null) {
+          for (final barber in barbersList) {
+            if (barber is Map) {
+              final id = (barber['id'] as String?) ??
+                  (barber['uid'] as String?) ??
+                  '';
+              final name = (barber['name'] as String?) ?? '';
+              final matchesName = barberName.isNotEmpty &&
+                  name.isNotEmpty &&
+                  name.toLowerCase() == barberName.toLowerCase();
+              final matchesId = barberId.isNotEmpty && id == barberId;
+              if ((barberId.isEmpty && matchesName) ||
+                  (barberName.isEmpty && matchesId)) {
+                if (barberId.isEmpty) barberId = id;
+                if (barberName.isEmpty) barberName = name;
+                break;
+              }
+            }
+          }
+        }
+      } catch (_) {
+        // ignore lookup failures
+      }
+    }
+
+    if (tipAmount > 0) {
+      await _firestore.collection('barber_tip_ledger').doc(bookingId).set(
+        {
+          'bookingId': bookingId,
+          'salonId': salonId,
+          'barberId': barberId,
+          'barberName': barberName,
+          'tipAmount': tipAmount,
+          'status': 'unpaid',
+          'createdAt': FieldValue.serverTimestamp(),
+          if (completedAt is Timestamp) 'completedAt': completedAt,
+        },
+        SetOptions(merge: true),
+      );
+    }
+
+    if (serviceCharge > 0) {
+      await _firestore.collection('platform_fee_ledger').doc(bookingId).set(
+        {
+          'bookingId': bookingId,
+          'salonId': salonId,
+          'feeAmount': serviceCharge,
+          'status': 'unpaid',
+          'createdAt': FieldValue.serverTimestamp(),
+          if (completedAt is Timestamp) 'completedAt': completedAt,
+        },
+        SetOptions(merge: true),
+      );
+    }
   }
 
   Map<String, dynamic> _buildQueuePayload({
@@ -165,11 +264,12 @@ class OwnerQueueService {
         (queueData['date'] as String?) ?? (bookingData['date'] as String?);
     final String? time =
         (queueData['time'] as String?) ?? (bookingData['time'] as String?);
-    final Timestamp? dateTimeTs =
-        (queueData['dateTime'] as Timestamp?) ?? (bookingData['dateTime'] as Timestamp?);
+    final Timestamp? dateTimeTs = (queueData['dateTime'] as Timestamp?) ??
+        (bookingData['dateTime'] as Timestamp?);
 
     final services = (bookingData['services'] as List?)
-            ?.map((e) => (e is Map && e['name'] is String) ? e['name'] as String : '')
+            ?.map((e) =>
+                (e is Map && e['name'] is String) ? e['name'] as String : '')
             .whereType<String>()
             .where((e) => e.isNotEmpty)
             .toList() ??
@@ -179,17 +279,18 @@ class OwnerQueueService {
             ? services.join(', ')
             : (bookingData['service'] as String?));
 
-    final barberName =
-        (queueData['barberName'] as String?) ?? (bookingData['barberName'] as String?);
-    final customerName =
-        (queueData['customerName'] as String?) ?? (bookingData['customerName'] as String?);
-    final customerPhone =
-        (queueData['customerPhone'] as String?) ?? (bookingData['customerPhone'] as String?);
+    final barberName = (queueData['barberName'] as String?) ??
+        (bookingData['barberName'] as String?);
+    final customerName = (queueData['customerName'] as String?) ??
+        (bookingData['customerName'] as String?);
+    final customerPhone = (queueData['customerPhone'] as String?) ??
+        (bookingData['customerPhone'] as String?);
 
     final timeLabel = (queueData['slotLabel'] as String?) ??
         (bookingData['time'] as String?) ??
         (bookingData['dateTime'] is Timestamp
-            ? DateFormat('h:mm a').format((bookingData['dateTime'] as Timestamp).toDate())
+            ? DateFormat('h:mm a')
+                .format((bookingData['dateTime'] as Timestamp).toDate())
             : null);
 
     final durationRaw = (queueData['waitMinutes'] as num?)?.toInt() ??
@@ -199,6 +300,8 @@ class OwnerQueueService {
     final price = (queueData['price'] as num?)?.toInt() ??
         (bookingData['total'] as num?)?.toInt() ??
         (bookingData['price'] as num?)?.toInt();
+    final tipAmount = (queueData['tipAmount'] as num?)?.toInt() ??
+        (bookingData['tipAmount'] as num?)?.toInt();
 
     // Slot label fallback: use time, otherwise build from dateTime if present.
     final slotLabel = timeLabel ??
@@ -212,16 +315,20 @@ class OwnerQueueService {
 
     return {
       'status': status,
-      if (serviceLabel != null && serviceLabel.isNotEmpty) 'service': serviceLabel,
+      if (serviceLabel != null && serviceLabel.isNotEmpty)
+        'service': serviceLabel,
       if (barberName != null && barberName.isNotEmpty) 'barberName': barberName,
-      if (customerName != null && customerName.isNotEmpty) 'customerName': customerName,
-      if (customerPhone != null && customerPhone.isNotEmpty) 'customerPhone': customerPhone,
+      if (customerName != null && customerName.isNotEmpty)
+        'customerName': customerName,
+      if (customerPhone != null && customerPhone.isNotEmpty)
+        'customerPhone': customerPhone,
       if (slotLabel != null && slotLabel.isNotEmpty) 'slotLabel': slotLabel,
       if (date != null && date.isNotEmpty) 'date': date,
       if (time != null && time.isNotEmpty) 'time': time,
       if (dateTimeTs != null) 'dateTime': dateTimeTs,
       if (durationRaw != null) 'waitMinutes': durationRaw,
       if (price != null) 'price': price,
+      if (tipAmount != null) 'tipAmount': tipAmount,
     };
   }
 
@@ -234,8 +341,8 @@ class OwnerQueueService {
             .collection('salons')
             .doc(ownerId)
             .collection('queue')
-            .where('status', whereIn: ['waiting', 'turn_ready', 'arrived', 'serving'])
-            .get();
+            .where('status',
+                whereIn: ['waiting', 'turn_ready', 'arrived', 'serving']).get();
       } catch (e) {
         // Fallback: load all and filter
         try {
@@ -253,8 +360,7 @@ class OwnerQueueService {
       try {
         snap = await _firestore
             .collection('queue')
-            .where('status', whereIn: ['waiting', 'serving'])
-            .get();
+            .where('status', whereIn: ['waiting', 'serving']).get();
       } catch (_) {
         snap = await _firestore.collection('queue').get();
       }
@@ -262,7 +368,11 @@ class OwnerQueueService {
     return snap.docs
         .map((doc) => _mapQueue(doc.id, doc.data()))
         .whereType<OwnerQueueItem>()
-        .where((item) => item.status != OwnerQueueStatus.done && item.status != OwnerQueueStatus.noShow) // Filter out completed and no-show items
+        .where((item) =>
+            item.status != OwnerQueueStatus.done &&
+            item.status !=
+                OwnerQueueStatus
+                    .noShow) // Filter out completed and no-show items
         .toList();
   }
 
@@ -275,8 +385,8 @@ class OwnerQueueService {
             .collection('salons')
             .doc(ownerId)
             .collection('bookings')
-            .where('status', whereIn: ['waiting', 'turn_ready', 'arrived', 'serving'])
-            .get();
+            .where('status',
+                whereIn: ['waiting', 'turn_ready', 'arrived', 'serving']).get();
       } catch (e) {
         // Fallback: try loading all and filter
         try {
@@ -292,7 +402,11 @@ class OwnerQueueService {
       return snap.docs
           .map((doc) => _mapBooking(doc.id, doc.data()))
           .whereType<OwnerQueueItem>()
-          .where((item) => item.status != OwnerQueueStatus.done && item.status != OwnerQueueStatus.noShow) // Filter out completed and no-show items
+          .where((item) =>
+              item.status != OwnerQueueStatus.done &&
+              item.status !=
+                  OwnerQueueStatus
+                      .noShow) // Filter out completed and no-show items
           .toList();
     } catch (e) {
       return const [];
@@ -318,8 +432,7 @@ class OwnerQueueService {
             .collection('salons')
             .doc(ownerId)
             .collection('queue')
-            .where('status', whereIn: ['done', 'completed'])
-            .get();
+            .where('status', whereIn: ['done', 'completed']).get();
       } catch (e) {
         // Fallback: load all and filter
         try {
@@ -346,13 +459,15 @@ class OwnerQueueService {
 
         if (completedAt != null && completedAt is Timestamp) {
           final completedDate = completedAt.toDate();
-          isToday = !completedDate.isBefore(todayStart) && completedDate.isBefore(todayEnd);
+          isToday = !completedDate.isBefore(todayStart) &&
+              completedDate.isBefore(todayEnd);
         } else if (date != null && date == todayStr) {
           isToday = true;
         } else if (updatedAt != null && updatedAt is Timestamp) {
           final updatedDate = updatedAt.toDate();
           // If updatedAt is today and status is completed, assume it was completed today
-          isToday = !updatedDate.isBefore(todayStart) && updatedDate.isBefore(todayEnd);
+          isToday = !updatedDate.isBefore(todayStart) &&
+              updatedDate.isBefore(todayEnd);
         }
 
         if (isToday) {
@@ -370,8 +485,7 @@ class OwnerQueueService {
             .collection('salons')
             .doc(ownerId)
             .collection('bookings')
-            .where('status', whereIn: ['completed', 'done'])
-            .get();
+            .where('status', whereIn: ['completed', 'done']).get();
       } catch (e) {
         // Fallback: load all and filter
         bookingSnap = await _firestore
@@ -395,17 +509,20 @@ class OwnerQueueService {
 
         if (completedAt != null && completedAt is Timestamp) {
           final completedDate = completedAt.toDate();
-          isToday = !completedDate.isBefore(todayStart) && completedDate.isBefore(todayEnd);
+          isToday = !completedDate.isBefore(todayStart) &&
+              completedDate.isBefore(todayEnd);
         } else if (dateTime != null && dateTime is Timestamp) {
           final bookingDate = dateTime.toDate();
           // If booking dateTime is today and status is completed, include it
-          isToday = !bookingDate.isBefore(todayStart) && bookingDate.isBefore(todayEnd);
+          isToday = !bookingDate.isBefore(todayStart) &&
+              bookingDate.isBefore(todayEnd);
         } else if (date != null && date == todayStr) {
           isToday = true;
         } else if (updatedAt != null && updatedAt is Timestamp) {
           final updatedDate = updatedAt.toDate();
           // If updatedAt is today and status is completed, assume it was completed today
-          isToday = !updatedDate.isBefore(todayStart) && updatedDate.isBefore(todayEnd);
+          isToday = !updatedDate.isBefore(todayStart) &&
+              updatedDate.isBefore(todayEnd);
         }
 
         if (isToday) {
@@ -443,6 +560,7 @@ class OwnerQueueService {
       service: (data['service'] as String?) ?? 'Service',
       barberName: (data['barberName'] as String?) ?? 'Barber',
       price: (data['price'] as num?)?.toInt() ?? 0,
+      tipAmount: (data['tipAmount'] as num?)?.toInt() ?? 0,
       status: status,
       waitMinutes: (data['waitMinutes'] as num?)?.toInt() ?? 0,
       slotLabel: (data['slotLabel'] as String?) ?? id,
@@ -467,7 +585,8 @@ class OwnerQueueService {
     final scheduledAt = _parseScheduledAt(data);
 
     final services = (data['services'] as List?)
-            ?.map((e) => (e is Map && e['name'] is String) ? e['name'] as String : '')
+            ?.map((e) =>
+                (e is Map && e['name'] is String) ? e['name'] as String : '')
             .whereType<String>()
             .where((e) => e.isNotEmpty)
             .toList() ??
@@ -492,6 +611,7 @@ class OwnerQueueService {
       service: serviceLabel,
       barberName: (data['barberName'] as String?) ?? 'Barber',
       price: (data['total'] as num?)?.toInt() ?? 0,
+      tipAmount: (data['tipAmount'] as num?)?.toInt() ?? 0,
       status: status,
       waitMinutes: duration,
       slotLabel: timeLabel.isNotEmpty ? timeLabel : id,
@@ -551,9 +671,9 @@ class OwnerQueueService {
 
     final dateStr = (data['date'] as String?)?.trim() ?? '';
     final timeStr = ((data['time'] as String?) ??
-            (data['bookingTime'] as String?) ??
-            (data['slotLabel'] as String?))
-        ?.trim() ??
+                (data['bookingTime'] as String?) ??
+                (data['slotLabel'] as String?))
+            ?.trim() ??
         '';
     if (dateStr.isEmpty || timeStr.isEmpty) return null;
 

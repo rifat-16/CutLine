@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 
 class BookingProvider extends ChangeNotifier {
   BookingProvider({
@@ -63,12 +64,11 @@ class BookingProvider extends ChangeNotifier {
         return;
       }
 
-      final snap = await _firestore
+      final snap = await FirestoreCache.getQuery(_firestore
           .collection('salons')
           .doc(salonId)
           .collection('bookings')
-          .where('date', isEqualTo: formattedDate)
-          .get();
+          .where('date', isEqualTo: formattedDate));
       final slots = <String>{};
       for (final doc in snap.docs) {
         final data = doc.data();
@@ -101,9 +101,11 @@ class BookingProvider extends ChangeNotifier {
 
   Future<void> _loadSalon() async {
     try {
-      final doc = await _firestore.collection('salons').doc(salonId).get();
+      final doc = await FirestoreCache.getDoc(
+        _firestore.collection('salons').doc(salonId),
+      );
       final data = doc.data() ?? {};
-      _services = _parseServices(data['services']);
+      _services = await _loadServices();
       _barbers = await _loadBarbers(data);
       _currentWaiting = await _estimateWaiting();
       _address = (data['address'] as String?) ?? '';
@@ -119,24 +121,48 @@ class BookingProvider extends ChangeNotifier {
     }
   }
 
-  List<BookingService> _parseServices(dynamic raw) {
-    if (raw is! List) return [];
-    return raw.whereType<Map>().map((e) {
-      final map = e.cast<String, dynamic>();
-      return BookingService(
-        name: (map['name'] as String?) ?? 'Service',
-        price: (map['price'] as num?)?.toInt() ?? 0,
-      );
-    }).toList();
+  Future<List<BookingService>> _loadServices() async {
+    try {
+      final query = _firestore
+          .collection('salons')
+          .doc(salonId)
+          .collection('all_services')
+          .orderBy('order');
+      final snap = await FirestoreCache.getQuery(query);
+      final services = snap.docs.map((doc) {
+        final map = doc.data();
+        return BookingService(
+          name: (map['name'] as String?) ?? 'Service',
+          price: (map['price'] as num?)?.toInt() ?? 0,
+        );
+      }).toList();
+      if (services.isNotEmpty) return services;
+    } catch (_) {
+      // fall through to fallback
+    }
+    try {
+      final snap = await FirestoreCache.getQuery(_firestore
+          .collection('salons')
+          .doc(salonId)
+          .collection('all_services'));
+      return snap.docs.map((doc) {
+        final map = doc.data();
+        return BookingService(
+          name: (map['name'] as String?) ?? 'Service',
+          price: (map['price'] as num?)?.toInt() ?? 0,
+        );
+      }).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<List<BookingBarber>> _loadBarbers(Map<String, dynamic> salonData) async {
     try {
-      final snap = await _firestore
+      final snap = await FirestoreCache.getQuery(_firestore
           .collection('salons')
           .doc(salonId)
-          .collection('barbers')
-          .get();
+          .collection('barbers'));
       final barbers = snap.docs.map((doc) {
         final data = doc.data();
         return BookingBarber(
@@ -189,10 +215,9 @@ class BookingProvider extends ChangeNotifier {
     for (var i = 0; i < missing.length; i += chunkSize) {
       final chunk = missing.skip(i).take(chunkSize).toList();
       try {
-        final snap = await _firestore
+        final snap = await FirestoreCache.getQuery(_firestore
             .collection('users')
-            .where(FieldPath.documentId, whereIn: chunk)
-            .get();
+            .where(FieldPath.documentId, whereIn: chunk));
         for (final doc in snap.docs) {
           final data = doc.data();
           final url = (data['photoUrl'] as String?) ??
@@ -226,13 +251,14 @@ class BookingProvider extends ChangeNotifier {
 
   Future<int> _estimateWaiting() async {
     try {
-      final snap = await _firestore
-          .collection('salons')
-          .doc(salonId)
-          .collection('queue')
-          .where('status', isEqualTo: 'waiting')
-          .get();
-      return snap.size;
+      final doc = await FirestoreCache.getDoc(
+        _firestore.collection('salons_summary').doc(salonId),
+      );
+      final data = doc.data();
+      final value = data?['avgWaitMinutes'];
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value) ?? 0;
+      return 0;
     } catch (_) {
       return 0;
     }

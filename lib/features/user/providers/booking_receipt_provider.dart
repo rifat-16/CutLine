@@ -47,20 +47,20 @@ class BookingReceiptProvider extends ChangeNotifier {
   BookingReceiptData _map(Map<String, dynamic> data) {
     final servicesField = data['services'];
     final services = servicesField is List
-        ? servicesField
-            .whereType<Map>()
-            .map((e) {
-              final map = e.cast<String, dynamic>();
-              return ReceiptService(
-                name: (map['name'] as String?) ?? 'Service',
-                price: (map['price'] as num?)?.toInt() ?? 0,
-              );
-            })
-            .toList()
+        ? servicesField.whereType<Map>().map((e) {
+            final map = e.cast<String, dynamic>();
+            return ReceiptService(
+              name: (map['name'] as String?) ?? 'Service',
+              price: (map['price'] as num?)?.toInt() ?? 0,
+            );
+          }).toList()
         : <ReceiptService>[];
 
+    final tipAmount = (data['tipAmount'] as num?)?.toInt() ?? 0;
+    final serviceCharge = (data['serviceCharge'] as num?)?.toInt() ?? 0;
+    final subtotal = services.fold<int>(0, (acc, s) => acc + s.price);
     final total = (data['total'] as num?)?.toInt() ??
-        services.fold<int>(0, (acc, s) => acc + s.price);
+        (subtotal + serviceCharge + tipAmount);
 
     return BookingReceiptData(
       salonName: (data['salonName'] as String?) ?? 'Salon',
@@ -73,8 +73,9 @@ class BookingReceiptProvider extends ChangeNotifier {
       paymentMethod: (data['paymentMethod'] as String?) ?? 'Pay at salon',
       status: (data['status'] as String?) ?? 'upcoming',
       services: services,
-      subtotal: services.fold<int>(0, (acc, s) => acc + s.price),
-      serviceCharge: (data['serviceCharge'] as num?)?.toInt() ?? 0,
+      subtotal: subtotal,
+      serviceCharge: serviceCharge,
+      tipAmount: tipAmount,
       total: total,
       customerName: (data['customerName'] as String?) ?? '',
       customerPhone: (data['customerPhone'] as String?) ?? '',
@@ -106,6 +107,7 @@ class BookingReceiptData {
   final List<ReceiptService> services;
   final int subtotal;
   final int serviceCharge;
+  final int tipAmount;
   final int total;
   final String customerName;
   final String customerPhone;
@@ -124,6 +126,7 @@ class BookingReceiptData {
     required this.services,
     required this.subtotal,
     required this.serviceCharge,
+    required this.tipAmount,
     required this.total,
     required this.customerName,
     required this.customerPhone,

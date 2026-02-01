@@ -333,10 +333,18 @@ class OwnerHomeProvider extends ChangeNotifier {
     _setError(null);
     notifyListeners();
     try {
-      await _firestore
-          .collection('salons')
-          .doc(ownerId)
-          .set({'isOpen': value}, SetOptions(merge: true));
+      final batch = _firestore.batch();
+      batch.set(
+        _firestore.collection('salons').doc(ownerId),
+        {'isOpen': value},
+        SetOptions(merge: true),
+      );
+      batch.set(
+        _firestore.collection('salons_summary').doc(ownerId),
+        {'isOpen': value},
+        SetOptions(merge: true),
+      );
+      await batch.commit();
     } catch (_) {
       _isOpen = previous;
       _setError('Could not update status. Try again.');

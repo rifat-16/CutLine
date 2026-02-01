@@ -94,8 +94,7 @@ class OwnerQueueCard extends StatelessWidget {
                                                     item.customerPhone,
                                                     style: OwnerTextStyles
                                                         .subtitle
-                                                        .copyWith(
-                                                            fontSize: 13),
+                                                        .copyWith(fontSize: 13),
                                                   ),
                                                 ),
                                               ],
@@ -142,12 +141,18 @@ class OwnerQueueCard extends StatelessWidget {
                           const SizedBox(width: 12),
                           Expanded(
                             child: _InfoBadge(
-                              icon: Icons.payments_outlined,
-                              label: 'Total price',
-                              value: '৳${item.price}',
+                              icon: Icons.volunteer_activism_outlined,
+                              label: 'Tip for barber',
+                              value: '৳${item.tipAmount}',
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 12),
+                      _InfoBadge(
+                        icon: Icons.payments_outlined,
+                        label: 'Total price',
+                        value: '৳${item.price}',
                       ),
                     ],
                   ),
@@ -389,10 +394,10 @@ class _ActionRowBodyState extends State<_ActionRowBody> {
         runSpacing: 8,
         children: widget.actions.map((action) {
           final isLoading = _pendingStatus == action.nextStatus;
-          final VoidCallback? handler = widget.onStatusChange == null ||
-                  _pendingStatus != null
-              ? null
-              : () => _handleAction(action.nextStatus);
+          final VoidCallback? handler =
+              widget.onStatusChange == null || _pendingStatus != null
+                  ? null
+                  : () => _handleAction(action.nextStatus);
           if (action.isOutline) {
             return OutlinedButton(
               style: OutlinedButton.styleFrom(

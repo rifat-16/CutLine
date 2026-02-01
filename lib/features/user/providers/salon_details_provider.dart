@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:flutter/material.dart';
@@ -24,12 +23,6 @@ class SalonDetailsProvider extends ChangeNotifier {
   List<SalonQueueEntry> _queue = [];
   bool _isFavorite = false;
 
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _queueSubscription;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _bookingSubscription;
-  String? _currentSalonId;
-  final Map<String, SalonQueueEntry> _queueItemsLive = {};
-  final Map<String, SalonQueueEntry> _bookingItemsLive = {};
-
   bool get isLoading => _isLoading;
   String? get error => _error;
   SalonDetailsData? get details => _details;
@@ -41,13 +34,15 @@ class SalonDetailsProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-
       final doc = await _fetchSalonDoc();
       if (doc == null || !doc.exists) {
         _details = null;
         _setError('Salon details not found.');
         return;
       }
+
+      final summary = await _fetchSalonSummary(doc.id);
+      final summaryWaitMinutes = _summaryWaitMinutes(summary);
 
 
       // Load data with error handling - continue even if some parts fail
@@ -60,6 +55,20 @@ class SalonDetailsProvider extends ChangeNotifier {
       try {
         await _hydrateBarberAvatars(_barbers);
       } catch (e) {
+      }
+
+      List<SalonService> services = [];
+      try {
+        services = await _loadServices(doc.id);
+      } catch (e) {
+        services = [];
+      }
+
+      List<String> galleryPhotos = [];
+      try {
+        galleryPhotos = await _loadGalleryPhotos(doc.id);
+      } catch (e) {
+        galleryPhotos = [];
       }
 
       try {
@@ -79,21 +88,21 @@ class SalonDetailsProvider extends ChangeNotifier {
       } catch (e) {
       }
 
-      final waitMinutes = _computeWaitMinutes(_queue);
-      _details = _mapSalon(doc.id, doc.data() ?? {}, waitMinutes, _queue);
+      final waitMinutes = summaryWaitMinutes ?? _computeWaitMinutes(_queue);
+      _details = _mapSalon(
+        doc.id,
+        doc.data() ?? {},
+        waitMinutes,
+        _queue,
+        services,
+        galleryPhotos,
+        summary?['topServices'],
+      );
 
       try {
         await _loadFavorite(doc.id);
       } catch (e) {
         _isFavorite = false;
-      }
-
-      _currentSalonId = doc.id;
-
-      try {
-        _startRealtimeQueueUpdates(doc.id);
-      } catch (e) {
-        // Continue without realtime updates
       }
 
     } catch (e, stackTrace) {
@@ -146,35 +155,38 @@ class SalonDetailsProvider extends ChangeNotifier {
     }
   }
 
-  SalonDetailsData _mapSalon(String id, Map<String, dynamic> data,
-      int waitMinutes, List<SalonQueueEntry> queue) {
-    final services = _mapServices(data['services']);
+  Future<Map<String, dynamic>?> _fetchSalonSummary(String salonId) async {
+    try {
+      final doc = await FirestoreCache.getDoc(
+        _firestore.collection('salons_summary').doc(salonId),
+      );
+      return doc.data();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int? _summaryWaitMinutes(Map<String, dynamic>? summary) {
+    if (summary == null) return null;
+    final value = summary['avgWaitMinutes'];
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  SalonDetailsData _mapSalon(
+    String id,
+    Map<String, dynamic> data,
+    int waitMinutes,
+    List<SalonQueueEntry> queue,
+    List<SalonService> services,
+    List<String> galleryPhotos,
+    dynamic summaryTopServices,
+  ) {
     final combos = _mapCombos(data['combos']);
     final workingHours = _mapWorkingHours(data['workingHours']);
     final topServicesFromServices = services.map((s) => s.name).toList();
-    final topServicesField = data['topServices'];
-    final topServices = _parseTopServices(topServicesField);
-    // Try multiple field names for gallery photos
-    final galleryPhotosRaw = data['galleryPhotos'] ??
-        data['gallery'] ??
-        data['photos'] ??
-        data['galleryImages'];
-
-    List<String> galleryPhotos = [];
-    if (galleryPhotosRaw is List) {
-      galleryPhotos = galleryPhotosRaw
-          .whereType<String>()
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
-    } else if (galleryPhotosRaw is Map) {
-      // Handle map format if needed
-      galleryPhotos = galleryPhotosRaw.values
-          .whereType<String>()
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
-    }
+    final topServices = _parseTopServices(summaryTopServices ?? data['topServices']);
 
     final locationField = data['location'];
     final GeoPoint? geoPoint =
@@ -264,18 +276,93 @@ class SalonDetailsProvider extends ChangeNotifier {
     }
   }
 
+  Future<List<SalonService>> _loadServices(String salonId) async {
+    try {
+      final query = _firestore
+          .collection('salons')
+          .doc(salonId)
+          .collection('all_services')
+          .orderBy('order');
+      final snap = await FirestoreCache.getQuery(query);
+      final services = snap.docs.map((doc) {
+        final data = doc.data();
+        return SalonService(
+          name: (data['name'] as String?) ?? 'Service',
+          price: (data['price'] as num?)?.toInt() ?? 0,
+          durationMinutes:
+              (data['durationMinutes'] as num?)?.toInt() ?? 0,
+        );
+      }).toList();
+      if (services.isNotEmpty) return services;
+    } catch (_) {
+      // fall through to fallback
+    }
+    try {
+      final fallbackQuery = _firestore
+          .collection('salons')
+          .doc(salonId)
+          .collection('all_services');
+      final snap = await FirestoreCache.getQuery(fallbackQuery);
+      return snap.docs.map((doc) {
+        final data = doc.data();
+        return SalonService(
+          name: (data['name'] as String?) ?? 'Service',
+          price: (data['price'] as num?)?.toInt() ?? 0,
+          durationMinutes:
+              (data['durationMinutes'] as num?)?.toInt() ?? 0,
+        );
+      }).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<String>> _loadGalleryPhotos(String salonId) async {
+    try {
+      final query = _firestore
+          .collection('salons')
+          .doc(salonId)
+          .collection('photos')
+          .orderBy('order');
+      final snap = await FirestoreCache.getQuery(query);
+      final photos = snap.docs
+          .map((doc) => (doc.data()['url'] as String?)?.trim() ?? '')
+          .where((url) => url.isNotEmpty)
+          .toList();
+      if (photos.isNotEmpty) return photos;
+    } catch (_) {
+      // fall through to fallback
+    }
+    try {
+      final fallbackQuery = _firestore
+          .collection('salons')
+          .doc(salonId)
+          .collection('photos');
+      final snap = await FirestoreCache.getQuery(fallbackQuery);
+      return snap.docs
+          .map((doc) => (doc.data()['url'] as String?)?.trim() ?? '')
+          .where((url) => url.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   Future<void> _loadFavorite(String id) async {
     if (userId.isEmpty) {
       return;
     }
     try {
-      final favDoc = await _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('favorites')
-          .doc(id)
-          .get();
-      _isFavorite = favDoc.exists;
+      final userDoc = await FirestoreCache.getDoc(
+        _firestore.collection('users').doc(userId),
+      );
+      final data = userDoc.data();
+      final raw = data?['favoriteSalonIds'];
+      if (raw is List) {
+        _isFavorite = raw.whereType<String>().contains(id);
+      } else {
+        _isFavorite = false;
+      }
     } catch (e) {
       _isFavorite = false;
     }
@@ -287,22 +374,28 @@ class SalonDetailsProvider extends ChangeNotifier {
       return;
     }
 
-    final favRef = _firestore
-        .collection('users')
-        .doc(userId)
-        .collection('favorites')
-        .doc(_details!.id);
+    final userRef = _firestore.collection('users').doc(userId);
 
     try {
-
       if (_isFavorite) {
-        await favRef.delete();
+        await userRef.set(
+          {
+            'favoriteSalonIds':
+                FieldValue.arrayRemove([_details!.id]),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
         _isFavorite = false;
       } else {
-        await favRef.set({
-          'salonId': _details!.id,
-          'addedAt': FieldValue.serverTimestamp(),
-        });
+        await userRef.set(
+          {
+            'favoriteSalonIds':
+                FieldValue.arrayUnion([_details!.id]),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
         _isFavorite = true;
       }
       notifyListeners();
@@ -370,18 +463,6 @@ class SalonDetailsProvider extends ChangeNotifier {
     }
     if (skills is String) return skills;
     return 'Fade • Trim • Beard';
-  }
-
-  List<SalonService> _mapServices(dynamic data) {
-    if (data is! List) return [];
-    return data.whereType<Map>().map((raw) {
-      final map = raw.cast<String, dynamic>();
-      return SalonService(
-        name: (map['name'] as String?) ?? 'Service',
-        price: (map['price'] as num?)?.toInt() ?? 0,
-        durationMinutes: (map['durationMinutes'] as num?)?.toInt() ?? 0,
-      );
-    }).toList();
   }
 
   List<SalonCombo> _mapCombos(dynamic data) {
@@ -526,163 +607,8 @@ class SalonDetailsProvider extends ChangeNotifier {
     }
   }
 
-  void _startRealtimeQueueUpdates(String salonId) {
-    // Cancel existing subscriptions
-    _queueSubscription?.cancel();
-    _bookingSubscription?.cancel();
-    _queueItemsLive.clear();
-    _bookingItemsLive.clear();
-
-    // Listen to queue collection - only active items
-    try {
-      _queueSubscription = _firestore
-          .collection('salons')
-          .doc(salonId)
-          .collection('queue')
-          .where('status', whereIn: ['waiting', 'serving'])
-          .snapshots()
-          .listen((snapshot) {
-            if (_currentSalonId != salonId) return;
-            _queueItemsLive
-              ..clear()
-              ..addEntries(
-                snapshot.docs
-                    .map((doc) => _mapQueue(doc.id, doc.data()))
-                    .whereType<SalonQueueEntry>()
-                    .map((entry) => MapEntry(entry.id, entry)),
-              );
-            _rebuildQueueFromLive();
-          }, onError: (_) {
-            // Fallback: listen to all queue items and filter
-            _queueSubscription?.cancel();
-            _queueSubscription = _firestore
-                .collection('salons')
-                .doc(salonId)
-                .collection('queue')
-                .snapshots()
-                .listen((snapshot) {
-              if (_currentSalonId != salonId) return;
-              _queueItemsLive
-                ..clear()
-                ..addEntries(
-                  snapshot.docs
-                      .map((doc) => _mapQueue(doc.id, doc.data()))
-                      .whereType<SalonQueueEntry>()
-                      .map((entry) => MapEntry(entry.id, entry)),
-                );
-              _rebuildQueueFromLive();
-            }, onError: (_) {});
-          });
-    } catch (_) {
-      // Fallback: listen without filter
-      _queueSubscription = _firestore
-          .collection('salons')
-          .doc(salonId)
-          .collection('queue')
-          .snapshots()
-          .listen((snapshot) {
-        if (_currentSalonId != salonId) return;
-        _queueItemsLive
-          ..clear()
-          ..addEntries(
-            snapshot.docs
-                .map((doc) => _mapQueue(doc.id, doc.data()))
-                .whereType<SalonQueueEntry>()
-                .map((entry) => MapEntry(entry.id, entry)),
-          );
-        _rebuildQueueFromLive();
-      }, onError: (_) {});
-    }
-
-    // Listen to bookings collection - only active items
-    try {
-      _bookingSubscription = _firestore
-          .collection('salons')
-          .doc(salonId)
-          .collection('bookings')
-          .where('status', whereIn: ['waiting', 'serving'])
-          .snapshots()
-          .listen((snapshot) {
-            if (_currentSalonId != salonId) return;
-            _bookingItemsLive
-              ..clear()
-              ..addEntries(
-                snapshot.docs
-                    .map((doc) => _mapBooking(doc.id, doc.data()))
-                    .whereType<SalonQueueEntry>()
-                    .map((entry) => MapEntry(entry.id, entry)),
-              );
-            _rebuildQueueFromLive();
-          }, onError: (_) {
-            // Fallback: listen to all bookings and filter
-            _bookingSubscription?.cancel();
-            _bookingSubscription = _firestore
-                .collection('salons')
-                .doc(salonId)
-                .collection('bookings')
-                .snapshots()
-                .listen((snapshot) {
-              if (_currentSalonId != salonId) return;
-              _bookingItemsLive
-                ..clear()
-                ..addEntries(
-                  snapshot.docs
-                      .map((doc) => _mapBooking(doc.id, doc.data()))
-                      .whereType<SalonQueueEntry>()
-                      .map((entry) => MapEntry(entry.id, entry)),
-                );
-              _rebuildQueueFromLive();
-            }, onError: (_) {});
-          });
-    } catch (_) {
-      // Fallback: listen without filter
-      _bookingSubscription = _firestore
-          .collection('salons')
-          .doc(salonId)
-          .collection('bookings')
-          .snapshots()
-          .listen((snapshot) {
-        if (_currentSalonId != salonId) return;
-        _bookingItemsLive
-          ..clear()
-          ..addEntries(
-            snapshot.docs
-                .map((doc) => _mapBooking(doc.id, doc.data()))
-                .whereType<SalonQueueEntry>()
-                .map((entry) => MapEntry(entry.id, entry)),
-          );
-        _rebuildQueueFromLive();
-      }, onError: (_) {});
-    }
-  }
-
-  void _rebuildQueueFromLive() {
-    if (_currentSalonId == null) return;
-    final queueEntries = _queueItemsLive.values.toList();
-    final bookingEntries = _bookingItemsLive.values.toList();
-    final merged = _mergeQueue(queueEntries, bookingEntries)
-      ..sort(_queueComparator);
-    _queue = merged;
-
-    try {
-      _updateBarberWaitingCounts(_barbers, _queue);
-    } catch (e) {
-    }
-
-    if (_details != null) {
-      final waitMinutes = _computeWaitMinutes(merged);
-      _details = _details!.copyWith(
-        waitMinutes: waitMinutes,
-        queue: merged,
-      );
-    }
-    notifyListeners();
-  }
-
   @override
   void dispose() {
-    _queueSubscription?.cancel();
-    _bookingSubscription?.cancel();
     super.dispose();
   }
 
@@ -784,7 +710,9 @@ class SalonDetailsProvider extends ChangeNotifier {
 
     for (final uid in uids) {
       try {
-        final doc = await _firestore.collection('users').doc(uid).get();
+        final doc = await FirestoreCache.getDoc(
+          _firestore.collection('users').doc(uid),
+        );
         if (doc.exists) {
           final data = doc.data() ?? {};
           final url = (data['photoUrl'] as String?)?.trim() ??

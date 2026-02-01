@@ -9,11 +9,15 @@ import 'package:provider/provider.dart';
 class BookingScreen extends StatefulWidget {
   final String salonId;
   final String salonName;
+  final List<String> preselectedServices;
+  final bool lockServices;
 
   const BookingScreen({
     super.key,
     required this.salonId,
     required this.salonName,
+    this.preselectedServices = const [],
+    this.lockServices = false,
   });
 
   @override
@@ -25,6 +29,14 @@ class _BookingScreenState extends State<BookingScreen> {
   String? selectedBarber;
   DateTime selectedDate = DateTime.now();
   String? selectedTime;
+  bool _comboServicesResolved = false;
+  bool _hasManualServiceChange = false;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedServiceList = List<String>.from(widget.preselectedServices);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,11 +48,14 @@ class _BookingScreenState extends State<BookingScreen> {
         final provider = context.watch<BookingProvider>();
         final services = provider.services;
         final barbers = provider.barbers;
+        _resolveComboServices(provider);
         final servicePrices = {
           for (final s in services) s.name: s.price,
         };
         final total = selectedServiceList.fold<int>(
             0, (sum, service) => sum + (servicePrices[service] ?? 0));
+        final canLockServices =
+            widget.lockServices && selectedServiceList.isNotEmpty;
         return Scaffold(
           appBar: const CutlineAppBar(title: 'Book Your Slot'),
           body: provider.isLoading && provider.services.isEmpty
@@ -72,22 +87,41 @@ class _BookingScreenState extends State<BookingScreen> {
                             style: const TextStyle(color: Colors.red),
                           ),
                         ),
-                      const CutlineSectionHeader(title: 'Select Service'),
-                      const SizedBox(height: CutlineSpacing.sm),
-                      _ServiceSelector(
-                        services: services.map((e) => e.name).toList(),
-                        servicePrices: servicePrices,
-                        selectedServices: selectedServiceList,
-                        onToggle: (service) {
-                          setState(() {
-                            if (selectedServiceList.contains(service)) {
-                              selectedServiceList.remove(service);
-                            } else {
-                              selectedServiceList.add(service);
-                            }
-                          });
-                        },
-                      ),
+                      if (!canLockServices) ...[
+                        const CutlineSectionHeader(title: 'Select Service'),
+                        const SizedBox(height: CutlineSpacing.sm),
+                        _ServiceSelector(
+                          services: services.map((e) => e.name).toList(),
+                          servicePrices: servicePrices,
+                          selectedServices: selectedServiceList,
+                          onToggle: (service) {
+                            _hasManualServiceChange = true;
+                            setState(() {
+                              if (selectedServiceList.contains(service)) {
+                                selectedServiceList.remove(service);
+                              } else {
+                                selectedServiceList.add(service);
+                              }
+                            });
+                          },
+                        ),
+                        if (widget.lockServices &&
+                            widget.preselectedServices.isNotEmpty &&
+                            selectedServiceList.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              'Combo services not matched. Please select services manually.',
+                              style: const TextStyle(color: Colors.orange),
+                            ),
+                          ),
+                      ] else ...[
+                        const CutlineSectionHeader(title: 'Selected Services'),
+                        const SizedBox(height: CutlineSpacing.sm),
+                        _SelectedServiceChips(
+                          services: selectedServiceList,
+                        ),
+                      ],
                       const SizedBox(height: CutlineSpacing.md),
                       const CutlineSectionHeader(title: 'Select Barber'),
                       const SizedBox(height: CutlineSpacing.sm),
@@ -133,12 +167,11 @@ class _BookingScreenState extends State<BookingScreen> {
                       ),
                       const SizedBox(height: CutlineSpacing.sm),
                       Text(
-                        'Current waiting: ${provider.currentWaiting} people ahead',
+                        provider.currentWaiting <= 0
+                            ? 'Avg wait: No wait'
+                            : 'Avg wait: ${provider.currentWaiting} min',
                         style: CutlineTextStyles.subtitle,
                       ),
-                      const SizedBox(height: CutlineSpacing.sm),
-                      const Text('Estimated wait time: 20 min',
-                          style: CutlineTextStyles.subtitle),
                       const SizedBox(height: CutlineSpacing.lg),
                       _BookingSummaryCard(
                         totalAmount: total,
@@ -187,6 +220,74 @@ class _BookingScreenState extends State<BookingScreen> {
         );
       },
     );
+  }
+
+  void _resolveComboServices(BookingProvider provider) {
+    if (_comboServicesResolved ||
+        _hasManualServiceChange ||
+        widget.preselectedServices.isEmpty) {
+      return;
+    }
+    if (provider.services.isEmpty) return;
+
+    final available = provider.services.map((e) => e.name).toList();
+    final matched = _matchServices(widget.preselectedServices, available);
+    _comboServicesResolved = true;
+    if (matched.isEmpty) {
+      if (selectedServiceList.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() {
+            selectedServiceList = [];
+          });
+        });
+      }
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        selectedServiceList = matched;
+      });
+    });
+  }
+
+  List<String> _matchServices(
+      List<String> desiredServices, List<String> available) {
+    final normalizedMap = <String, String>{};
+    for (final service in available) {
+      final normalized = _normalizeServiceName(service);
+      if (normalized.isEmpty) continue;
+      normalizedMap.putIfAbsent(normalized, () => service);
+    }
+
+    final matched = <String>[];
+    for (final desired in desiredServices) {
+      final normalizedDesired = _normalizeServiceName(desired);
+      if (normalizedDesired.isEmpty) continue;
+      final exact = normalizedMap[normalizedDesired];
+      if (exact != null) {
+        matched.add(exact);
+        continue;
+      }
+      String? fallback;
+      for (final entry in normalizedMap.entries) {
+        if (entry.key.contains(normalizedDesired) ||
+            normalizedDesired.contains(entry.key)) {
+          fallback = entry.value;
+          break;
+        }
+      }
+      if (fallback != null) matched.add(fallback);
+    }
+    return matched.toSet().toList();
+  }
+
+  String _normalizeServiceName(String input) {
+    return input
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '')
+        .trim();
   }
 }
 
@@ -313,6 +414,40 @@ class _ServiceSelector extends StatelessWidget {
   }
 }
 
+class _SelectedServiceChips extends StatelessWidget {
+  final List<String> services;
+
+  const _SelectedServiceChips({required this.services});
+
+  @override
+  Widget build(BuildContext context) {
+    if (services.isEmpty) {
+      return const Text(
+        'No services selected.',
+        style: CutlineTextStyles.subtitle,
+      );
+    }
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: services.map((service) {
+        return Chip(
+          label: Text(service),
+          backgroundColor: CutlineColors.primary.withValues(alpha: 0.12),
+          labelStyle: const TextStyle(
+            color: CutlineColors.primary,
+            fontWeight: FontWeight.w600,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: CutlineColors.primary.withValues(alpha: 0.4)),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
 class _BarberGrid extends StatelessWidget {
   final List<BookingBarber> barbers;
   final String? selectedBarber;
@@ -328,7 +463,7 @@ class _BarberGrid extends StatelessWidget {
       itemCount: barbers.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 1.5,
+        childAspectRatio: 1.25,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
       ),
@@ -343,15 +478,15 @@ class _BarberGrid extends StatelessWidget {
                   ? [CutlineColors.primary.withValues(alpha: 0.7), CutlineColors.primary]
                   : [CutlineColors.background, CutlineColors.secondaryBackground],
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
                 ClipOval(
                   child: Container(
-                    width: 40,
-                    height: 40,
+                    width: 56,
+                    height: 56,
                     color: Colors.grey.shade200,
                     child: barber.avatarUrl != null && barber.avatarUrl!.isNotEmpty
                         ? Image.network(
@@ -372,10 +507,10 @@ class _BarberGrid extends StatelessWidget {
                             errorBuilder: (_, __, ___) => const Icon(
                               Icons.person,
                               color: Colors.grey,
-                              size: 20,
+                              size: 28,
                             ),
                           )
-                        : const Icon(Icons.person, color: Colors.grey, size: 20),
+                        : const Icon(Icons.person, color: Colors.grey, size: 28),
                   ),
                 ),
                 const SizedBox(height: 6),

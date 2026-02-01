@@ -46,8 +46,8 @@ class WorkHistoryScreen extends StatelessWidget {
                             Center(
                               child: Column(
                                 children: const [
-                                  Icon(Icons.history, size: 48,
-                                      color: Colors.black45),
+                                  Icon(Icons.history,
+                                      size: 48, color: Colors.black45),
                                   SizedBox(height: 8),
                                   Text(
                                     'No history yet',
@@ -70,15 +70,19 @@ class WorkHistoryScreen extends StatelessWidget {
                       : ListView.builder(
                           padding: const EdgeInsets.all(16),
                           physics: const AlwaysScrollableScrollPhysics(),
-                          itemCount: provider.items.length,
+                          itemCount: provider.items.length + 1,
                           itemBuilder: (context, index) {
-                            final item = provider.items[index];
+                            if (index == 0) {
+                              return _tipSummary(provider.totalTips);
+                            }
+                            final item = provider.items[index - 1];
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 12),
                               child: _historyCard(
                                 service: item.service,
                                 client: item.client,
-                                price: '৳${item.price}',
+                                total: '৳${item.total}',
+                                tipAmount: item.tipAmount,
                                 time: _formatTime(item.time),
                                 status: _statusLabel(item.status),
                                 color: _statusColor(item.status),
@@ -92,10 +96,40 @@ class WorkHistoryScreen extends StatelessWidget {
     );
   }
 
+  Widget _tipSummary(int totalTips) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.green.shade100),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            'Total tips earned',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          Text(
+            '৳$totalTips',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.green,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _historyCard({
     required String service,
     required String client,
-    required String price,
+    required String total,
+    required int tipAmount,
     required String time,
     required String status,
     required Color color,
@@ -129,7 +163,7 @@ class WorkHistoryScreen extends StatelessWidget {
                 ),
               ),
               Text(
-                price,
+                total,
                 style: const TextStyle(
                   color: Colors.blue,
                   fontSize: 16,
@@ -148,6 +182,18 @@ class WorkHistoryScreen extends StatelessWidget {
               color: Colors.grey.shade700,
             ),
           ),
+
+          if (tipAmount > 0) ...[
+            const SizedBox(height: 6),
+            Text(
+              "Tip: ৳$tipAmount",
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.green.shade700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
 
           const SizedBox(height: 6),
 
@@ -186,7 +232,7 @@ class WorkHistoryScreen extends StatelessWidget {
         time.year == now.year && time.month == now.month && time.day == now.day;
     final isYesterday =
         time.difference(DateTime(now.year, now.month, now.day)).inDays == -1;
-    
+
     // Convert to 12-hour AM/PM format
     int hour = time.hour;
     final minute = time.minute;
@@ -197,7 +243,7 @@ class WorkHistoryScreen extends StatelessWidget {
       hour = hour - 12;
     }
     final timeLabel = "$hour:${minute.toString().padLeft(2, '0')} $period";
-    
+
     if (isToday) return "Today • $timeLabel";
     if (isYesterday) return "Yesterday • $timeLabel";
     return "${time.year}/${time.month.toString().padLeft(2, '0')}/${time.day.toString().padLeft(2, '0')} • $timeLabel";

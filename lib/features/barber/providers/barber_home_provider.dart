@@ -25,6 +25,7 @@ class BarberHomeProvider extends ChangeNotifier {
   bool _isAvailable = true;
   bool _isUpdatingAvailability = false;
   String? _salonName;
+  int _todayTips = 0;
 
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -34,6 +35,7 @@ class BarberHomeProvider extends ChangeNotifier {
   bool get isAvailable => _isAvailable;
   bool get isUpdatingAvailability => _isUpdatingAvailability;
   String? get salonName => _salonName;
+  int get todayTips => _todayTips;
 
   int get waitingCount => _countStatus(BarberQueueStatus.waiting);
   int get servingCount => _countStatus(BarberQueueStatus.serving);
@@ -45,10 +47,10 @@ class BarberHomeProvider extends ChangeNotifier {
       _setError('Please log in again.');
       return;
     }
-    
+
     _setLoading(true);
     _setError(null);
-    
+
     try {
       // Verify user document exists and has barber role
       try {
@@ -69,7 +71,8 @@ class BarberHomeProvider extends ChangeNotifier {
         _profile = _profileFromUserData(uid, userData);
       } catch (e, stackTrace) {
         if (e is FirebaseException && e.code == 'permission-denied') {
-          _setError('Permission denied. Please check Firestore rules are deployed.');
+          _setError(
+              'Permission denied. Please check Firestore rules are deployed.');
           _setLoading(false);
           return;
         }
@@ -77,30 +80,32 @@ class BarberHomeProvider extends ChangeNotifier {
 
       final profile = _profile;
       if (profile == null) {
-        _setError('Could not load your profile. Please contact the salon owner.');
+        _setError(
+            'Could not load your profile. Please contact the salon owner.');
         _setLoading(false);
         return;
       }
 
       await _loadSalonMeta(profile.ownerId);
-      
+      _todayTips = await _loadTodayTips(profile);
+
       try {
         _isAvailable = await _fetchAvailability(profile);
       } catch (e) {
         _isAvailable = true; // Default to available
       }
-      
+
       if (_salonOpen) {
         _startQueueListener(profile);
       } else {
         _queue = [];
       }
-      
     } catch (e, stackTrace) {
       String errorMessage = 'Failed to load data. Pull to refresh.';
       if (e is FirebaseException) {
         if (e.code == 'permission-denied') {
-          errorMessage = 'Permission denied. Please check Firestore rules are deployed.';
+          errorMessage =
+              'Permission denied. Please check Firestore rules are deployed.';
         } else if (e.code == 'unavailable') {
           errorMessage = 'Network error. Check your connection.';
         } else {
@@ -113,8 +118,7 @@ class BarberHomeProvider extends ChangeNotifier {
     }
   }
 
-  BarberProfile? _profileFromUserData(
-      String uid, Map<String, dynamic>? data) {
+  BarberProfile? _profileFromUserData(String uid, Map<String, dynamic>? data) {
     if (data == null) return null;
     final ownerId = data['ownerId'] as String?;
     if (ownerId == null || ownerId.isEmpty) {
@@ -135,57 +139,99 @@ class BarberHomeProvider extends ChangeNotifier {
           .collection('salons')
           .doc(profile.ownerId)
           .collection('queue');
-      final activeStatuses = ['waiting', 'serving', 'turn_ready', 'arrived'];
+      final activeStatuses = [
+        'waiting',
+        'serving',
+        'turn_ready',
+        'arrived',
+        'done',
+        'completed',
+      ];
 
       _queueSubscription = queueRef
-          .where('barberUid', isEqualTo: profile.uid)
           .where('status', whereIn: activeStatuses)
           .snapshots()
           .listen((snapshot) {
         _queue = snapshot.docs
+            .where((doc) => _matchesBarber(doc.data(), profile))
             .map((doc) => _mapQueue(doc.id, doc.data(), profile))
             .whereType<BarberQueueItem>()
             .toList()
           ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
         notifyListeners();
       }, onError: (_) {
-        _queueSubscription?.cancel();
-        _queueSubscription = queueRef
-            .where('barberId', isEqualTo: profile.uid)
-            .where('status', whereIn: activeStatuses)
-            .snapshots()
-            .listen((snapshot) {
-          _queue = snapshot.docs
-              .map((doc) => _mapQueue(doc.id, doc.data(), profile))
-              .whereType<BarberQueueItem>()
-              .toList()
-            ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
-          notifyListeners();
-        }, onError: (_) {
-          if (profile.name.isEmpty) {
-            _setError('Failed to load queue. Pull to refresh.');
-            return;
-          }
-          _queueSubscription?.cancel();
-          _queueSubscription = queueRef
-              .where('barberName', isEqualTo: profile.name)
-              .where('status', whereIn: activeStatuses)
-              .snapshots()
-              .listen((snapshot) {
-            _queue = snapshot.docs
-                .map((doc) => _mapQueue(doc.id, doc.data(), profile))
-                .whereType<BarberQueueItem>()
-                .toList()
-              ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
-            notifyListeners();
-          }, onError: (_) {
-            _setError('Failed to load queue. Pull to refresh.');
-          });
-        });
+        _setError('Failed to load queue. Pull to refresh.');
       });
     } catch (e) {
       _setError('Failed to load queue. Pull to refresh.');
     }
+  }
+
+  Future<int> _loadTodayTips(BarberProfile profile) async {
+    final today = DateTime.now();
+    final todayKey = DateFormat('yyyy-MM-dd')
+        .format(DateTime(today.year, today.month, today.day));
+    try {
+      QuerySnapshot<Map<String, dynamic>> snap;
+      final collection = _firestore
+          .collection('salons')
+          .doc(profile.ownerId)
+          .collection('bookings');
+      try {
+        snap = await collection
+            .where('status', whereIn: ['completed', 'done']).get();
+      } catch (_) {
+        snap = await collection.get();
+      }
+
+      int total = 0;
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        if (!_matchesBarber(data, profile)) continue;
+        final status = (data['status'] as String?)?.toLowerCase() ?? '';
+        if (status != 'completed' && status != 'done') continue;
+        if (!_isTodayBooking(data, todayKey, today)) continue;
+        final tip = (data['tipAmount'] as num?)?.toInt() ?? 0;
+        total += tip;
+      }
+      return total;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  bool _matchesBarber(Map<String, dynamic> data, BarberProfile profile) {
+    final barberId = data['barberId'] ?? data['barberUid'];
+    if (barberId is String && barberId == profile.uid) return true;
+    final barberName =
+        (data['barberName'] as String?) ?? (data['barber'] as String?);
+    if (barberName != null &&
+        profile.name.isNotEmpty &&
+        barberName.toLowerCase() == profile.name.toLowerCase()) {
+      return true;
+    }
+    return false;
+  }
+
+  bool _isTodayBooking(
+      Map<String, dynamic> data, String todayKey, DateTime today) {
+    final dateStr = (data['date'] as String?)?.trim();
+    if (dateStr != null && dateStr == todayKey) return true;
+    final completedAt = data['completedAt'];
+    if (completedAt is Timestamp) {
+      final dt = completedAt.toDate();
+      return dt.year == today.year &&
+          dt.month == today.month &&
+          dt.day == today.day;
+    }
+    final dateTime = data['dateTime'];
+    if (dateTime is Timestamp) {
+      final dt = dateTime.toDate();
+      return dt.year == today.year &&
+          dt.month == today.month &&
+          dt.day == today.day;
+    }
+    return false;
   }
 
   BarberQueueItem? _mapQueue(
@@ -217,6 +263,7 @@ class BarberHomeProvider extends ChangeNotifier {
       service: (data['service'] as String?) ?? 'Service',
       barberName: (data['barberName'] as String?) ?? profile.name,
       price: (data['price'] as num?)?.toInt() ?? 0,
+      tipAmount: (data['tipAmount'] as num?)?.toInt() ?? 0,
       status: status,
       waitMinutes: (data['waitMinutes'] as num?)?.toInt() ?? 0,
       slotLabel: (data['slotLabel'] as String?) ?? id,
@@ -322,13 +369,17 @@ class BarberHomeProvider extends ChangeNotifier {
           ? 'completed'
           : (status == BarberQueueStatus.cancelled ? 'cancelled' : status.name);
       final updateData = <String, dynamic>{'status': status.name};
-      
+
       if (status == BarberQueueStatus.serving) {
         updateData['startedAt'] = FieldValue.serverTimestamp();
       } else if (status == BarberQueueStatus.done) {
         updateData['completedAt'] = FieldValue.serverTimestamp();
       } else if (status == BarberQueueStatus.cancelled) {
         updateData['cancelledAt'] = FieldValue.serverTimestamp();
+      } else if (status == BarberQueueStatus.waiting) {
+        updateData['startedAt'] = FieldValue.delete();
+        updateData['completedAt'] = FieldValue.delete();
+        updateData['cancelledAt'] = FieldValue.delete();
       }
 
       await _firestore
@@ -343,6 +394,9 @@ class BarberHomeProvider extends ChangeNotifier {
           .collection('bookings')
           .doc(id)
           .set({'status': statusString}, SetOptions(merge: true));
+      if (status == BarberQueueStatus.done) {
+        await _createLedgersForBooking(profile, id);
+      }
     } catch (_) {
       // ignore write failures for now
     }
@@ -351,10 +405,71 @@ class BarberHomeProvider extends ChangeNotifier {
       final now = DateTime.now();
       _queue[index] = _queue[index].copyWith(
         status: status,
-        startedAt: status == BarberQueueStatus.serving ? now : _queue[index].startedAt,
-        completedAt: status == BarberQueueStatus.done ? now : _queue[index].completedAt,
+        startedAt: status == BarberQueueStatus.serving
+            ? now
+            : (status == BarberQueueStatus.waiting
+                ? null
+                : _queue[index].startedAt),
+        completedAt: status == BarberQueueStatus.done
+            ? now
+            : (status == BarberQueueStatus.waiting
+                ? null
+                : _queue[index].completedAt),
       );
       notifyListeners();
+    }
+  }
+
+  Future<void> _createLedgersForBooking(
+      BarberProfile profile, String bookingId) async {
+    try {
+      final bookingSnap = await _firestore
+          .collection('salons')
+          .doc(profile.ownerId)
+          .collection('bookings')
+          .doc(bookingId)
+          .get();
+      final data = bookingSnap.data() ?? <String, dynamic>{};
+      final salonId = (data['salonId'] as String?) ?? profile.ownerId;
+      final tipAmount = (data['tipAmount'] as num?)?.toInt() ?? 0;
+      final serviceCharge = (data['serviceCharge'] as num?)?.toInt() ?? 0;
+      final barberId = (data['barberId'] as String?) ??
+          (data['barberUid'] as String?) ??
+          profile.uid;
+      final barberName = (data['barberName'] as String?) ?? profile.name;
+      final completedAt = data['completedAt'];
+
+      if (tipAmount > 0) {
+        await _firestore.collection('barber_tip_ledger').doc(bookingId).set(
+          {
+            'bookingId': bookingId,
+            'salonId': salonId,
+            'barberId': barberId,
+            'barberName': barberName,
+            'tipAmount': tipAmount,
+            'status': 'unpaid',
+            'createdAt': FieldValue.serverTimestamp(),
+            if (completedAt is Timestamp) 'completedAt': completedAt,
+          },
+          SetOptions(merge: true),
+        );
+      }
+
+      if (serviceCharge > 0) {
+        await _firestore.collection('platform_fee_ledger').doc(bookingId).set(
+          {
+            'bookingId': bookingId,
+            'salonId': salonId,
+            'feeAmount': serviceCharge,
+            'status': 'unpaid',
+            'createdAt': FieldValue.serverTimestamp(),
+            if (completedAt is Timestamp) 'completedAt': completedAt,
+          },
+          SetOptions(merge: true),
+        );
+      }
+    } catch (_) {
+      // ignore ledger failures
     }
   }
 
@@ -378,9 +493,9 @@ class BarberHomeProvider extends ChangeNotifier {
 
     final dateStr = (data['date'] as String?)?.trim() ?? '';
     final timeStr = ((data['time'] as String?) ??
-            (data['bookingTime'] as String?) ??
-            (data['slotLabel'] as String?))
-        ?.trim() ??
+                (data['bookingTime'] as String?) ??
+                (data['slotLabel'] as String?))
+            ?.trim() ??
         '';
     if (dateStr.isEmpty || timeStr.isEmpty) return null;
 
@@ -420,6 +535,7 @@ class BarberQueueItem {
   final String service;
   final String barberName;
   final int price;
+  final int tipAmount;
   final BarberQueueStatus status;
   final int waitMinutes;
   final String slotLabel;
@@ -436,6 +552,7 @@ class BarberQueueItem {
     required this.service,
     required this.barberName,
     required this.price,
+    required this.tipAmount,
     required this.status,
     required this.waitMinutes,
     required this.slotLabel,
@@ -460,6 +577,7 @@ class BarberQueueItem {
       service: service,
       barberName: barberName,
       price: price,
+      tipAmount: tipAmount,
       status: status ?? this.status,
       waitMinutes: waitMinutes,
       slotLabel: slotLabel,

@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/owner/providers/salon_setup_provider.dart';
-import 'package:cutline/firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -34,9 +33,10 @@ class BarberService {
     try {
       _secondaryApp = Firebase.app('barberCreator');
     } catch (_) {
+      final primaryOptions = Firebase.app().options;
       _secondaryApp = await Firebase.initializeApp(
         name: 'barberCreator',
-        options: DefaultFirebaseOptions.currentPlatform,
+        options: primaryOptions,
       );
     }
     _secondaryAuth ??= FirebaseAuth.instanceFor(app: _secondaryApp!);

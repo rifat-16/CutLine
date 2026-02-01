@@ -64,6 +64,9 @@ class BookingsProvider extends ChangeNotifier {
                 salonName: _bookings[index].salonName,
                 service: _bookings[index].service,
                 price: _bookings[index].price,
+                serviceCharge: _bookings[index].serviceCharge,
+                tipAmount: _bookings[index].tipAmount,
+                total: _bookings[index].total,
                 dateTime: _bookings[index].dateTime,
                 status: _bookings[index].status,
                 paymentMethod: _bookings[index].paymentMethod,
@@ -89,20 +92,16 @@ class BookingsProvider extends ChangeNotifier {
       _setError('Please log in again.');
       return;
     }
-    
+
     _subscription?.cancel();
     _setLoading(true);
     _setError(null);
-    
+
     try {
-      
       // Try collectionGroup first
       try {
-        _subscription = _firestore
-            .collectionGroup('bookings')
-            .snapshots()
-            .listen((snap) {
-          
+        _subscription =
+            _firestore.collectionGroup('bookings').snapshots().listen((snap) {
           final items = snap.docs
               .where((doc) {
                 final parentId = doc.reference.parent.parent?.id;
@@ -111,8 +110,7 @@ class BookingsProvider extends ChangeNotifier {
                     (data['salon'] as String?) ??
                     parentId;
                 final matches = salonId == ownerId;
-                if (matches) {
-                }
+                if (matches) {}
                 return matches;
               })
               .map((doc) => _mapBooking(
@@ -122,7 +120,7 @@ class BookingsProvider extends ChangeNotifier {
                   ))
               .whereType<OwnerBooking>()
               .toList();
-          
+
           _bookings = items;
           _hydrateCustomerAvatars();
           notifyListeners();
@@ -140,7 +138,8 @@ class BookingsProvider extends ChangeNotifier {
       String errorMessage = 'Failed to load bookings. Pull to refresh.';
       if (e is FirebaseException) {
         if (e.code == 'permission-denied') {
-          errorMessage = 'Permission denied. Please check Firestore rules are deployed.';
+          errorMessage =
+              'Permission denied. Please check Firestore rules are deployed.';
         } else if (e.code == 'unavailable') {
           errorMessage = 'Network error. Check your connection.';
         } else {
@@ -155,14 +154,13 @@ class BookingsProvider extends ChangeNotifier {
   Future<void> _loadFromSalonCollection(String ownerId) async {
     try {
       _subscription?.cancel();
-      
+
       _subscription = _firestore
           .collection('salons')
           .doc(ownerId)
           .collection('bookings')
           .snapshots()
           .listen((snap) {
-        
         final items = snap.docs
             .map((doc) => _mapBooking(
                   doc.id,
@@ -171,7 +169,7 @@ class BookingsProvider extends ChangeNotifier {
                 ))
             .whereType<OwnerBooking>()
             .toList();
-        
+
         _bookings = items;
         _hydrateCustomerAvatars();
         notifyListeners();
@@ -181,7 +179,8 @@ class BookingsProvider extends ChangeNotifier {
         String errorMessage = 'Failed to load bookings. Pull to refresh.';
         if (e is FirebaseException) {
           if (e.code == 'permission-denied') {
-            errorMessage = 'Permission denied. Please check Firestore rules are deployed.';
+            errorMessage =
+                'Permission denied. Please check Firestore rules are deployed.';
           } else if (e.code == 'unavailable') {
             errorMessage = 'Network error. Check your connection.';
           } else {
@@ -212,15 +211,14 @@ class BookingsProvider extends ChangeNotifier {
     String? parentSalonId,
   ) {
     try {
-      
       final statusString = (data['status'] as String?)?.trim() ?? 'upcoming';
       final status = _statusFromString(statusString);
-      
+
       final dateTime = _parseDateTime(data);
       if (dateTime == null) {
         return null;
       }
-      
+
       final services = (data['services'] as List?)
               ?.map((e) {
                 if (e is Map && e['name'] is String) {
@@ -233,10 +231,19 @@ class BookingsProvider extends ChangeNotifier {
               .where((e) => e.isNotEmpty)
               .toList() ??
           const [];
-      
-      final serviceLabel =
-          services.isNotEmpty ? services.join(', ') : (data['service'] as String?)?.trim();
-      
+
+      final serviceLabel = services.isNotEmpty
+          ? services.join(', ')
+          : (data['service'] as String?)?.trim();
+
+      final tipAmount = (data['tipAmount'] as num?)?.toInt() ?? 0;
+      final serviceCharge = (data['serviceCharge'] as num?)?.toInt() ?? 0;
+      final totalAmount = (data['total'] as num?)?.toInt() ??
+          (data['price'] as num?)?.toInt() ??
+          0;
+      final basePrice = (data['price'] as num?)?.toInt() ??
+          (totalAmount - tipAmount - serviceCharge);
+
       final booking = OwnerBooking(
         id: id,
         customerName: (data['customerName'] as String?)?.trim() ?? 'Customer',
@@ -254,9 +261,10 @@ class BookingsProvider extends ChangeNotifier {
             parentSalonId ??
             'Salon',
         service: serviceLabel ?? 'Service',
-        price: (data['price'] as num?)?.toInt() ??
-            (data['total'] as num?)?.toInt() ??
-            0,
+        price: basePrice < 0 ? 0 : basePrice,
+        serviceCharge: serviceCharge,
+        tipAmount: tipAmount,
+        total: totalAmount,
         dateTime: dateTime,
         status: status,
         paymentMethod: (data['paymentMethod'] as String?)?.trim() ??
@@ -264,7 +272,7 @@ class BookingsProvider extends ChangeNotifier {
             'Cash',
         barberName: (data['barberName'] as String?)?.trim() ?? '',
       );
-      
+
       return booking;
     } catch (e, stackTrace) {
       return null;

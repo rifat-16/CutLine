@@ -42,8 +42,7 @@ class BookingRequestsScreen extends StatelessWidget {
                           final request = provider.requests[index];
                           return _BookingRequestCard(
                             request: request,
-                            formatter:
-                                DateFormat('EEE, d MMM • hh:mm a'),
+                            formatter: DateFormat('EEE, d MMM • hh:mm a'),
                             onDecision: (status) => provider.updateStatus(
                               request.id,
                               status,
@@ -59,8 +58,7 @@ class BookingRequestsScreen extends StatelessWidget {
     );
   }
 
-  void _openCustomerDetails(
-      BuildContext context, OwnerBookingRequest request) {
+  void _openCustomerDetails(BuildContext context, OwnerBookingRequest request) {
     showCustomerDetailSheet(
       context: context,
       item: OwnerQueueItem(
@@ -69,6 +67,7 @@ class BookingRequestsScreen extends StatelessWidget {
         service: request.services.join(', '),
         barberName: request.barberName,
         price: request.totalPrice,
+        tipAmount: request.tipAmount,
         status: OwnerQueueStatus.waiting,
         waitMinutes: request.durationMinutes,
         slotLabel: request.id,
@@ -122,8 +121,9 @@ class _BookingRequestCard extends StatelessWidget {
                 onTap: onOpenDetail,
                 child: CircleAvatar(
                   radius: 28,
-                  backgroundColor:
-                      hasAvatar ? const Color(0xFFE8ECF6) : const Color(0xFF2563EB),
+                  backgroundColor: hasAvatar
+                      ? const Color(0xFFE8ECF6)
+                      : const Color(0xFF2563EB),
                   backgroundImage:
                       hasAvatar ? NetworkImage(request.customerAvatar) : null,
                   child: hasAvatar
@@ -148,7 +148,8 @@ class _BookingRequestCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.phone, size: 16, color: Colors.blueGrey),
+                        const Icon(Icons.phone,
+                            size: 16, color: Colors.blueGrey),
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
@@ -196,13 +197,19 @@ class _BookingRequestCard extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: _InfoTile(
-                  icon: Icons.payments_outlined,
-                  label: 'Total price',
-                  value: '৳${request.totalPrice}',
+                  icon: Icons.volunteer_activism_outlined,
+                  label: 'Tip for barber',
+                  value: '৳${request.tipAmount}',
                   compact: true,
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          _InfoTile(
+            icon: Icons.payments_outlined,
+            label: 'Total price',
+            value: '৳${request.totalPrice}',
           ),
           const SizedBox(height: 16),
           if (isPending)
@@ -247,7 +254,8 @@ class _BookingRequestCard extends StatelessWidget {
       return '';
     }
     final first = parts[0].substring(0, 1).toUpperCase();
-    final second = parts.length > 1 ? parts[1].substring(0, 1).toUpperCase() : '';
+    final second =
+        parts.length > 1 ? parts[1].substring(0, 1).toUpperCase() : '';
     return '$first$second';
   }
 

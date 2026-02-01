@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/barber/providers/barber_profile_provider.dart';
 import 'package:cutline/features/barber/screens/work_history_screen.dart';
+import 'package:cutline/features/barber/screens/barber_tips_screen.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -155,6 +156,18 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
                             MaterialPageRoute(
                                 builder: (context) =>
                                     const WorkHistoryScreen()),
+                          );
+                        },
+                      ),
+                      _settingTile(
+                        icon: Icons.payments_outlined,
+                        title: "My Tips",
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const BarberTipsScreen()),
                           );
                         },
                       ),

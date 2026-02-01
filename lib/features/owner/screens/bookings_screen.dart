@@ -61,7 +61,9 @@ class BookingsScreen extends StatelessWidget {
                             final booking = filtered[index];
                             return OwnerBookingCard(
                               booking: booking,
-                              onTap: () => _openDetails(context, booking),
+                              onTap: booking.status == OwnerBookingStatus.cancelled
+                                  ? null
+                                  : () => _openDetails(context, booking),
                             );
                           },
                         ),

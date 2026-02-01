@@ -1,12 +1,18 @@
 import 'package:cutline/features/user/providers/salon_services_provider.dart';
+import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 class ViewAllSalonServices extends StatefulWidget {
   final String salonName;
+  final String salonId;
 
-  const ViewAllSalonServices({super.key, required this.salonName});
+  const ViewAllSalonServices({
+    super.key,
+    required this.salonName,
+    required this.salonId,
+  });
 
   @override
   State<ViewAllSalonServices> createState() => _ViewAllSalonServicesState();
@@ -31,7 +37,10 @@ class _ViewAllSalonServicesState extends State<ViewAllSalonServices> with Single
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) =>
-          SalonServicesProvider(salonName: widget.salonName)..load(),
+          SalonServicesProvider(
+            salonName: widget.salonName,
+            salonId: widget.salonId,
+          )..load(),
       builder: (context, _) {
         final provider = context.watch<SalonServicesProvider>();
         return Scaffold(
@@ -66,7 +75,11 @@ class _ViewAllSalonServicesState extends State<ViewAllSalonServices> with Single
                       controller: _tabController,
                       children: [
                         _ServiceList(services: provider.services),
-                        _ComboOfferList(combos: provider.combos),
+                        _ComboOfferList(
+                          combos: provider.combos,
+                          salonId: widget.salonId,
+                          salonName: widget.salonName,
+                        ),
                       ],
                     ),
         );
@@ -143,8 +156,14 @@ class _ServiceTile extends StatelessWidget {
 
 class _ComboOfferList extends StatelessWidget {
   final List<SalonCombo> combos;
+  final String salonId;
+  final String salonName;
 
-  const _ComboOfferList({required this.combos});
+  const _ComboOfferList({
+    required this.combos,
+    required this.salonId,
+    required this.salonName,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -158,7 +177,11 @@ class _ComboOfferList extends StatelessWidget {
         final offer = combos[index];
         return CutlineAnimations.staggeredList(
           index: index,
-          child: _ComboOfferCard(offer: offer),
+          child: _ComboOfferCard(
+            offer: offer,
+            salonId: salonId,
+            salonName: salonName,
+          ),
         );
       },
     );
@@ -167,8 +190,14 @@ class _ComboOfferList extends StatelessWidget {
 
 class _ComboOfferCard extends StatelessWidget {
   final SalonCombo offer;
+  final String salonId;
+  final String salonName;
 
-  const _ComboOfferCard({required this.offer});
+  const _ComboOfferCard({
+    required this.offer,
+    required this.salonId,
+    required this.salonName,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -203,7 +232,27 @@ class _ComboOfferCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               ElevatedButton(
-                onPressed: () {},
+                onPressed: () {
+                  if (salonId.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Salon info missing. Please go back and open the salon again.'),
+                      ),
+                    );
+                    return;
+                  }
+                  final comboServices = _parseComboServices(offer.details);
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.booking,
+                    arguments: BookingArgs(
+                      salonId: salonId,
+                      salonName: salonName,
+                      preselectedServices: comboServices,
+                      lockServices: comboServices.isNotEmpty,
+                    ),
+                  );
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: Colors.deepOrange,
@@ -218,6 +267,23 @@ class _ComboOfferCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  List<String> _parseComboServices(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return [];
+    final normalized = trimmed
+        .replaceAll('\n', ' ')
+        .replaceAll(RegExp(r'\s+and\s+', caseSensitive: false), ',')
+        .replaceAll(RegExp(r'\s*\+\s*'), ',')
+        .replaceAll(RegExp(r'\s*&\s*'), ',')
+        .replaceAll(RegExp(r'\s*[•·]\s*'), ',')
+        .replaceAll(RegExp(r'\s*/\s*'), ',');
+    return normalized
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
   }
 }
 

@@ -1,14 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 
 class SalonServicesProvider extends ChangeNotifier {
   SalonServicesProvider({
     required this.salonName,
+    this.salonId = '',
     FirebaseFirestore? firestore,
   }) : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final String salonName;
+  final String salonId;
   final FirebaseFirestore _firestore;
 
   bool _isLoading = false;
@@ -38,10 +41,30 @@ class SalonServicesProvider extends ChangeNotifier {
       
       // Load services
       try {
-        final servicesField = data['services'];
-        _services = _mapServices(servicesField);
+        final servicesQuery = _firestore
+            .collection('salons')
+            .doc(doc.id)
+            .collection('all_services')
+            .orderBy('order');
+        final servicesSnap = await FirestoreCache.getQuery(servicesQuery);
+        _services = _mapServices(servicesSnap.docs);
+        if (_services.isEmpty) {
+          final fallbackSnap = await FirestoreCache.getQuery(_firestore
+              .collection('salons')
+              .doc(doc.id)
+              .collection('all_services'));
+          _services = _mapServices(fallbackSnap.docs);
+        }
       } catch (e) {
-        _services = [];
+        try {
+          final fallbackSnap = await FirestoreCache.getQuery(_firestore
+              .collection('salons')
+              .doc(doc.id)
+              .collection('all_services'));
+          _services = _mapServices(fallbackSnap.docs);
+        } catch (_) {
+          _services = [];
+        }
       }
       
       // Load combos
@@ -74,11 +97,19 @@ class SalonServicesProvider extends ChangeNotifier {
 
   Future<DocumentSnapshot<Map<String, dynamic>>?> _findSalonDoc() async {
     try {
-      final query = await _firestore
+      if (salonId.trim().isNotEmpty) {
+        final doc = await FirestoreCache.getDoc(
+          _firestore.collection('salons').doc(salonId),
+        );
+        if (doc.exists) {
+          return doc;
+        }
+      }
+      final query = await FirestoreCache.getQuery(_firestore
           .collection('salons')
           .where('name', isEqualTo: salonName)
           .limit(1)
-          .get();
+          );
       
       if (query.docs.isEmpty) {
         return null;
@@ -91,33 +122,24 @@ class SalonServicesProvider extends ChangeNotifier {
     }
   }
 
-  List<SalonService> _mapServices(dynamic raw) {
+  List<SalonService> _mapServices(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
     try {
-      if (raw is! List) {
-        return [];
-      }
-      
       final services = <SalonService>[];
-      
-      for (var i = 0; i < raw.length; i++) {
+      for (final doc in docs) {
         try {
-          final item = raw[i];
-          if (item is! Map) {
-            continue;
-          }
-          
-          final m = item.cast<String, dynamic>();
+          final m = doc.data();
           final service = SalonService(
             name: (m['name'] as String?)?.trim() ?? 'Service',
-            durationMinutes: (m['durationMinutes'] as num?)?.toInt() ?? 
-                (m['duration'] as num?)?.toInt() ?? 30,
+            durationMinutes: (m['durationMinutes'] as num?)?.toInt() ??
+                (m['duration'] as num?)?.toInt() ??
+                30,
             price: (m['price'] as num?)?.toInt() ?? 0,
           );
           services.add(service);
         } catch (e) {
         }
       }
-      
       return services;
     } catch (e, stackTrace) {
       return [];

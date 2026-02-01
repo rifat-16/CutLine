@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -47,39 +48,16 @@ class GalleryProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-      final doc = await _firestore.collection('salons').doc(ownerId).get();
+      final doc =
+          await FirestoreCache.getDoc(_firestore.collection('salons').doc(ownerId));
       if (doc.exists) {
         final data = doc.data() ?? {};
         _coverPhotoUrl = (data['coverImageUrl'] as String?) ??
             (data['coverPhoto'] as String?) ??
             (data['coverPhotoUrl'] as String?) ??
             '';
-        final galleryRaw = data['galleryPhotos'] ??
-            data['gallery'] ??
-            data['photos'] ??
-            data['galleryImages'];
-        final List<String> parsed = [];
-        if (galleryRaw is List) {
-          parsed.addAll(
-            galleryRaw
-                .whereType<String>()
-                .map((e) => e.trim())
-                .where((e) => e.isNotEmpty),
-          );
-        } else if (galleryRaw is Map) {
-          parsed.addAll(
-            galleryRaw.values
-                .whereType<String>()
-                .map((e) => e.trim())
-                .where((e) => e.isNotEmpty),
-          );
-        }
-        if (parsed.isNotEmpty) {
-          _galleryUrls
-            ..clear()
-            ..addAll(parsed);
-        }
       }
+      await _loadGallery(ownerId);
     } catch (_) {
       _setError('Failed to load gallery. Pull to refresh.');
     } finally {
@@ -122,6 +100,12 @@ class GalleryProvider extends ChangeNotifier {
           'coverPhotoUrl': url,
           'coverImageUrl': url,
           'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      await _firestore.collection('salons_summary').doc(ownerId).set(
+        {
+          'coverImageUrl': url,
         },
         SetOptions(merge: true),
       );
@@ -171,6 +155,12 @@ class GalleryProvider extends ChangeNotifier {
         },
         SetOptions(merge: true),
       );
+      await _firestore.collection('salons_summary').doc(ownerId).set(
+        {
+          'coverImageUrl': url,
+        },
+        SetOptions(merge: true),
+      );
     } catch (_) {
       _setError('Failed to change cover photo. Try again.');
     } finally {
@@ -210,14 +200,7 @@ class GalleryProvider extends ChangeNotifier {
             'gallery/gallery_${DateTime.now().millisecondsSinceEpoch}_${file.name.hashCode}.${_ext(file.name)}',
       );
       _galleryUrls[index] = url;
-      await _firestore.collection('salons').doc(ownerId).set(
-        {
-          'gallery': _galleryUrls,
-          'galleryPhotos': _galleryUrls,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      await _syncGalleryPhotos(ownerId);
     } catch (_) {
       _setError('Failed to change photo. Try again.');
     } finally {
@@ -259,14 +242,7 @@ class GalleryProvider extends ChangeNotifier {
         );
         _galleryUrls.add(url);
       }
-      await _firestore.collection('salons').doc(ownerId).set(
-        {
-          'gallery': _galleryUrls,
-          'galleryPhotos': _galleryUrls,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      await _syncGalleryPhotos(ownerId);
     } catch (_) {
       _setError('Failed to upload some photos. Try again.');
     } finally {
@@ -290,6 +266,12 @@ class GalleryProvider extends ChangeNotifier {
           'coverPhotoUrl': FieldValue.delete(),
           'coverImageUrl': FieldValue.delete(),
           'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      await _firestore.collection('salons_summary').doc(ownerId).set(
+        {
+          'coverImageUrl': FieldValue.delete(),
         },
         SetOptions(merge: true),
       );
@@ -319,14 +301,7 @@ class GalleryProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _firestore.collection('salons').doc(ownerId).set(
-        {
-          'gallery': _galleryUrls,
-          'galleryPhotos': _galleryUrls,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      await _syncGalleryPhotos(ownerId);
       // Optionally delete from storage
       try {
         final ref = _storage.refFromURL(url);
@@ -375,5 +350,65 @@ class GalleryProvider extends ChangeNotifier {
     } catch (_) {
       // Ignore cleanup failures
     }
+  }
+
+  Future<void> _loadGallery(String ownerId) async {
+    try {
+      final query = _firestore
+          .collection('salons')
+          .doc(ownerId)
+          .collection('photos')
+          .orderBy('order');
+      final snap = await FirestoreCache.getQuery(query);
+      final urls = snap.docs
+          .map((doc) => (doc.data()['url'] as String?)?.trim() ?? '')
+          .where((url) => url.isNotEmpty)
+          .toList();
+      _galleryUrls
+        ..clear()
+        ..addAll(urls);
+    } catch (_) {
+      try {
+        final snap = await FirestoreCache.getQuery(_firestore
+            .collection('salons')
+            .doc(ownerId)
+            .collection('photos'));
+        final urls = snap.docs
+            .map((doc) => (doc.data()['url'] as String?)?.trim() ?? '')
+            .where((url) => url.isNotEmpty)
+            .toList();
+        _galleryUrls
+          ..clear()
+          ..addAll(urls);
+      } catch (_) {
+        _galleryUrls.clear();
+      }
+    }
+  }
+
+  Future<void> _syncGalleryPhotos(String ownerId) async {
+    final collection =
+        _firestore.collection('salons').doc(ownerId).collection('photos');
+    final existing = await FirestoreCache.getQuery(collection);
+    final batch = _firestore.batch();
+    for (final doc in existing.docs) {
+      batch.delete(doc.reference);
+    }
+    for (var i = 0; i < _galleryUrls.length; i++) {
+      final url = _galleryUrls[i].trim();
+      if (url.isEmpty) continue;
+      batch.set(collection.doc(), {
+        'url': url,
+        'order': i,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+    await _firestore.collection('salons').doc(ownerId).set(
+      {
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
   }
 }

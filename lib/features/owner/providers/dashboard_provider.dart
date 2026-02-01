@@ -53,12 +53,11 @@ class DashboardProvider extends ChangeNotifier {
       _setError('Please log in again.');
       return;
     }
-    
+
     _setLoading(true);
     _setError(null);
-    
+
     try {
-      
       // Load bookings
       List<OwnerBooking> bookings = [];
       try {
@@ -67,18 +66,16 @@ class DashboardProvider extends ChangeNotifier {
             .doc(ownerId)
             .collection('bookings')
             .get();
-        
-        
+
         bookings = bookingsSnap.docs
             .map((d) => _mapBooking(d.id, d.data()))
             .whereType<OwnerBooking>()
             .toList()
           ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
-        
       } catch (e) {
         // Continue with empty bookings
       }
-      
+
       // Load queue using OwnerQueueService (includes completed items)
       List<OwnerQueueItem> queue = [];
       try {
@@ -91,13 +88,13 @@ class DashboardProvider extends ChangeNotifier {
       final periodFilter = _getPeriodFilter(_period);
       final filteredBookings = _filterBookingsByPeriod(bookings, periodFilter);
       final filteredQueue = _filterQueueByPeriod(queue, periodFilter);
-      
+
       // Dashboard "Recent bookings" should reflect only completed bookings.
       _bookings = filteredBookings
           .where((b) => b.status == OwnerBookingStatus.completed)
           .toList()
         ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
-      
+
       // Compute metrics and performance data using FILTERED data
       try {
         _computeMetrics(filteredBookings, filteredQueue);
@@ -105,24 +102,22 @@ class DashboardProvider extends ChangeNotifier {
         _barbers = _computeBarberPerformance(filteredBookings);
         _bookingStatusCounts = _countBookings(filteredBookings);
         _queueStatusCounts = _countQueue(filteredQueue);
-        
-      } catch (e, stackTrace) {
-      }
-      
+      } catch (e, stackTrace) {}
+
       notifyListeners();
     } catch (e, stackTrace) {
-      
       String errorMessage = 'Failed to load dashboard. Pull to refresh.';
       if (e is FirebaseException) {
         if (e.code == 'permission-denied') {
-          errorMessage = 'Permission denied. Please check Firestore rules are deployed.';
+          errorMessage =
+              'Permission denied. Please check Firestore rules are deployed.';
         } else if (e.code == 'unavailable') {
           errorMessage = 'Network error. Check your connection.';
         } else {
           errorMessage = 'Firebase error: ${e.message ?? e.code}';
         }
       }
-      
+
       _setError(errorMessage);
     } finally {
       _setLoading(false);
@@ -134,7 +129,7 @@ class DashboardProvider extends ChangeNotifier {
       final statusString = (data['status'] as String?)?.trim() ?? 'upcoming';
       final status = _statusFromString(statusString);
       final dateTime = _parseDateTime(data);
-      
+
       if (dateTime == null) {
         return null;
       }
@@ -151,9 +146,18 @@ class DashboardProvider extends ChangeNotifier {
               .where((e) => e.isNotEmpty)
               .toList() ??
           const [];
-      
-      final serviceLabel =
-          services.isNotEmpty ? services.join(', ') : (data['service'] as String?)?.trim();
+
+      final serviceLabel = services.isNotEmpty
+          ? services.join(', ')
+          : (data['service'] as String?)?.trim();
+
+      final tipAmount = (data['tipAmount'] as num?)?.toInt() ?? 0;
+      final serviceCharge = (data['serviceCharge'] as num?)?.toInt() ?? 0;
+      final totalAmount = (data['total'] as num?)?.toInt() ??
+          (data['price'] as num?)?.toInt() ??
+          0;
+      final basePrice = (data['price'] as num?)?.toInt() ??
+          (totalAmount - tipAmount - serviceCharge);
 
       return OwnerBooking(
         id: id,
@@ -171,9 +175,10 @@ class DashboardProvider extends ChangeNotifier {
             (data['salon'] as String?)?.trim() ??
             '',
         service: serviceLabel ?? 'Service',
-        price: (data['price'] as num?)?.toInt() ??
-            (data['total'] as num?)?.toInt() ??
-            0,
+        price: basePrice < 0 ? 0 : basePrice,
+        serviceCharge: serviceCharge,
+        tipAmount: tipAmount,
+        total: totalAmount,
         dateTime: dateTime,
         status: status,
         paymentMethod: (data['paymentMethod'] as String?)?.trim() ??
@@ -209,9 +214,9 @@ class DashboardProvider extends ChangeNotifier {
     } else {
       // For other periods, only show active queue items
       // (Completed items are only available for today due to service limitation)
-      return queue.where((item) => 
-        item.status != OwnerQueueStatus.done
-      ).toList();
+      return queue
+          .where((item) => item.status != OwnerQueueStatus.done)
+          .toList();
     }
   }
 
@@ -247,11 +252,16 @@ class DashboardProvider extends ChangeNotifier {
 
   void _computeMetrics(
       List<OwnerBooking> bookings, List<OwnerQueueItem> queue) {
-    final completedBookings =
-        bookings.where((b) => b.status == OwnerBookingStatus.completed).toList();
+    final completedBookings = bookings
+        .where((b) => b.status == OwnerBookingStatus.completed)
+        .toList();
     final totalBookings = completedBookings.length;
     final totalRevenue =
-        completedBookings.fold<int>(0, (acc, b) => acc + b.price);
+        completedBookings.fold<int>(0, (acc, b) => acc + b.total);
+    final totalTips =
+        completedBookings.fold<int>(0, (acc, b) => acc + b.tipAmount);
+    final totalPlatformFees =
+        completedBookings.fold<int>(0, (acc, b) => acc + b.serviceCharge);
     final cancelled =
         bookings.where((b) => b.status == OwnerBookingStatus.cancelled).length;
     final uniqueCustomers = completedBookings
@@ -277,6 +287,8 @@ class DashboardProvider extends ChangeNotifier {
     _metrics = DashboardMetrics(
       totalCustomers: uniqueCustomers,
       totalRevenue: totalRevenue,
+      totalTips: totalTips,
+      totalPlatformFees: totalPlatformFees,
       totalBookings: totalBookings,
       manualWalkIns: manualWalkIns,
       cancelledBookings: cancelled,
@@ -333,23 +345,27 @@ class DashboardProvider extends ChangeNotifier {
   List<BarberPerformance> _computeBarberPerformance(
       List<OwnerBooking> bookings) {
     final counts = <String, int>{};
+    final tips = <String, int>{};
     // Count completed bookings per barber
     for (final booking in bookings) {
-      if (booking.status == OwnerBookingStatus.completed && 
+      if (booking.status == OwnerBookingStatus.completed &&
           booking.barberName.isNotEmpty) {
         counts[booking.barberName] = (counts[booking.barberName] ?? 0) + 1;
+        tips[booking.barberName] =
+            (tips[booking.barberName] ?? 0) + booking.tipAmount;
       }
     }
-    
+
     final barberList = counts.entries
         .map((e) => BarberPerformance(
               name: e.key,
               served: e.value,
-              satisfaction: '—',
+              tipAmount: tips[e.key] ?? 0,
             ))
         .toList()
-      ..sort((a, b) => b.served.compareTo(a.served)); // Sort by served count descending
-      
+      ..sort((a, b) =>
+          b.served.compareTo(a.served)); // Sort by served count descending
+
     return barberList;
   }
 
@@ -426,6 +442,8 @@ class PeriodFilter {
 class DashboardMetrics {
   final int totalCustomers;
   final int totalRevenue;
+  final int totalTips;
+  final int totalPlatformFees;
   final int totalBookings;
   final int manualWalkIns;
   final int cancelledBookings;
@@ -436,6 +454,8 @@ class DashboardMetrics {
   const DashboardMetrics({
     required this.totalCustomers,
     required this.totalRevenue,
+    required this.totalTips,
+    required this.totalPlatformFees,
     required this.totalBookings,
     required this.manualWalkIns,
     required this.cancelledBookings,
@@ -447,6 +467,8 @@ class DashboardMetrics {
   factory DashboardMetrics.empty() => const DashboardMetrics(
         totalCustomers: 0,
         totalRevenue: 0,
+        totalTips: 0,
+        totalPlatformFees: 0,
         totalBookings: 0,
         manualWalkIns: 0,
         cancelledBookings: 0,
@@ -475,11 +497,11 @@ class ServicePerformance {
 class BarberPerformance {
   final String name;
   final int served;
-  final String satisfaction;
+  final int tipAmount;
 
   const BarberPerformance({
     required this.name,
     required this.served,
-    required this.satisfaction,
+    required this.tipAmount,
   });
 }

@@ -53,26 +53,25 @@ class OwnerBookingReceiptProvider extends ChangeNotifier {
   OwnerBookingReceiptData _map(Map<String, dynamic> data) {
     final servicesField = data['services'];
     final services = servicesField is List
-        ? servicesField
-            .whereType<Map>()
-            .map((e) {
-              final map = e.cast<String, dynamic>();
-              final name = (map['name'] as String?) ??
-                  (map['service'] as String?) ??
-                  'Service';
-              return OwnerReceiptService(
-                name: name,
-                price: (map['price'] as num?)?.toInt() ?? 0,
-              );
-            })
-            .toList()
+        ? servicesField.whereType<Map>().map((e) {
+            final map = e.cast<String, dynamic>();
+            final name = (map['name'] as String?) ??
+                (map['service'] as String?) ??
+                'Service';
+            return OwnerReceiptService(
+              name: name,
+              price: (map['price'] as num?)?.toInt() ?? 0,
+            );
+          }).toList()
         : <OwnerReceiptService>[];
 
     final price = (data['price'] as num?)?.toInt();
+    final tipAmount = (data['tipAmount'] as num?)?.toInt() ?? 0;
+    final serviceCharge = (data['serviceCharge'] as num?)?.toInt() ?? 0;
+    final subtotal = services.fold<int>(0, (acc, s) => acc + s.price);
     final total = (data['total'] as num?)?.toInt() ??
         price ??
-        services.fold<int>(0, (acc, s) => acc + s.price);
-    final subtotal = services.fold<int>(0, (acc, s) => acc + s.price);
+        (subtotal + serviceCharge + tipAmount);
 
     final serviceName = (data['service'] as String?) ?? '';
     final fallbackService = serviceName.isNotEmpty
@@ -99,7 +98,8 @@ class OwnerBookingReceiptProvider extends ChangeNotifier {
       status: _statusFromString((data['status'] as String?) ?? 'upcoming'),
       services: services.isNotEmpty ? services : fallbackService,
       subtotal: subtotal != 0 ? subtotal : (price ?? total),
-      serviceCharge: (data['serviceCharge'] as num?)?.toInt() ?? 0,
+      serviceCharge: serviceCharge,
+      tipAmount: tipAmount,
       total: total,
       customerName: (data['customerName'] as String?) ?? '',
       customerPhone: (data['customerPhone'] as String?) ?? '',
@@ -159,6 +159,7 @@ class OwnerBookingReceiptData {
   final List<OwnerReceiptService> services;
   final int subtotal;
   final int serviceCharge;
+  final int tipAmount;
   final int total;
   final String customerName;
   final String customerPhone;
@@ -176,6 +177,7 @@ class OwnerBookingReceiptData {
     required this.services,
     required this.subtotal,
     required this.serviceCharge,
+    required this.tipAmount,
     required this.total,
     required this.customerName,
     required this.customerPhone,
