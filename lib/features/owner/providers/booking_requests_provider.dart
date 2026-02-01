@@ -33,10 +33,8 @@ class BookingRequestsProvider extends ChangeNotifier {
     _setError(null);
     try {
       QuerySnapshot<Map<String, dynamic>> snap;
-      final collection = _firestore
-          .collection('salons')
-          .doc(ownerId)
-          .collection('bookings');
+      final collection =
+          _firestore.collection('salons').doc(ownerId).collection('bookings');
 
       // Booking requests screen should only show new requests (pending/upcoming).
       // Some devices may not have the required index for (status + createdAt),
@@ -152,6 +150,7 @@ class BookingRequestsProvider extends ChangeNotifier {
       totalPrice: (data['total'] as num?)?.toInt() ??
           (data['totalPrice'] as num?)?.toInt() ??
           0,
+      tipAmount: (data['tipAmount'] as num?)?.toInt() ?? 0,
       status: status,
     );
   }
@@ -267,6 +266,7 @@ class BookingRequestsProvider extends ChangeNotifier {
         'service': request.services.join(', '),
         'barberName': request.barberName,
         'price': request.totalPrice,
+        'tipAmount': request.tipAmount,
         'status': 'waiting',
         'waitMinutes': request.durationMinutes,
         'slotLabel': timeLabel,

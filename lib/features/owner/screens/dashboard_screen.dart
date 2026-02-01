@@ -1,6 +1,8 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/providers/dashboard_provider.dart';
 import 'package:cutline/features/owner/providers/dashboard_period.dart';
+import 'package:cutline/features/owner/screens/barber_payouts_screen.dart';
+import 'package:cutline/features/owner/screens/platform_fee_report_screen.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
@@ -27,7 +29,8 @@ class OwnerDashboardScreen extends StatelessWidget {
         final services = provider.services;
         final barbers = provider.barbers;
         final bookings = provider.bookings.take(5).toList();
-        final nowLabel = DateFormat('EEE, d MMM • h:mm a').format(DateTime.now());
+        final nowLabel =
+            DateFormat('EEE, d MMM • h:mm a').format(DateTime.now());
 
         return Scaffold(
           backgroundColor: CutlineColors.secondaryBackground,
@@ -177,10 +180,36 @@ class _KpiGrid extends StatelessWidget {
         color: const Color(0xFF2563EB),
       ),
       _KpiData(
+        label: 'Tips',
+        value: currency.format(metrics.totalTips),
+        icon: Icons.volunteer_activism_outlined,
+        color: const Color(0xFF059669),
+        actionLabel: 'Pay',
+        onAction: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const OwnerBarberPayoutsScreen()),
+          );
+        },
+      ),
+      _KpiData(
         label: 'Bookings',
         value: number.format(metrics.totalBookings),
         icon: Icons.event_available_outlined,
         color: const Color(0xFF5B21B6),
+      ),
+      _KpiData(
+        label: 'Platform Fee',
+        value: currency.format(metrics.totalPlatformFees),
+        icon: Icons.account_balance_wallet_outlined,
+        color: const Color(0xFFF97316),
+        actionLabel: 'Pay',
+        onAction: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PlatformFeeReportScreen()),
+          );
+        },
       ),
       _KpiData(
         label: 'Customers',
@@ -216,12 +245,16 @@ class _KpiData {
   final String value;
   final IconData icon;
   final Color color;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   const _KpiData({
     required this.label,
     required this.value,
     required this.icon,
     required this.color,
+    this.actionLabel,
+    this.onAction,
   });
 }
 
@@ -232,28 +265,67 @@ class _KpiCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final showAction = data.actionLabel != null && data.onAction != null;
+    final card = Container(
       padding: CutlineSpacing.card,
       decoration: CutlineDecorations.card(solidColor: Colors.white),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Stack(
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: data.color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: data.color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(data.icon, color: data.color),
+              ),
+              const SizedBox(height: 12),
+              Text(data.label, style: CutlineTextStyles.caption),
+              const SizedBox(height: 4),
+              Text(
+                data.value,
+                style: CutlineTextStyles.title.copyWith(fontSize: 22),
+              ),
+            ],
+          ),
+          if (showAction)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: TextButton(
+                style: TextButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  backgroundColor: data.color.withValues(alpha: 0.12),
+                  foregroundColor: data.color,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(
+                      color: data.color.withValues(alpha: 0.35),
+                    ),
+                  ),
+                ),
+                onPressed: data.onAction,
+                child: Text(
+                  data.actionLabel!,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
             ),
-            child: Icon(data.icon, color: data.color),
-          ),
-          Text(data.label, style: CutlineTextStyles.caption),
-          Text(
-            data.value,
-            style: CutlineTextStyles.title.copyWith(fontSize: 22),
-          ),
         ],
       ),
+    );
+
+    if (!showAction) return card;
+    return InkWell(
+      onTap: data.onAction,
+      borderRadius: BorderRadius.circular(CutlineDecorations.radius),
+      child: card,
     );
   }
 }
@@ -420,8 +492,7 @@ class _MiniCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(title, style: CutlineTextStyles.caption),
-          Text(value,
-              style: CutlineTextStyles.title.copyWith(fontSize: 18)),
+          Text(value, style: CutlineTextStyles.title.copyWith(fontSize: 18)),
           if (footer != null) ...[
             const SizedBox(height: 6),
             Text(footer!, style: CutlineTextStyles.caption),
@@ -498,9 +569,10 @@ class _BarberTile extends StatelessWidget {
                 .copyWith(color: CutlineColors.primary)),
       ),
       title: Text(barber.name, style: CutlineTextStyles.subtitleBold),
-      subtitle: Text('${barber.served} customers',
-          style: CutlineTextStyles.caption),
-      trailing: Text(barber.satisfaction, style: CutlineTextStyles.body),
+      subtitle:
+          Text('${barber.served} customers', style: CutlineTextStyles.caption),
+      trailing: Text('Tip: ৳${barber.tipAmount}',
+          style: CutlineTextStyles.subtitleBold),
     );
   }
 }
@@ -521,8 +593,7 @@ class _BookingTile extends StatelessWidget {
         backgroundColor: statusColor.withValues(alpha: 0.14),
         child: Icon(Icons.event_note, color: statusColor),
       ),
-      title: Text(booking.customerName,
-          style: CutlineTextStyles.subtitleBold),
+      title: Text(booking.customerName, style: CutlineTextStyles.subtitleBold),
       subtitle: Text('${booking.service} • $dateLabel',
           style: CutlineTextStyles.caption),
       trailing: Container(
@@ -570,8 +641,8 @@ class _EmptyText extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child:
-          Text(text, style: CutlineTextStyles.caption, textAlign: TextAlign.left),
+      child: Text(text,
+          style: CutlineTextStyles.caption, textAlign: TextAlign.left),
     );
   }
 }

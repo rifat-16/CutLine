@@ -16,6 +16,7 @@ class OwnerQueueItem {
   final String service;
   final String barberName;
   final int price;
+  final int tipAmount;
   final OwnerQueueStatus status;
   final int waitMinutes;
   final String slotLabel;
@@ -31,6 +32,7 @@ class OwnerQueueItem {
     required this.service,
     required this.barberName,
     required this.price,
+    this.tipAmount = 0,
     required this.status,
     required this.waitMinutes,
     required this.slotLabel,
@@ -48,6 +50,7 @@ class OwnerQueueItem {
       service: service,
       barberName: barberName,
       price: price,
+      tipAmount: tipAmount,
       status: status ?? this.status,
       waitMinutes: waitMinutes,
       slotLabel: slotLabel,
@@ -68,6 +71,9 @@ class OwnerBooking {
   final String salonName;
   final String service;
   final int price;
+  final int serviceCharge;
+  final int tipAmount;
+  final int total;
   final DateTime dateTime;
   final OwnerBookingStatus status;
   final String paymentMethod;
@@ -81,6 +87,9 @@ class OwnerBooking {
     required this.salonName,
     required this.service,
     required this.price,
+    this.serviceCharge = 0,
+    this.tipAmount = 0,
+    this.total = 0,
     required this.dateTime,
     required this.status,
     required this.paymentMethod,
@@ -295,6 +304,7 @@ class OwnerBookingRequest {
   final List<String> services;
   final int durationMinutes;
   final int totalPrice;
+  final int tipAmount;
   final OwnerBookingRequestStatus status;
 
   const OwnerBookingRequest({
@@ -310,6 +320,7 @@ class OwnerBookingRequest {
     required this.services,
     required this.durationMinutes,
     required this.totalPrice,
+    this.tipAmount = 0,
     this.status = OwnerBookingRequestStatus.pending,
   });
 
@@ -332,6 +343,7 @@ class OwnerBookingRequest {
       services: services,
       durationMinutes: durationMinutes,
       totalPrice: totalPrice,
+      tipAmount: tipAmount,
       status: status ?? this.status,
     );
   }
@@ -350,6 +362,7 @@ final List<OwnerBookingRequest> kOwnerBookingRequests = [
     services: ['Balayage Color', 'Hair Spa'],
     durationMinutes: 90,
     totalPrice: 1450,
+    tipAmount: 0,
   ),
   OwnerBookingRequest(
     id: 'BR2',
@@ -363,6 +376,7 @@ final List<OwnerBookingRequest> kOwnerBookingRequests = [
     services: ['Classic Haircut'],
     durationMinutes: 30,
     totalPrice: 350,
+    tipAmount: 0,
   ),
   OwnerBookingRequest(
     id: 'BR3',
@@ -376,6 +390,7 @@ final List<OwnerBookingRequest> kOwnerBookingRequests = [
     services: ['Premium Grooming', 'Nail Care'],
     durationMinutes: 75,
     totalPrice: 980,
+    tipAmount: 0,
   ),
   OwnerBookingRequest(
     id: 'BR4',
@@ -389,6 +404,7 @@ final List<OwnerBookingRequest> kOwnerBookingRequests = [
     services: ['Beard Trim', 'Facial'],
     durationMinutes: 50,
     totalPrice: 680,
+    tipAmount: 0,
   ),
 ];
 

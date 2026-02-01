@@ -5,7 +5,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cutline/shared/models/notification_payload.dart';
 import 'package:cutline/shared/services/booking_reminder_service.dart';
 import 'package:cutline/routes/app_router.dart';
-import 'package:cutline/firebase_options.dart';
 import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -15,9 +14,7 @@ import 'package:flutter/material.dart';
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Ensure Firebase is initialized
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp();
   // Additional background processing can be added here
 }
 
@@ -377,4 +374,3 @@ class NotificationService {
 
 /// Global notification service instance
 final notificationService = NotificationService();
-

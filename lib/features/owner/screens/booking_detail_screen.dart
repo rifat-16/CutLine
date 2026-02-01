@@ -59,8 +59,8 @@ class BookingReceiptScreen extends StatelessWidget {
         }
 
         final services = (data?.services ?? [])
-            .map((s) =>
-                _ServiceLine(title: s.name, price: '৳${s.price}', icon: Icons.content_cut))
+            .map((s) => _ServiceLine(
+                title: s.name, price: '৳${s.price}', icon: Icons.content_cut))
             .toList();
         if (services.isEmpty && booking != null) {
           services.add(_ServiceLine(
@@ -72,8 +72,10 @@ class BookingReceiptScreen extends StatelessWidget {
         final subtotal = data?.subtotal ?? booking?.price ?? 0;
         final serviceCharge = data?.serviceCharge ?? 0;
         final total = data?.total ?? booking?.price ?? 0;
+        final tipAmount = data?.tipAmount ?? 0;
         final paymentMethod = data?.paymentMethod ?? 'Cash';
-        final status = data?.status ?? booking?.status ?? OwnerBookingStatus.upcoming;
+        final status =
+            data?.status ?? booking?.status ?? OwnerBookingStatus.upcoming;
         final appointment =
             fmt.format(data?.dateTime ?? booking?.dateTime ?? DateTime.now());
 
@@ -108,6 +110,7 @@ class BookingReceiptScreen extends StatelessWidget {
                       serviceCharge: '৳$serviceCharge',
                       total: '৳$total',
                     ),
+                    tipAmount: tipAmount,
                     paymentMethod: paymentMethod,
                     status: status,
                   ),
@@ -141,6 +144,7 @@ class _ReceiptCard extends StatelessWidget {
   final _CustomerInfo customer;
   final List<_ServiceLine> services;
   final _PriceSummary totals;
+  final int tipAmount;
   final String paymentMethod;
   final OwnerBookingStatus status;
 
@@ -149,6 +153,7 @@ class _ReceiptCard extends StatelessWidget {
     required this.customer,
     required this.services,
     required this.totals,
+    required this.tipAmount,
     required this.paymentMethod,
     required this.status,
   });
@@ -193,6 +198,7 @@ class _ReceiptCard extends StatelessWidget {
             label: 'Platform Fee',
             value: totals.serviceCharge == '৳0' ? 'Free' : totals.serviceCharge,
           ),
+          if (tipAmount > 0) _PriceRow(label: 'Tip', value: '৳$tipAmount'),
           const Divider(height: 32),
           _PriceRow(label: 'Total', value: totals.total, emphasize: true),
           const SizedBox(height: CutlineSpacing.md),

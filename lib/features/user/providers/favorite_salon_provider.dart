@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 
 class FavoriteSalonProvider extends ChangeNotifier {
   FavoriteSalonProvider({
@@ -44,43 +45,44 @@ class FavoriteSalonProvider extends ChangeNotifier {
   }
 
   Future<List<String>> _fetchFavoriteIds() async {
-    final snapshot = await _firestore
-        .collection('users')
-        .doc(userId)
-        .collection('favorites')
-        .get();
-    return snapshot.docs.map((doc) {
-      final data = doc.data();
-      final id = data['salonId'];
-      if (id is String && id.isNotEmpty) return id;
-      return doc.id;
-    }).where((id) => id.isNotEmpty).toList();
+    final userDoc =
+        await FirestoreCache.getDoc(_firestore.collection('users').doc(userId));
+    final data = userDoc.data();
+    if (data == null) return [];
+    final raw = data['favoriteSalonIds'];
+    if (raw is List) {
+      return raw.whereType<String>().where((id) => id.isNotEmpty).toList();
+    }
+    return [];
   }
 
   Future<FavoriteSalon?> _fetchSalon(String salonId) async {
     try {
-      final doc = await _firestore.collection('salons').doc(salonId).get();
+      final doc = await FirestoreCache.getDoc(
+          _firestore.collection('salons_summary').doc(salonId));
       final data = doc.data();
       if (data == null) return null;
-      final waitMinutes = await _estimateWaitMinutes(salonId);
+      final waitMinutes = _summaryWaitMinutes(data);
+      final isOpenFlag = data['isOpen'];
+      final bool isOpenNow = isOpenFlag is bool ? isOpenFlag : false;
       return FavoriteSalon(
         id: salonId,
         name: (data['name'] as String?) ?? 'Salon',
         address: (data['address'] as String?) ?? 'Address unavailable',
-        isOpen: (data['isOpen'] as bool?) ?? false,
+        isOpen: isOpenNow,
         waitMinutes: waitMinutes,
         rating: (data['rating'] as num?)?.toDouble() ?? 4.6,
         reviews: (data['reviews'] as num?)?.toInt() ?? 120,
-        topServices: _parseTopServices(data['topServices'], data['services']),
-        coverImageUrl:
-            (data['coverImageUrl'] as String?) ?? (data['coverPhoto'] as String?),
+        topServices: _parseTopServices(data['topServices']),
+        coverImageUrl: (data['coverImageUrl'] as String?) ??
+            (data['coverPhoto'] as String?),
       );
     } catch (_) {
       return null;
     }
   }
 
-  List<String> _parseTopServices(dynamic topServices, dynamic services) {
+  List<String> _parseTopServices(dynamic topServices) {
     if (topServices is List) {
       final names = topServices
           .whereType<String>()
@@ -89,40 +91,14 @@ class FavoriteSalonProvider extends ChangeNotifier {
           .toList();
       if (names.isNotEmpty) return names.take(3).toList();
     }
-    if (services is List) {
-      return services
-          .whereType<Map>()
-          .map((e) => (e['name'] as String?)?.trim() ?? '')
-          .where((e) => e.isNotEmpty)
-          .take(3)
-          .toList();
-    }
     return const [];
   }
 
-  Future<int> _estimateWaitMinutes(String salonId) async {
-    try {
-      final snap = await _firestore
-          .collection('salons')
-          .doc(salonId)
-          .collection('queue')
-          .where('status', isEqualTo: 'waiting')
-          .get();
-      if (snap.docs.isEmpty) return 0;
-      var collected = 0;
-      var count = 0;
-      for (final doc in snap.docs) {
-        final wait = (doc.data()['waitMinutes'] as num?)?.toInt();
-        if (wait != null && wait > 0) {
-          collected += wait;
-          count++;
-        }
-      }
-      if (count > 0) return (collected / count).ceil();
-      return snap.size * 10;
-    } catch (_) {
-      return 0;
-    }
+  int _summaryWaitMinutes(Map<String, dynamic> data) {
+    final value = data['avgWaitMinutes'];
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
   }
 
   void _setLoading(bool value) {

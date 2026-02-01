@@ -69,6 +69,15 @@ class MyBookingProvider extends ChangeNotifier {
           .collection('bookings')
           .doc(booking.id)
           .set({'status': 'cancelled'}, SetOptions(merge: true));
+      if (userId.isNotEmpty) {
+        await _firestore.collection('users').doc(userId).set(
+          {
+            'activeBookingIds': FieldValue.arrayRemove([booking.id]),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      }
 
       // Cancel the reminder notification for this booking
       await _reminderService.cancelReminder(booking.id);
@@ -148,7 +157,7 @@ class MyBookingProvider extends ChangeNotifier {
     final cancelled = <UserBooking>[];
     for (final item in items) {
       final status = item.status.toLowerCase();
-      if (status == 'cancelled') {
+      if (status == 'cancelled' || status == 'no_show' || status == 'rejected') {
         cancelled.add(item.copyWith(status: 'cancelled'));
       } else if (status == 'completed') {
         completed.add(item.copyWith(status: 'completed'));

@@ -25,7 +25,8 @@ class BookingReceiptScreen extends StatelessWidget {
         final data = provider.data;
 
         return Scaffold(
-          appBar: const CutlineAppBar(title: 'Booking Receipt', centerTitle: true),
+          appBar:
+              const CutlineAppBar(title: 'Booking Receipt', centerTitle: true),
           backgroundColor: CutlineColors.secondaryBackground,
           body: provider.isLoading && data == null
               ? const Center(child: CircularProgressIndicator())
@@ -54,10 +55,12 @@ class BookingReceiptScreen extends StatelessWidget {
                           width: double.infinity,
                           child: ElevatedButton(
                             style: CutlineButtons.primary(
-                                padding: const EdgeInsets.symmetric(vertical: 14)),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14)),
                             onPressed: () => Navigator.pop(context),
                             child: const Text('Back to My Bookings',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                style: TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ),
@@ -112,9 +115,17 @@ class _ReceiptCard extends StatelessWidget {
           const Divider(height: 32),
           const Text('Customer Information', style: CutlineTextStyles.title),
           const SizedBox(height: CutlineSpacing.sm),
-          _InfoRow(label: 'Name', value: data.customerName.isNotEmpty ? data.customerName : 'N/A'),
-          _InfoRow(label: 'Phone', value: data.customerPhone.isNotEmpty ? data.customerPhone : 'N/A'),
-          _InfoRow(label: 'Email', value: data.customerEmail.isNotEmpty ? data.customerEmail : 'N/A'),
+          _InfoRow(
+              label: 'Name',
+              value: data.customerName.isNotEmpty ? data.customerName : 'N/A'),
+          _InfoRow(
+              label: 'Phone',
+              value:
+                  data.customerPhone.isNotEmpty ? data.customerPhone : 'N/A'),
+          _InfoRow(
+              label: 'Email',
+              value:
+                  data.customerEmail.isNotEmpty ? data.customerEmail : 'N/A'),
           const Divider(height: 32),
           const Text('Service Details', style: CutlineTextStyles.title),
           const SizedBox(height: CutlineSpacing.sm),
@@ -125,6 +136,8 @@ class _ReceiptCard extends StatelessWidget {
             label: 'Platform Fee',
             value: data.serviceCharge == 0 ? 'Free' : totals.serviceCharge,
           ),
+          if (data.tipAmount > 0)
+            _PriceRow(label: 'Tip', value: '৳${data.tipAmount}'),
           const Divider(height: 32),
           _PriceRow(label: 'Total', value: totals.total, emphasize: true),
           const SizedBox(height: CutlineSpacing.md),
@@ -136,7 +149,8 @@ class _ReceiptCard extends StatelessWidget {
           const Center(
             child: Column(
               children: [
-                Text('Thank you for choosing CutLine 💈', style: CutlineTextStyles.subtitle),
+                Text('Thank you for choosing CutLine 💈',
+                    style: CutlineTextStyles.subtitle),
                 SizedBox(height: 4),
                 Text('Powered by CutLine', style: CutlineTextStyles.caption),
               ],
@@ -174,7 +188,8 @@ class _ServiceLine extends StatelessWidget {
   final String price;
   final IconData icon;
 
-  const _ServiceLine({required this.title, required this.price, required this.icon});
+  const _ServiceLine(
+      {required this.title, required this.price, required this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -202,11 +217,13 @@ class _PriceRow extends StatelessWidget {
   final String value;
   final bool emphasize;
 
-  const _PriceRow({required this.label, required this.value, this.emphasize = false});
+  const _PriceRow(
+      {required this.label, required this.value, this.emphasize = false});
 
   @override
   Widget build(BuildContext context) {
-    final style = emphasize ? CutlineTextStyles.title : CutlineTextStyles.subtitleBold;
+    final style =
+        emphasize ? CutlineTextStyles.title : CutlineTextStyles.subtitleBold;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -231,6 +248,8 @@ class _PaymentStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final normalized = status.trim().toLowerCase();
+    final statusLabel = _statusLabel(normalized);
     return Container(
       width: double.infinity,
       padding: CutlineSpacing.card,
@@ -242,10 +261,32 @@ class _PaymentStatusCard extends StatelessWidget {
         children: [
           _InfoRow(label: '💳 Payment Method', value: paymentMethod),
           const SizedBox(height: 8),
-          _InfoRow(label: '✅ Booking Status', value: status),
+          _InfoRow(label: '✅ Booking Status', value: statusLabel),
         ],
       ),
     );
+  }
+
+  String _statusLabel(String value) {
+    switch (value) {
+      case 'cancelled':
+        return 'Cancelled';
+      case 'no_show':
+        return 'No show';
+      case 'rejected':
+        return 'Rejected';
+      case 'completed':
+        return 'Completed';
+      case 'serving':
+        return 'Serving';
+      case 'waiting':
+        return 'Waiting';
+      case 'pending':
+        return 'Pending';
+      case 'upcoming':
+      default:
+        return 'Upcoming';
+    }
   }
 }
 
@@ -272,5 +313,8 @@ class _PriceSummary {
   final String serviceCharge;
   final String total;
 
-  const _PriceSummary({required this.subtotal, required this.serviceCharge, required this.total});
+  const _PriceSummary(
+      {required this.subtotal,
+      required this.serviceCharge,
+      required this.total});
 }

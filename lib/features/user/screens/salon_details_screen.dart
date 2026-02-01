@@ -100,11 +100,13 @@ class SalonDetailsScreen extends StatelessWidget {
               ),
               _mediumGap,
               ComboOfferCard(
+                salonId: details.id,
                 salonName: details.name,
                 combo: details.combos.isNotEmpty ? details.combos.first : null,
               ),
               _mediumGap,
               ServicesSection(
+                salonId: details.id,
                 salonName: details.name,
                 services: details.services,
                 topServices: details.topServices,
@@ -868,11 +870,13 @@ class SalonGallerySection extends StatelessWidget {
 
 // Combo offer highlight.
 class ComboOfferCard extends StatelessWidget {
+  final String salonId;
   final String salonName;
   final SalonCombo? combo;
 
   const ComboOfferCard({
     super.key,
+    required this.salonId,
     required this.salonName,
     this.combo,
   });
@@ -909,6 +913,7 @@ class ComboOfferCard extends StatelessWidget {
     }
 
     final displayCombo = combo!;
+    final comboServices = _parseComboServices(displayCombo.services);
     return Padding(
       padding: CutlineSpacing.section,
       child: Column(
@@ -923,7 +928,8 @@ class ComboOfferCard extends StatelessWidget {
                   Navigator.pushNamed(
                     context,
                     AppRoutes.viewAllServices,
-                    arguments: ViewAllServicesArgs(salonName: salonName),
+                    arguments:
+                        ViewAllServicesArgs(salonName: salonName, salonId: salonId),
                   );
                 },
                 child: const Text('See all', style: CutlineTextStyles.link),
@@ -992,7 +998,16 @@ class ComboOfferCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     ElevatedButton(
                       onPressed: () {
-                        // TODO: Add booking functionality.
+                        Navigator.pushNamed(
+                          context,
+                          AppRoutes.booking,
+                          arguments: BookingArgs(
+                            salonId: salonId,
+                            salonName: salonName,
+                            preselectedServices: comboServices,
+                            lockServices: comboServices.isNotEmpty,
+                          ),
+                        );
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
@@ -1016,16 +1031,35 @@ class ComboOfferCard extends StatelessWidget {
       ),
     );
   }
+
+  List<String> _parseComboServices(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return [];
+    final normalized = trimmed
+        .replaceAll('\n', ' ')
+        .replaceAll(RegExp(r'\s+and\s+', caseSensitive: false), ',')
+        .replaceAll(RegExp(r'\s*\+\s*'), ',')
+        .replaceAll(RegExp(r'\s*&\s*'), ',')
+        .replaceAll(RegExp(r'\s*[•·]\s*'), ',')
+        .replaceAll(RegExp(r'\s*/\s*'), ',');
+    return normalized
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
 }
 
 // Services quick entry point.
 class ServicesSection extends StatelessWidget {
+  final String salonId;
   final String salonName;
   final List<SalonService> services;
   final List<String> topServices;
 
   const ServicesSection({
     super.key,
+    required this.salonId,
     required this.salonName,
     required this.services,
     required this.topServices,
@@ -1046,7 +1080,8 @@ class ServicesSection extends StatelessWidget {
               Navigator.pushNamed(
                 context,
                 AppRoutes.viewAllServices,
-                arguments: ViewAllServicesArgs(salonName: salonName),
+                arguments:
+                    ViewAllServicesArgs(salonName: salonName, salonId: salonId),
               );
             },
             child: Container(

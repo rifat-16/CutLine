@@ -106,8 +106,7 @@ class UserHomeProvider extends ChangeNotifier {
     if (!_hasMore) return;
     try {
       Query<Map<String, dynamic>> query = _firestore
-          .collection('salons')
-          .where('verificationStatus', isEqualTo: 'verified')
+          .collection('salons_summary')
           .limit(_pageSize);
 
       if (_lastSalonDoc != null) {
@@ -150,9 +149,7 @@ class UserHomeProvider extends ChangeNotifier {
   Future<UserSalon> _mapSalon(String id, Map<String, dynamic> data) async {
     try {
       final topServices = _parseTopServices(data['topServices']);
-      final services = topServices.isNotEmpty
-          ? topServices
-          : _parseFallbackServices(data['services']);
+      final services = topServices.isNotEmpty ? topServices : const <String>[];
 
       final isOpenFlag = data['isOpen'];
       final bool isOpenNow = isOpenFlag is bool ? isOpenFlag : false;
@@ -195,14 +192,6 @@ class UserHomeProvider extends ChangeNotifier {
     }
   }
 
-  String _parseServiceName(dynamic item) {
-    if (item is Map<String, dynamic>) {
-      return (item['name'] as String?)?.trim() ?? '';
-    }
-    if (item is String) return item.trim();
-    return '';
-  }
-
   List<String> _parseTopServices(dynamic field) {
     if (field is List) {
       return field
@@ -218,21 +207,9 @@ class UserHomeProvider extends ChangeNotifier {
     return [];
   }
 
-  List<String> _parseFallbackServices(dynamic servicesField) {
-    if (servicesField is! List) return const [];
-    return servicesField
-        .map((item) => _parseServiceName(item))
-        .where((name) => name.isNotEmpty)
-        .take(3)
-        .toList();
-  }
-
   int _summaryWaitMinutes(Map<String, dynamic> data) {
     final candidates = [
-      data['waitMinutes'],
-      data['waitMinutesEstimate'],
       data['avgWaitMinutes'],
-      data['estimatedWaitMinutes'],
     ];
     for (final value in candidates) {
       if (value is num) return value.toInt();
@@ -249,20 +226,16 @@ class UserHomeProvider extends ChangeNotifier {
       return {};
     }
     try {
-      final snap = await FirestoreCache.getQuery(_firestore
-          .collection('users')
-          .doc(userId)
-          .collection('favorites'));
-      final favorites = snap.docs
-          .map((doc) {
-            final data = doc.data();
-            final salonId = data['salonId'];
-            if (salonId is String && salonId.isNotEmpty) return salonId;
-            return doc.id;
-          })
-          .where((id) => id.isNotEmpty)
-          .toSet();
-      return favorites;
+      final userDoc = await FirestoreCache.getDoc(
+        _firestore.collection('users').doc(userId),
+      );
+      final data = userDoc.data();
+      if (data == null) return {};
+      final raw = data['favoriteSalonIds'];
+      if (raw is List) {
+        return raw.whereType<String>().where((id) => id.isNotEmpty).toSet();
+      }
+      return {};
     } catch (e) {
       return {};
     }
@@ -302,7 +275,7 @@ class UserHomeProvider extends ChangeNotifier {
           return salon.copyWith(distanceMeters: distance);
         })
         .where((salon) =>
-            salon.distanceMeters != null &&
+            salon.distanceMeters == null ||
             salon.distanceMeters! <= radiusMeters);
 
     if (query.isNotEmpty) {

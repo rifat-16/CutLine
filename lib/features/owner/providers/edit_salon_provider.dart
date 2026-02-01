@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -47,7 +48,9 @@ class EditSalonProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-      final doc = await _firestore.collection('salons').doc(ownerId).get();
+      final doc = await FirestoreCache.getDoc(
+        _firestore.collection('salons').doc(ownerId),
+      );
       final data = doc.data() ?? {};
       salonName = (data['name'] as String?) ?? '';
       ownerName = (data['ownerName'] as String?) ?? '';
@@ -58,7 +61,9 @@ class EditSalonProvider extends ChangeNotifier {
       geohash = (data['geohash'] as String?)?.trim();
       about = (data['description'] as String?) ?? '';
       photoUrl = (data['photoUrl'] as String?)?.trim();
-      final userDoc = await _firestore.collection('users').doc(ownerId).get();
+      final userDoc = await FirestoreCache.getDoc(
+        _firestore.collection('users').doc(ownerId),
+      );
       final userData = userDoc.data() ?? {};
       final userEmail = (_authProvider.currentUser?.email ??
               userData['email'] as String?)
@@ -116,6 +121,13 @@ class EditSalonProvider extends ChangeNotifier {
             'geohash': geohash.trim(),
           'description': about,
           'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      await _firestore.collection('salons_summary').doc(ownerId).set(
+        {
+          'name': salonName,
+          'address': address,
         },
         SetOptions(merge: true),
       );

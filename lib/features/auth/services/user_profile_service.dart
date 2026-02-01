@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/models/user_role.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 
 class UserProfileService {
   UserProfileService({FirebaseFirestore? firestore})
@@ -13,7 +14,9 @@ class UserProfileService {
     required String name,
     String phone = '',
     required UserRole role,
-  }) {
+  }) async {
+    final userRef = _firestore.collection('users').doc(uid);
+    final existing = await FirestoreCache.getDoc(userRef);
     final data = {
       'uid': uid,
       'email': email.trim(),
@@ -24,18 +27,22 @@ class UserProfileService {
       // This allows server-side notification targeting via `.where('salonId' == bookingSalonId)`.
       if (role == UserRole.owner) 'salonId': uid,
       'profileComplete': role == UserRole.owner ? false : true,
+      if (!existing.exists) 'favoriteSalonIds': <String>[],
+      if (!existing.exists) 'activeBookingIds': <String>[],
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
-    return _firestore.collection('users').doc(uid).set(
+    return userRef.set(
           data,
           SetOptions(merge: true),
         );
   }
 
   Future<Map<String, dynamic>?> fetchUserProfile(String uid) async {
-    final snap = await _firestore.collection('users').doc(uid).get();
+    final snap = await FirestoreCache.getDoc(
+      _firestore.collection('users').doc(uid),
+    );
     if (!snap.exists) return null;
     return snap.data();
   }

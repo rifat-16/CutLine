@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 class WorkHistoryProvider extends ChangeNotifier {
   WorkHistoryProvider({
@@ -19,6 +20,7 @@ class WorkHistoryProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   List<WorkHistoryItem> get items => _items;
+  int get totalTips => _items.fold<int>(0, (acc, item) => acc + item.tipAmount);
 
   Future<void> load() async {
     final uid = _authProvider.currentUser?.uid;
@@ -33,7 +35,7 @@ class WorkHistoryProvider extends ChangeNotifier {
       final userData = userSnap.data() ?? {};
       final ownerId = userData['ownerId'] as String?;
       final barberName = (userData['name'] as String?) ?? '';
-      
+
       if (ownerId == null || ownerId.isEmpty) {
         _setError('Owner not found for this account.');
         _items = [];
@@ -62,21 +64,15 @@ class WorkHistoryProvider extends ChangeNotifier {
         // Ignore errors in fetching barbers list
       }
 
-      QuerySnapshot<Map<String, dynamic>> snap;
-      try {
-        snap = await _firestore
-            .collection('salons')
-            .doc(ownerId)
-            .collection('queue')
-            .get();
-      } catch (_) {
-        snap = await _firestore.collection('queue').get();
-      }
+      final snap = await _firestore
+          .collection('salons')
+          .doc(ownerId)
+          .collection('bookings')
+          .get();
 
       _items = snap.docs
           .map((doc) => _mapItem(doc.data(), uid, barberName, nameToIdMap))
-          .where((item) => item != null)
-          .cast<WorkHistoryItem>()
+          .whereType<WorkHistoryItem>()
           .where((item) => item.status == 'completed' || item.status == 'done')
           .toList()
         ..sort((a, b) => b.time.compareTo(a.time));
@@ -121,28 +117,43 @@ class WorkHistoryProvider extends ChangeNotifier {
       return null;
     }
 
-    // Prioritize completedAt for completed items
-    DateTime time;
-    if (data['completedAt'] != null && data['completedAt'] is Timestamp) {
-      time = (data['completedAt'] as Timestamp).toDate();
-    } else if (data['startedAt'] != null && data['startedAt'] is Timestamp) {
-      time = (data['startedAt'] as Timestamp).toDate();
-    } else {
-      final ts = data['updatedAt'] ?? data['timestamp'] ?? data['time'];
-      if (ts is Timestamp) {
-        time = ts.toDate();
-      } else {
-        time = DateTime.now();
-      }
-    }
+    final time = _parseBookingTime(data);
+
+    final tipAmount = (data['tipAmount'] as num?)?.toInt() ?? 0;
+    final total = (data['total'] as num?)?.toInt() ??
+        (data['price'] as num?)?.toInt() ??
+        0;
+    final serviceCharge = (data['serviceCharge'] as num?)?.toInt() ?? 0;
+    final basePrice =
+        (data['price'] as num?)?.toInt() ?? (total - tipAmount - serviceCharge);
 
     return WorkHistoryItem(
       service: (data['service'] as String?) ?? 'Service',
       client: (data['customerName'] as String?) ?? 'Client',
-      price: (data['price'] as num?)?.toInt() ?? 0,
+      price: basePrice < 0 ? 0 : basePrice,
+      total: total,
+      tipAmount: tipAmount,
       status: (data['status'] as String?) ?? 'completed',
       time: time,
     );
+  }
+
+  DateTime _parseBookingTime(Map<String, dynamic> data) {
+    final ts = data['completedAt'] ?? data['dateTime'] ?? data['createdAt'];
+    if (ts is Timestamp) return ts.toDate();
+    final dateStr = (data['date'] as String?) ?? '';
+    final timeStr = (data['time'] as String?) ?? '';
+    if (dateStr.isNotEmpty && timeStr.isNotEmpty) {
+      try {
+        final parsedDate = DateTime.parse(dateStr);
+        final parsedTime = DateFormat('h:mm a').parse(timeStr);
+        return DateTime(parsedDate.year, parsedDate.month, parsedDate.day,
+            parsedTime.hour, parsedTime.minute);
+      } catch (_) {
+        // fall through
+      }
+    }
+    return DateTime.now();
   }
 
   void _setLoading(bool value) {
@@ -160,6 +171,8 @@ class WorkHistoryItem {
   final String service;
   final String client;
   final int price;
+  final int total;
+  final int tipAmount;
   final String status;
   final DateTime time;
 
@@ -167,6 +180,8 @@ class WorkHistoryItem {
     required this.service,
     required this.client,
     required this.price,
+    required this.total,
+    required this.tipAmount,
     required this.status,
     required this.time,
   });

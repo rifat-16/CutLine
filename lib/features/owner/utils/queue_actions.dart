@@ -23,6 +23,11 @@ List<QueueActionConfig> queueActionsForStatus(OwnerQueueStatus status) {
             label: 'Start Serving',
             color: Color(0xFF2563EB),
             nextStatus: OwnerQueueStatus.serving),
+        QueueActionConfig(
+            label: 'Cancel',
+            color: Color(0xFFEF4444),
+            nextStatus: OwnerQueueStatus.noShow,
+            isOutline: true),
       ];
     case OwnerQueueStatus.turnReady:
       return const [
@@ -30,6 +35,11 @@ List<QueueActionConfig> queueActionsForStatus(OwnerQueueStatus status) {
             label: 'Start Serving',
             color: Color(0xFF2563EB),
             nextStatus: OwnerQueueStatus.serving),
+        QueueActionConfig(
+            label: 'Cancel',
+            color: Color(0xFFEF4444),
+            nextStatus: OwnerQueueStatus.noShow,
+            isOutline: true),
       ];
     case OwnerQueueStatus.arrived:
       return const [
@@ -37,6 +47,11 @@ List<QueueActionConfig> queueActionsForStatus(OwnerQueueStatus status) {
             label: 'Start Serving',
             color: Color(0xFF2563EB),
             nextStatus: OwnerQueueStatus.serving),
+        QueueActionConfig(
+            label: 'Cancel',
+            color: Color(0xFFEF4444),
+            nextStatus: OwnerQueueStatus.noShow,
+            isOutline: true),
       ];
     case OwnerQueueStatus.serving:
       return const [

@@ -36,6 +36,7 @@ class BookingSummaryScreen extends StatefulWidget {
 
 class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   String selectedPayment = 'Pay at Salon';
+  int tipAmount = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +58,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
         final services = provider.services
             .map((s) => {'name': s.name, 'price': s.price})
             .toList();
+        final totalWithTip = provider.total + tipAmount;
         return Scaffold(
           backgroundColor: CutlineColors.secondaryBackground,
           appBar:
@@ -64,8 +66,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
           body: provider.isLoading && provider.services.isEmpty
               ? const Center(child: CircularProgressIndicator())
               : SingleChildScrollView(
-                  padding:
-                      CutlineSpacing.section.copyWith(top: 20, bottom: 32),
+                  padding: CutlineSpacing.section.copyWith(top: 20, bottom: 32),
                   child: Column(
                     children: [
                       if (provider.error != null)
@@ -88,8 +89,11 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                           selectedPayment: selectedPayment,
                           onPaymentChanged: (value) =>
                               setState(() => selectedPayment = value),
+                          tipAmount: tipAmount,
+                          onTipChanged: (value) =>
+                              setState(() => tipAmount = value),
                           onConfirm: () => _handleConfirm(context),
-                          total: provider.total,
+                          total: totalWithTip,
                           serviceCharge: provider.serviceCharge,
                           isSaving: provider.isSaving,
                         ),
@@ -106,7 +110,8 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
     final provider = context.read<BookingSummaryProvider>();
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
-    final success = await provider.saveBooking(selectedPayment);
+    final success =
+        await provider.saveBooking(selectedPayment, tipAmount: tipAmount);
     if (!mounted) return;
     if (!success) {
       messenger.showSnackBar(
@@ -128,7 +133,8 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
             child: ElevatedButton(
               style: CutlineButtons.primary(),
               onPressed: () {
-                Navigator.of(context, rootNavigator: true).pop(); // close dialog
+                Navigator.of(context, rootNavigator: true)
+                    .pop(); // close dialog
                 Navigator.of(context, rootNavigator: true)
                     .pushNamedAndRemoveUntil(
                   AppRoutes.myBookings,
@@ -154,6 +160,8 @@ class _SummaryCard extends StatelessWidget {
   final List<Map<String, dynamic>> services;
   final String selectedPayment;
   final ValueChanged<String> onPaymentChanged;
+  final int tipAmount;
+  final ValueChanged<int> onTipChanged;
   final VoidCallback onConfirm;
   final int total;
   final int serviceCharge;
@@ -169,6 +177,8 @@ class _SummaryCard extends StatelessWidget {
     required this.services,
     required this.selectedPayment,
     required this.onPaymentChanged,
+    required this.tipAmount,
+    required this.onTipChanged,
     required this.onConfirm,
     required this.total,
     required this.serviceCharge,
@@ -200,24 +210,31 @@ class _SummaryCard extends StatelessWidget {
           const Divider(height: 32),
           _ServiceList(services: services),
           const Divider(height: 32),
-          _FeesSection(serviceCharge: serviceCharge),
-          const SizedBox(height: CutlineSpacing.md),
-          _TotalsRow(total: total),
+          _TipOptions(tipAmount: tipAmount, onChanged: onTipChanged),
           const Divider(height: 32),
-          _PaymentOptions(selectedPayment: selectedPayment, onChanged: onPaymentChanged),
+          _FeesSection(serviceCharge: serviceCharge, tipAmount: tipAmount),
+          const SizedBox(height: CutlineSpacing.md),
+          _TotalsRow(total: total, tipAmount: tipAmount),
+          const Divider(height: 32),
+          _PaymentOptions(
+              selectedPayment: selectedPayment, onChanged: onPaymentChanged),
           const SizedBox(height: CutlineSpacing.lg),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: isSaving ? null : onConfirm,
-              style: CutlineButtons.primary(padding: const EdgeInsets.symmetric(vertical: 16)),
+              style: CutlineButtons.primary(
+                  padding: const EdgeInsets.symmetric(vertical: 16)),
               child: isSaving
                   ? const SizedBox(
                       height: 18,
                       width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
                     )
-                  : const Text('Confirm Booking', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  : const Text('Confirm Booking',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
           ),
         ],
@@ -306,7 +323,8 @@ class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
 
-  const _InfoRow({required this.icon, required this.label, required this.value});
+  const _InfoRow(
+      {required this.icon, required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -338,15 +356,63 @@ class _ServiceList extends StatelessWidget {
         const Text('Selected Services', style: CutlineTextStyles.title),
         const SizedBox(height: CutlineSpacing.sm),
         ...services.asMap().entries.map(
-          (entry) => CutlineAnimations.staggeredList(
-            index: entry.key,
-            child: ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              title: Text(entry.value['name'] as String, style: CutlineTextStyles.body.copyWith(fontSize: 16)),
-              trailing: Text('৳${entry.value['price']}', style: CutlineTextStyles.subtitleBold),
+              (entry) => CutlineAnimations.staggeredList(
+                index: entry.key,
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(entry.value['name'] as String,
+                      style: CutlineTextStyles.body.copyWith(fontSize: 16)),
+                  trailing: Text('৳${entry.value['price']}',
+                      style: CutlineTextStyles.subtitleBold),
+                ),
+              ),
             ),
-          ),
+      ],
+    );
+  }
+}
+
+class _TipOptions extends StatelessWidget {
+  final int tipAmount;
+  final ValueChanged<int> onChanged;
+
+  const _TipOptions({
+    required this.tipAmount,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const options = [0, 10, 20, 50, 100];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Tip for Barber', style: CutlineTextStyles.title),
+        const SizedBox(height: 4),
+        const Text('The barber receives 100% of this tip',
+            style: CutlineTextStyles.subtitle),
+        const SizedBox(height: CutlineSpacing.sm),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: options.map((amount) {
+            final selected = tipAmount == amount;
+            return ChoiceChip(
+              label: Text(amount == 0 ? 'No Tip' : '৳$amount'),
+              selected: selected,
+              onSelected: (_) => onChanged(amount),
+              selectedColor: CutlineColors.primary.withValues(alpha: 0.15),
+              backgroundColor: Colors.grey.shade100,
+              labelStyle: selected
+                  ? CutlineTextStyles.subtitleBold
+                      .copyWith(color: CutlineColors.primary)
+                  : CutlineTextStyles.body,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            );
+          }).toList(),
         ),
       ],
     );
@@ -355,8 +421,9 @@ class _ServiceList extends StatelessWidget {
 
 class _FeesSection extends StatelessWidget {
   final int serviceCharge;
+  final int tipAmount;
 
-  const _FeesSection({required this.serviceCharge});
+  const _FeesSection({required this.serviceCharge, required this.tipAmount});
 
   @override
   Widget build(BuildContext context) {
@@ -366,6 +433,11 @@ class _FeesSection extends StatelessWidget {
           label: 'Platform Fee',
           value: serviceCharge == 0 ? 'Free' : '৳$serviceCharge',
         ),
+        if (tipAmount > 0)
+          _FeeRow(
+            label: 'Tip',
+            value: '৳$tipAmount',
+          ),
       ],
     );
   }
@@ -394,16 +466,20 @@ class _FeeRow extends StatelessWidget {
 
 class _TotalsRow extends StatelessWidget {
   final int total;
+  final int tipAmount;
 
-  const _TotalsRow({required this.total});
+  const _TotalsRow({required this.total, required this.tipAmount});
 
   @override
   Widget build(BuildContext context) {
+    final label = tipAmount > 0 ? 'Total (incl. tip)' : 'Total';
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text('Total', style: CutlineTextStyles.title),
-        Text('৳$total', style: CutlineTextStyles.title.copyWith(color: CutlineColors.primary)),
+        Text(label, style: CutlineTextStyles.title),
+        Text('৳$total',
+            style:
+                CutlineTextStyles.title.copyWith(color: CutlineColors.primary)),
       ],
     );
   }
@@ -413,7 +489,8 @@ class _PaymentOptions extends StatelessWidget {
   final String selectedPayment;
   final ValueChanged<String> onChanged;
 
-  const _PaymentOptions({required this.selectedPayment, required this.onChanged});
+  const _PaymentOptions(
+      {required this.selectedPayment, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -478,7 +555,9 @@ class _PaymentOptionTile extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: enabled ? CutlineTextStyles.body : CutlineTextStyles.subtitle,
+                style: enabled
+                    ? CutlineTextStyles.body
+                    : CutlineTextStyles.subtitle,
               ),
             ),
           ],

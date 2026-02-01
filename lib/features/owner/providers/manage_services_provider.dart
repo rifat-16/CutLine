@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:flutter/material.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 
 class ManageServicesProvider extends ChangeNotifier {
   ManageServicesProvider({
@@ -32,15 +33,12 @@ class ManageServicesProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-      final doc = await _firestore.collection('salons').doc(ownerId).get();
+      final doc = await FirestoreCache.getDoc(
+        _firestore.collection('salons').doc(ownerId),
+      );
       final data = doc.data() ?? {};
-      final servicesField = data['services'];
       final combosField = data['combos'];
-      if (servicesField is List) {
-        _services = servicesField
-            .map((e) => _mapService(e as Map<String, dynamic>? ?? {}))
-            .toList();
-      }
+      _services = await _loadServices(ownerId);
       if (combosField is List) {
         _combos = combosField
             .map((e) => _mapCombo(e as Map<String, dynamic>? ?? {}))
@@ -60,13 +58,6 @@ class ManageServicesProvider extends ChangeNotifier {
     if (ownerId == null) return;
     try {
       await _firestore.collection('salons').doc(ownerId).set({
-        'services': _services
-            .map((s) => {
-                  'name': s.name,
-                  'price': s.price,
-                  'durationMinutes': s.durationMinutes,
-                })
-            .toList(),
         'combos': _combos
             .map((c) => {
                   'name': c.name,
@@ -77,6 +68,13 @@ class ManageServicesProvider extends ChangeNotifier {
                 })
             .toList(),
       }, SetOptions(merge: true));
+      await _syncServices(ownerId, _services);
+      await _firestore.collection('salons_summary').doc(ownerId).set(
+        {
+          'topServices': _topServices(_services),
+        },
+        SetOptions(merge: true),
+      );
     } catch (_) {
       _setError('Failed to save changes.');
     }
@@ -138,5 +136,63 @@ class ManageServicesProvider extends ChangeNotifier {
   void _setError(String? message) {
     _error = message;
     notifyListeners();
+  }
+
+  List<String> _topServices(List<OwnerServiceInfo> services) {
+    final names = services
+        .map((s) => s.name.trim())
+        .where((name) => name.isNotEmpty)
+        .toList();
+    if (names.isEmpty) return const [];
+    return names.take(3).toList();
+  }
+
+  Future<List<OwnerServiceInfo>> _loadServices(String ownerId) async {
+    try {
+      final query = _firestore
+          .collection('salons')
+          .doc(ownerId)
+          .collection('all_services')
+          .orderBy('order');
+      final snap = await FirestoreCache.getQuery(query);
+      final services =
+          snap.docs.map((doc) => _mapService(doc.data())).toList();
+      if (services.isNotEmpty) return services;
+    } catch (_) {
+      // fall through to fallback
+    }
+    try {
+      final snap = await FirestoreCache.getQuery(_firestore
+          .collection('salons')
+          .doc(ownerId)
+          .collection('all_services'));
+      return snap.docs.map((doc) => _mapService(doc.data())).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _syncServices(
+    String ownerId,
+    List<OwnerServiceInfo> services,
+  ) async {
+    final collection =
+        _firestore.collection('salons').doc(ownerId).collection('all_services');
+    final existing = await FirestoreCache.getQuery(collection);
+    final batch = _firestore.batch();
+    for (final doc in existing.docs) {
+      batch.delete(doc.reference);
+    }
+    for (var i = 0; i < services.length; i++) {
+      final service = services[i];
+      batch.set(collection.doc(), {
+        'name': service.name,
+        'price': service.price,
+        'durationMinutes': service.durationMinutes,
+        'order': i,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
   }
 }

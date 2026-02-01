@@ -1,12 +1,12 @@
-import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/screens/barbers_screen.dart';
 import 'package:cutline/features/owner/screens/contact_support_screen.dart';
 import 'package:cutline/features/owner/screens/edit_salon_information.dart';
+import 'package:cutline/features/owner/screens/barber_payouts_screen.dart';
 import 'package:cutline/features/owner/screens/manage_gallery_screen.dart';
 import 'package:cutline/features/owner/screens/manage_services_screen.dart';
+import 'package:cutline/features/owner/screens/platform_fee_report_screen.dart';
 import 'package:cutline/features/owner/screens/working_hours_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 class OwnerSettingsScreen extends StatefulWidget {
   const OwnerSettingsScreen({super.key});
@@ -60,6 +60,18 @@ class _OwnerSettingsScreenState extends State<OwnerSettingsScreen> {
             title: 'Manage gallery',
             subtitle: 'Add, edit or remove photos',
             onTap: () => _open(const ManageGalleryScreen()),
+          ),
+          _SettingTile(
+            icon: Icons.account_balance_wallet_outlined,
+            title: 'Platform fee',
+            subtitle: 'View due, paid & history',
+            onTap: () => _open(const PlatformFeeReportScreen()),
+          ),
+          _SettingTile(
+            icon: Icons.payments_outlined,
+            title: 'Barber payouts',
+            subtitle: 'Track tips due & payout history',
+            onTap: () => _open(const OwnerBarberPayoutsScreen()),
           ),
           const SizedBox(height: 24),
           const Text('Support',
