@@ -29,18 +29,6 @@ List<QueueActionConfig> queueActionsForStatus(OwnerQueueStatus status) {
             nextStatus: OwnerQueueStatus.noShow,
             isOutline: true),
       ];
-    case OwnerQueueStatus.turnReady:
-      return const [
-        QueueActionConfig(
-            label: 'Start Serving',
-            color: Color(0xFF2563EB),
-            nextStatus: OwnerQueueStatus.serving),
-        QueueActionConfig(
-            label: 'Cancel',
-            color: Color(0xFFEF4444),
-            nextStatus: OwnerQueueStatus.noShow,
-            isOutline: true),
-      ];
     case OwnerQueueStatus.arrived:
       return const [
         QueueActionConfig(

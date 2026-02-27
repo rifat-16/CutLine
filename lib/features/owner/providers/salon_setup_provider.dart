@@ -130,7 +130,8 @@ class SalonSetupProvider extends ChangeNotifier {
 
   Future<bool> saveSalon({
     required String name,
-    required String address,
+    required String typedAddress,
+    required String mapAddress,
     required GeoPoint location,
     required String geohash,
     required String contact,
@@ -174,7 +175,8 @@ class SalonSetupProvider extends ChangeNotifier {
       await _salonService.saveSalon(
         ownerId: ownerId,
         name: name,
-        address: address,
+        typedAddress: typedAddress,
+        mapAddress: mapAddress,
         location: location,
         geohash: geohash,
         contact: contact,
@@ -322,7 +324,10 @@ class SalonSetupProvider extends ChangeNotifier {
     required String path,
   }) async {
     final ref = _storage.ref().child('salons').child(ownerId).child(path);
-    final uploadTask = ref.putFile(File(file.path));
+    final uploadTask = ref.putFile(
+      File(file.path),
+      SettableMetadata(contentType: _contentTypeFor(file.name)),
+    );
     final snap = await uploadTask.whenComplete(() {});
     return snap.ref.getDownloadURL();
   }
@@ -331,5 +336,20 @@ class SalonSetupProvider extends ChangeNotifier {
     final dot = name.lastIndexOf('.');
     if (dot == -1 || dot == name.length - 1) return 'jpg';
     return name.substring(dot + 1);
+  }
+
+  String _contentTypeFor(String name) {
+    switch (_ext(name).toLowerCase()) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'heic':
+        return 'image/heic';
+      case 'heif':
+        return 'image/heif';
+      default:
+        return 'image/jpeg';
+    }
   }
 }

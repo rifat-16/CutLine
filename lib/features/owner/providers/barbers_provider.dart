@@ -57,11 +57,14 @@ class BarbersProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> addBarber(BarberInput input) async {
+  Future<void> addBarber(BarberInput input, {String? barberUid}) async {
     final ownerId = _authProvider.currentUser?.uid;
     if (ownerId == null) return;
+    final resolvedUid = (barberUid ?? '').trim().isNotEmpty
+        ? barberUid!.trim()
+        : DateTime.now().millisecondsSinceEpoch.toString();
     final barber = OwnerBarber(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: resolvedUid,
       name: input.name,
       specialization:
           input.specialization.isNotEmpty ? input.specialization : 'Haircut',
@@ -73,30 +76,76 @@ class BarbersProvider extends ChangeNotifier {
       status: OwnerBarberStatus.onFloor,
       nextClient: null,
       photoUrl: '',
-      uid: DateTime.now().millisecondsSinceEpoch.toString(),
+      uid: resolvedUid,
       isAvailable: true,
     );
-    _barbers.add(barber);
+    final existingIndex =
+        _barbers.indexWhere((b) => b.uid == resolvedUid || b.id == resolvedUid);
+    if (existingIndex >= 0) {
+      _barbers[existingIndex] = barber;
+    } else {
+      _barbers.add(barber);
+    }
     notifyListeners();
     try {
-      await _firestore.collection('salons').doc(ownerId).set({
-        'barbers': FieldValue.arrayUnion([
-          {
-            'id': barber.id,
-            'ownerId': ownerId,
-            'name': barber.name,
-            'specialization': barber.specialization,
-            'email': barber.email,
-            'phone': barber.phone,
-            'status': barber.status.name,
-            'rating': barber.rating,
-            'servedToday': barber.servedToday,
-            'nextClient': barber.nextClient,
-          }
-        ])
-      }, SetOptions(merge: true));
+      final arrayEntry = {
+        'id': barber.id,
+        'uid': resolvedUid,
+        'ownerId': ownerId,
+        'name': barber.name,
+        'specialization': barber.specialization,
+        'email': barber.email,
+        'phone': barber.phone,
+        'status': barber.status.name,
+        'rating': barber.rating,
+        'servedToday': barber.servedToday,
+        'nextClient': barber.nextClient,
+        'isAvailable': barber.isAvailable,
+        'available': barber.isAvailable,
+      };
+      final subcollectionEntry = {
+        'uid': resolvedUid,
+        'ownerId': ownerId,
+        'name': barber.name,
+        'specialization': barber.specialization,
+        'email': barber.email,
+        'phone': barber.phone,
+        'status': barber.status.name,
+        'rating': barber.rating,
+        'servedToday': barber.servedToday,
+        'nextClient': barber.nextClient,
+        'isAvailable': barber.isAvailable,
+        'available': barber.isAvailable,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      final batch = _firestore.batch();
+      final salonRef = _firestore.collection('salons').doc(ownerId);
+      batch.set(
+        salonRef,
+        {
+          'barbers': FieldValue.arrayUnion([arrayEntry]),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      batch.set(
+        salonRef.collection('barbers').doc(resolvedUid),
+        subcollectionEntry,
+        SetOptions(merge: true),
+      );
+      batch.set(
+        _firestore.collection('users').doc(resolvedUid),
+        {
+          'ownerId': ownerId,
+          'role': 'barber',
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      await batch.commit();
     } catch (_) {
-      // ignore errors for now
+      _setError('Failed to save barber. Please refresh and try again.');
     }
   }
 

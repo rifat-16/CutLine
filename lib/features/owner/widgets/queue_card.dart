@@ -103,9 +103,30 @@ class OwnerQueueCard extends StatelessWidget {
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    _StatusChip(
-                                        label: _statusLabel(item.status),
-                                        color: statusColor),
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        _StatusChip(
+                                          label: _statusLabel(item.status),
+                                          color: statusColor,
+                                        ),
+                                        if (item.serialNo != null)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 6),
+                                            child: Text(
+                                              'Serial #${item.serialNo}',
+                                              style: OwnerTextStyles.subtitle
+                                                  .copyWith(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.black54,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
                                   ],
                                 ),
                               ],
@@ -171,8 +192,6 @@ class OwnerQueueCard extends StatelessWidget {
     switch (status) {
       case OwnerQueueStatus.waiting:
         return Colors.amber;
-      case OwnerQueueStatus.turnReady:
-        return Colors.orange;
       case OwnerQueueStatus.arrived:
         return Colors.blue;
       case OwnerQueueStatus.serving:
@@ -188,8 +207,6 @@ class OwnerQueueCard extends StatelessWidget {
     switch (status) {
       case OwnerQueueStatus.waiting:
         return 'Waiting';
-      case OwnerQueueStatus.turnReady:
-        return 'Turn Ready';
       case OwnerQueueStatus.arrived:
         return 'Arrived';
       case OwnerQueueStatus.serving:
@@ -370,15 +387,22 @@ class _ActionRowBodyState extends State<_ActionRowBody> {
   Future<void> _handleAction(OwnerQueueStatus nextStatus) async {
     if (widget.onStatusChange == null) return;
     if (_pendingStatus != null) return;
+    final startedAt = DateTime.now();
+    const minLoaderDuration = Duration(milliseconds: 650);
     setState(() => _pendingStatus = nextStatus);
     try {
       await widget.onStatusChange!(nextStatus);
+      if (!mounted) return;
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to update status: $e')),
       );
     } finally {
+      final elapsed = DateTime.now().difference(startedAt);
+      if (elapsed < minLoaderDuration) {
+        await Future.delayed(minLoaderDuration - elapsed);
+      }
       if (mounted) {
         setState(() => _pendingStatus = null);
       }
@@ -412,6 +436,7 @@ class _ActionRowBodyState extends State<_ActionRowBody> {
               onPressed: handler,
               child: _ActionButtonChild(
                 label: action.label,
+                loadingLabel: action.label,
                 isLoading: isLoading,
                 progressColor: action.color,
               ),
@@ -429,6 +454,7 @@ class _ActionRowBodyState extends State<_ActionRowBody> {
             onPressed: handler,
             child: _ActionButtonChild(
               label: action.label,
+              loadingLabel: action.label,
               isLoading: isLoading,
               progressColor: Colors.white,
             ),
@@ -441,11 +467,13 @@ class _ActionRowBodyState extends State<_ActionRowBody> {
 
 class _ActionButtonChild extends StatelessWidget {
   final String label;
+  final String loadingLabel;
   final bool isLoading;
   final Color progressColor;
 
   const _ActionButtonChild({
     required this.label,
+    required this.loadingLabel,
     required this.isLoading,
     required this.progressColor,
   });
@@ -479,7 +507,7 @@ class _ActionButtonChild extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Text(label),
+                Text(loadingLabel),
               ],
             )
           : Text(

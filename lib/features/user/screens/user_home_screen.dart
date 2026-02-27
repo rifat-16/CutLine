@@ -103,7 +103,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 ),
                 Expanded(
                   child: RefreshIndicator(
-                    onRefresh: () => provider.load(),
+                    onRefresh: () => provider.load(forceServer: true),
                     child: provider.isLoading
                         ? const Center(
                             child: CircularProgressIndicator(),

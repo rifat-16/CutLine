@@ -2,6 +2,7 @@ import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/providers/manage_queue_provider.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:cutline/features/owner/widgets/queue_card.dart';
+import 'package:cutline/shared/services/queue_serial_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -48,8 +49,34 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
                     .toList(),
               ),
             ),
+            floatingActionButton: FloatingActionButton.extended(
+              onPressed: provider.isSavingManual
+                  ? null
+                  : () => _openManualEntrySheet(context, provider),
+              icon: provider.isSavingManual
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.person_add_alt_1_outlined),
+              label: Text(
+                provider.isSavingManual ? 'Saving...' : 'Manual Add',
+              ),
+            ),
             body: Column(
               children: [
+                if (provider.error != null && provider.error!.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+                    color: Colors.red.shade50,
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+                    child: Text(
+                      provider.error!,
+                      style:
+                          TextStyle(color: Colors.red.shade700, fontSize: 13),
+                    ),
+                  ),
                 _QueueToolbar(
                   barberFilter: _barberFilter,
                   barbers: _availableBarbers(provider.queue),
@@ -88,7 +115,13 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
                                     item: item,
                                     onStatusChange: (next) =>
                                         provider.updateStatus(item.id, next),
-                                    onTap: null,
+                                    onTap: item.isManual
+                                        ? () => _openManualActionsSheet(
+                                              context,
+                                              provider,
+                                              item,
+                                            )
+                                        : null,
                                   );
                                 },
                               ),
@@ -134,6 +167,15 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
 
   int _compareBySchedule(
       OwnerQueueItem a, OwnerQueueItem b, OwnerQueueStatus status) {
+    if (status != OwnerQueueStatus.done) {
+      final barberCmp = _barberSortKey(a).compareTo(_barberSortKey(b));
+      if (barberCmp != 0) return barberCmp;
+
+      final aSerial = a.serialNo ?? 1 << 30;
+      final bSerial = b.serialNo ?? 1 << 30;
+      if (aSerial != bSerial) return aSerial.compareTo(bSerial);
+    }
+
     final aDt = a.scheduledAt;
     final bDt = b.scheduledAt;
 
@@ -143,8 +185,9 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
 
     // If both scheduled, sort by date+time.
     if (aDt != null && bDt != null) {
-      final cmp =
-          status == OwnerQueueStatus.done ? bDt.compareTo(aDt) : aDt.compareTo(bDt);
+      final cmp = status == OwnerQueueStatus.done
+          ? bDt.compareTo(aDt)
+          : aDt.compareTo(bDt);
       if (cmp != 0) return cmp;
     }
 
@@ -152,6 +195,325 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
     final waitCmp = a.waitMinutes.compareTo(b.waitMinutes);
     if (waitCmp != 0) return waitCmp;
     return a.customerName.compareTo(b.customerName);
+  }
+
+  String _barberSortKey(OwnerQueueItem item) {
+    final serialKey = item.serialBarberKey?.trim().toLowerCase() ?? '';
+    if (serialKey.isNotEmpty) return serialKey;
+    return item.barberName.trim().toLowerCase();
+  }
+
+  Future<void> _openManualActionsSheet(
+    BuildContext context,
+    ManageQueueProvider provider,
+    OwnerQueueItem item,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text('Edit manual entry'),
+                  onTap: () async {
+                    Navigator.of(sheetContext).pop();
+                    await _openManualEntrySheet(context, provider,
+                        existing: item);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline, color: Colors.red),
+                  title: const Text(
+                    'Delete manual entry',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  onTap: () async {
+                    final shouldDelete = await showDialog<bool>(
+                      context: context,
+                      builder: (dialogContext) {
+                        return AlertDialog(
+                          title: const Text('Delete entry?'),
+                          content: const Text(
+                              'This will remove this manual customer from queue and bookings.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(false),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(true),
+                              child: const Text('Delete'),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                    if (shouldDelete != true) return;
+                    final ok = await provider.deleteManualEntry(item.id);
+                    if (!mounted) return;
+                    Navigator.of(sheetContext).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          ok
+                              ? 'Manual entry deleted.'
+                              : (provider.error ?? 'Failed to delete entry.'),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openManualEntrySheet(
+    BuildContext context,
+    ManageQueueProvider provider, {
+    OwnerQueueItem? existing,
+  }) async {
+    await provider.loadCatalog();
+    if (!mounted) return;
+    if (provider.barbers.isEmpty || provider.services.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please add barbers and services first.')),
+      );
+      return;
+    }
+
+    final customerController =
+        TextEditingController(text: existing?.customerName ?? '');
+    String selectedBarberId =
+        _resolveInitialBarberId(existing, provider.barbers);
+    String selectedServiceId =
+        _resolveInitialServiceId(existing, provider.services);
+    final formKey = GlobalKey<FormState>();
+    bool isSubmitting = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                16,
+                20,
+                MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+              ),
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      existing == null
+                          ? 'Add Manual Customer'
+                          : 'Edit Manual Entry',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: customerController,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Customer name',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if ((value ?? '').trim().isEmpty) {
+                          return 'Customer name is required.';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedBarberId,
+                      decoration: const InputDecoration(
+                        labelText: 'Barber',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: provider.barbers
+                          .map(
+                            (barber) => DropdownMenuItem(
+                              value: barber.id,
+                              child: Text(barber.name),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: isSubmitting
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+                              setModalState(() => selectedBarberId = value);
+                            },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedServiceId,
+                      decoration: const InputDecoration(
+                        labelText: 'Service',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: provider.services
+                          .map(
+                            (service) => DropdownMenuItem(
+                              value: service.id,
+                              child: Text(
+                                '${service.name} • ৳${service.price} • ${service.durationMinutes}m',
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: isSubmitting
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+                              setModalState(() => selectedServiceId = value);
+                            },
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: isSubmitting
+                            ? null
+                            : () async {
+                                if (!formKey.currentState!.validate()) return;
+                                setModalState(() => isSubmitting = true);
+                                final ok = existing == null
+                                    ? await provider.createManualByOwner(
+                                        customerName: customerController.text,
+                                        barberId: selectedBarberId,
+                                        serviceId: selectedServiceId,
+                                      )
+                                    : await provider.updateManualEntry(
+                                        entryId: existing.id,
+                                        customerName: customerController.text,
+                                        barberId: selectedBarberId,
+                                        serviceId: selectedServiceId,
+                                      );
+                                if (!mounted) return;
+                                if (ok) {
+                                  Navigator.of(sheetContext).pop();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        existing == null
+                                            ? 'Manual customer added.'
+                                            : 'Manual entry updated.',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                setModalState(() => isSubmitting = false);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      provider.error ??
+                                          'Could not save manual entry.',
+                                    ),
+                                  ),
+                                );
+                              },
+                        child: isSubmitting
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    existing == null
+                                        ? 'Adding...'
+                                        : 'Saving...',
+                                  ),
+                                ],
+                              )
+                            : Text(existing == null ? 'Add to Queue' : 'Save'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _resolveInitialBarberId(
+    OwnerQueueItem? existing,
+    List<QueueBarberOption> barbers,
+  ) {
+    if (barbers.isEmpty) return '';
+    if (existing == null) return barbers.first.id;
+    if (existing.barberId.isNotEmpty) {
+      final byId = barbers.where((b) => b.id == existing.barberId);
+      if (byId.isNotEmpty) return byId.first.id;
+    }
+    final byName = barbers.where(
+      (b) =>
+          b.name.toLowerCase().trim() ==
+          existing.barberName.toLowerCase().trim(),
+    );
+    if (byName.isNotEmpty) return byName.first.id;
+    return barbers.first.id;
+  }
+
+  String _resolveInitialServiceId(
+    OwnerQueueItem? existing,
+    List<QueueServiceOption> services,
+  ) {
+    if (services.isEmpty) return '';
+    if (existing == null) return services.first.id;
+    if (existing.serviceId.isNotEmpty) {
+      final byId = services.where((s) => s.id == existing.serviceId);
+      if (byId.isNotEmpty) return byId.first.id;
+    }
+    final byName = services.where(
+      (s) =>
+          s.name.toLowerCase().trim() == existing.service.toLowerCase().trim(),
+    );
+    if (byName.isNotEmpty) return byName.first.id;
+    return services.first.id;
   }
 
   String _dayLabel(DateTime? day) {
@@ -175,8 +537,6 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
     switch (status) {
       case OwnerQueueStatus.waiting:
         return 'Waiting';
-      case OwnerQueueStatus.turnReady:
-        return 'Turn Ready';
       case OwnerQueueStatus.arrived:
         return 'Arrived';
       case OwnerQueueStatus.serving:

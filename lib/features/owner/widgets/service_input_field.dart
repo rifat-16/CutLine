@@ -56,23 +56,69 @@ class _ServiceInputFieldListState extends State<ServiceInputFieldList> {
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEFF5FF),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFD5E3FE)),
+          ),
+          child: const Row(
+            children: [
+              Icon(
+                Icons.tips_and_updates_outlined,
+                size: 18,
+                color: Color(0xFF2F65D9),
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Add 3-6 core services first. You can edit anytime later.',
+                  style: TextStyle(
+                    color: Color(0xFF30446B),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
         ..._services.asMap().entries.map((entry) {
           final index = entry.key;
           final field = entry.value;
           return _ServiceCard(
+            index: index + 1,
             nameController: field.nameController,
             priceController: field.priceController,
             durationController: field.durationController,
+            canRemove: _services.length > 1,
             onRemove: () => _removeService(index),
           );
         }),
-        Align(
-          alignment: Alignment.centerLeft,
+        const SizedBox(height: 4),
+        SizedBox(
+          width: double.infinity,
           child: OutlinedButton.icon(
             onPressed: _addService,
-            icon: const Icon(Icons.add),
-            label: const Text('Add Service'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF2F65D9),
+              backgroundColor: const Color(0xFFF0F5FF),
+              side: const BorderSide(color: Color(0xFFBDD0FB)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            icon: const Icon(Icons.add_rounded),
+            label: const Text(
+              'Add Another Service',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
           ),
         ),
       ],
@@ -93,6 +139,16 @@ class _ServiceInputFieldListState extends State<ServiceInputFieldList> {
   }
 
   void _removeService(int index) {
+    if (_services.length == 1) {
+      setState(() {
+        _services.first.nameController.clear();
+        _services.first.priceController.clear();
+        _services.first.durationController.clear();
+      });
+      _emitServices();
+      return;
+    }
+
     setState(() {
       final field = _services.removeAt(index);
       field.dispose();
@@ -131,58 +187,108 @@ class _ServiceInputFieldListState extends State<ServiceInputFieldList> {
 }
 
 class _ServiceCard extends StatelessWidget {
+  final int index;
   final TextEditingController nameController;
   final TextEditingController priceController;
   final TextEditingController durationController;
+  final bool canRemove;
   final VoidCallback onRemove;
 
   const _ServiceCard({
+    required this.index,
     required this.nameController,
     required this.priceController,
     required this.durationController,
+    required this.canRemove,
     required this.onRemove,
   });
 
-  InputDecoration get _fieldDecoration => const InputDecoration(
-        filled: true,
-        fillColor: Color(0xFFF3F4F6),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(14)),
-          borderSide: BorderSide.none,
+  InputDecoration _fieldDecoration({
+    required String hintText,
+    Widget? prefixIcon,
+  }) {
+    return InputDecoration(
+      hintText: hintText,
+      hintStyle: const TextStyle(
+        color: Color(0xFF6D7486),
+        fontWeight: FontWeight.w500,
+      ),
+      prefixIcon: prefixIcon,
+      isDense: true,
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: Color(0xFFD7DFEF)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: Color(0xFFD7DFEF)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(
+          color: Color(0xFF2F65D9),
+          width: 1.5,
         ),
-        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      );
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFF7F9FF),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 12, offset: Offset(0, 8))
-        ],
+        border: Border.all(color: const Color(0xFFD9E4FD)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(
-                child: TextField(
-                  controller: nameController,
-                  decoration: _fieldDecoration.copyWith(
-                      labelText: 'Service name',
-                      prefixIcon: const Icon(Icons.content_cut)),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8EFFE),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'Service $index',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF30446B),
+                  ),
                 ),
               ),
+              const Spacer(),
               IconButton(
-                  onPressed: onRemove,
-                  icon: const Icon(Icons.delete_outline,
-                      color: Colors.redAccent)),
+                onPressed: canRemove ? onRemove : null,
+                style: IconButton.styleFrom(
+                  backgroundColor: canRemove
+                      ? const Color(0xFFFFEEF0)
+                      : const Color(0xFFF2F3F7),
+                  foregroundColor: canRemove
+                      ? const Color(0xFFE34C5E)
+                      : const Color(0xFFB6BBC8),
+                ),
+                icon: const Icon(Icons.delete_outline_rounded),
+              ),
             ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: nameController,
+            decoration: _fieldDecoration(
+              hintText: 'Service name',
+              prefixIcon: const Icon(Icons.content_cut_rounded, size: 20),
+            ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -191,9 +297,10 @@ class _ServiceCard extends StatelessWidget {
                 child: TextField(
                   controller: priceController,
                   keyboardType: TextInputType.number,
-                  decoration: _fieldDecoration.copyWith(
-                      labelText: '৳ Price',
-                      prefixIcon: const Icon(Icons.attach_money)),
+                  decoration: _fieldDecoration(
+                    hintText: 'Price (৳)',
+                    prefixIcon: const Icon(Icons.payments_outlined, size: 20),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -201,9 +308,10 @@ class _ServiceCard extends StatelessWidget {
                 child: TextField(
                   controller: durationController,
                   keyboardType: TextInputType.number,
-                  decoration: _fieldDecoration.copyWith(
-                      labelText: 'Duration (min)',
-                      prefixIcon: const Icon(Icons.timer_outlined)),
+                  decoration: _fieldDecoration(
+                    hintText: 'Minutes',
+                    prefixIcon: const Icon(Icons.timer_outlined, size: 20),
+                  ),
                 ),
               ),
             ],

@@ -1,5 +1,7 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/barber/providers/barber_home_provider.dart';
+import 'package:cutline/features/owner/screens/booking_requests_screen.dart';
+import 'package:cutline/shared/services/queue_serial_service.dart';
 import 'package:cutline/shared/widgets/notification_badge_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -34,6 +36,13 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
 
         return Scaffold(
           appBar: _buildAppBar(context, provider),
+          floatingActionButton: provider.isSalonOpen
+              ? FloatingActionButton.extended(
+                  onPressed: () => _openManualEntrySheet(context, provider),
+                  icon: const Icon(Icons.person_add_alt_1_outlined),
+                  label: const Text('Manual Add'),
+                )
+              : null,
           body: RefreshIndicator(
             onRefresh: () => provider.load(),
             child: ListView(
@@ -57,7 +66,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                         SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'The salon is currently closed. Please ask the owner to open the salon to start serving customers.',
+                            'The salon is closed right now. Ask the owner to open it to start serving customers.',
                             style: TextStyle(color: Colors.red, fontSize: 14),
                           ),
                         ),
@@ -96,7 +105,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                             size: 40, color: Colors.black54),
                         SizedBox(height: 10),
                         Text(
-                          "Salon is closed. Queue will appear when the owner opens the salon.",
+                          "Salon is closed. Queue will appear once it opens.",
                           style: TextStyle(fontSize: 15, color: Colors.black54),
                           textAlign: TextAlign.center,
                         ),
@@ -122,7 +131,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                             size: 40, color: Colors.black54),
                         SizedBox(height: 10),
                         Text(
-                          "No customers in this queue.",
+                          "No customers waiting right now.",
                           style: TextStyle(fontSize: 15, color: Colors.black54),
                         ),
                       ],
@@ -195,6 +204,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
       ),
       actions: [
         _AvailabilityToggle(provider: provider),
+        _BookingRequestIconButton(pendingCount: provider.pendingRequestCount),
         NotificationBadgeIcon(
           userId: userId,
           onTap: () {
@@ -264,6 +274,9 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
     final selected = _selectedStatus;
     final sorted = List.of(queue)
       ..sort((a, b) {
+        final aSerial = a.serialNo ?? (1 << 30);
+        final bSerial = b.serialNo ?? (1 << 30);
+        if (aSerial != bSerial) return aSerial.compareTo(bSerial);
         final aDt = a.scheduledAt;
         final bDt = b.scheduledAt;
         if (aDt != null && bDt != null) return aDt.compareTo(bDt);
@@ -273,6 +286,215 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
       });
     if (selected == null) return sorted;
     return sorted.where((item) => item.status == selected).toList();
+  }
+
+  Future<void> _openManualEntrySheet(
+    BuildContext context,
+    BarberHomeProvider provider,
+  ) async {
+    if (provider.services.isEmpty) {
+      await provider.load();
+      if (!mounted) return;
+    }
+    if (provider.services.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No services found for this salon.')),
+      );
+      return;
+    }
+
+    final customerController = TextEditingController();
+    String selectedServiceId = provider.services.first.id;
+    final formKey = GlobalKey<FormState>();
+    bool isSubmitting = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                16,
+                20,
+                MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+              ),
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Add Manual Customer',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: customerController,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Customer name',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if ((value ?? '').trim().isEmpty) {
+                          return 'Customer name is required.';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedServiceId,
+                      decoration: const InputDecoration(
+                        labelText: 'Service',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: provider.services
+                          .map(
+                            (QueueServiceOption service) => DropdownMenuItem(
+                              value: service.id,
+                              child: Text(
+                                '${service.name} • ৳${service.price} • ${service.durationMinutes}m',
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: isSubmitting
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+                              setModalState(() => selectedServiceId = value);
+                            },
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: isSubmitting
+                            ? null
+                            : () async {
+                                if (!formKey.currentState!.validate()) return;
+                                setModalState(() => isSubmitting = true);
+                                final ok = await provider.createManualEntry(
+                                  customerName: customerController.text,
+                                  serviceId: selectedServiceId,
+                                );
+                                if (!mounted) return;
+                                if (ok) {
+                                  Navigator.of(sheetContext).pop();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Manual customer added.'),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                setModalState(() => isSubmitting = false);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      provider.error ??
+                                          'Could not add manual customer.',
+                                    ),
+                                  ),
+                                );
+                              },
+                        child: isSubmitting
+                            ? const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text('Adding...'),
+                                ],
+                              )
+                            : const Text('Add to Queue'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _BookingRequestIconButton extends StatelessWidget {
+  const _BookingRequestIconButton({
+    required this.pendingCount,
+  });
+
+  final int pendingCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPending = pendingCount > 0;
+    final countText = pendingCount > 99 ? '99+' : '$pendingCount';
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          tooltip: 'Booking requests',
+          icon: const Icon(Icons.assignment_turned_in_outlined),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const BookingRequestsScreen(),
+              ),
+            );
+          },
+        ),
+        if (hasPending)
+          Positioned(
+            right: 6,
+            top: 5,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE53935),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white, width: 1.2),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                countText,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }
 

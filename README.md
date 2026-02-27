@@ -124,7 +124,7 @@ lib/
 
    **Enable Firebase Services:**
    - Go to [Firebase Console](https://console.firebase.google.com/)
-   - Select your project (cutline-526aa)
+   - Select the project for your target flavor (dev/staging/prod)
    - Enable the following services:
      - **Authentication** → Enable Email/Password sign-in method
      - **Firestore Database** → Create database in production mode
@@ -164,38 +164,79 @@ For detailed setup instructions, see [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.
 
 For running instructions, see [RUN_INSTRUCTIONS.md](RUN_INSTRUCTIONS.md)
 
-## 🏁 Play Store Release (Android AAB)
+## 🏁 Production Release Runbook
 
-### 1) Google Maps API key
+### Environment mapping (flavor -> Firebase project)
 
-This app reads the Maps key from:
-- `android/local.properties` (`MAPS_API_KEY=...`) **or**
-- an environment variable `MAPS_API_KEY`
+- `dev` -> `cutline-dev`
+- `staging` -> `cutline-526aa`
+- `prod` -> `cutline-prod-a55b9`
 
-### 2) Configure release signing (required for Play Store)
+### Required local config before release
 
-Generate an upload keystore and create `android/key.properties` (this repo ignores it via `.gitignore`):
+- Android Firebase config: `android/app/src/prod/google-services.json`
+- iOS Firebase config: `ios/Runner/Firebase/GoogleService-Info-prod.plist`
+- Android signing: `android/key.properties`
+- Android Maps key: `android/local.properties` (`MAPS_API_KEY` or `MAPS_API_KEY_PROD`)
+- iOS Maps key: `ios/Flutter/Secrets.xcconfig` (`MAPS_API_KEY`)
 
-```properties
-storeFile=/absolute/path/to/upload-keystore.jks
-storePassword=YOUR_PASSWORD
-keyAlias=upload
-keyPassword=YOUR_PASSWORD
-```
+Never commit secret values to git.
 
-### 3) Build the App Bundle (AAB)
+### Release preparation
+
+1. Bump app version in `pubspec.yaml` (`version: x.y.z+buildNumber`).
+2. Run quality gates:
 
 ```bash
-flutter clean
 flutter pub get
-flutter build appbundle --release
+flutter analyze
+flutter test
+cd functions
+npm ci
+npm run lint
+cd ..
 ```
 
-Output: `build/app/outputs/bundle/release/app-release.aab`
+### Build production artifacts
 
-Notes:
-- If you change `applicationId` in `android/app/build.gradle.kts`, regenerate `android/app/google-services.json` for the same package name.
-- Update app version in `pubspec.yaml` before every release.
+```bash
+flutter build appbundle --flavor prod -t lib/main.dart --release
+flutter build ipa --flavor prod -t lib/main.dart --release
+```
+
+Android output: `build/app/outputs/bundle/prodRelease/*.aab`
+
+### Deploy production backend
+
+```bash
+firebase use prod
+firebase use
+firebase deploy --only firestore:rules,firestore:indexes --project cutline-prod-a55b9
+firebase deploy --only functions --project cutline-prod-a55b9
+```
+
+### Optional one-time backfill (for existing production data)
+
+Run dry-run first, then `--apply`:
+
+```bash
+cd functions
+node scripts/backfill_owner_salon_id.js --project cutline-prod-a55b9
+node scripts/backfill_user_bookings.js --project cutline-prod-a55b9
+node scripts/backfill_owner_salon_id.js --project cutline-prod-a55b9 --apply
+node scripts/backfill_user_bookings.js --project cutline-prod-a55b9 --apply
+cd ..
+```
+
+### Post-deploy smoke test
+
+- Login/signup works for user, owner, barber.
+- User booking create/cancel works.
+- Owner queue actions and dashboard work.
+- Barber queue update works.
+- Push notifications are received for booking flow.
+- Map screen loads on Android and iOS.
+- Crashlytics test event appears in Firebase Console.
 
 ## 📱 User Flows
 
@@ -383,6 +424,7 @@ flutter clean && flutter pub get
 
 - [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) - Detailed setup guide
 - [RUN_INSTRUCTIONS.md](RUN_INSTRUCTIONS.md) - How to run the app
+- [PROD_DEPLOY_CHECKLIST.md](PROD_DEPLOY_CHECKLIST.md) - Production release checklist
 - [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) - Feature implementation details
 - [FCM_IMPLEMENTATION_SUMMARY.md](FCM_IMPLEMENTATION_SUMMARY.md) - Notification setup
 - [firestore.rules](firestore.rules) - Security rules

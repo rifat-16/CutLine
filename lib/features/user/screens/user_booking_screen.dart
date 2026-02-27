@@ -2,9 +2,12 @@ import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/user/providers/booking_provider.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+
+enum BookingFlowMode { nextFree, custom }
 
 class BookingScreen extends StatefulWidget {
   final String salonId;
@@ -27,10 +30,13 @@ class BookingScreen extends StatefulWidget {
 class _BookingScreenState extends State<BookingScreen> {
   List<String> selectedServiceList = [];
   String? selectedBarber;
+  String? selectedBarberId;
+  String? selectedBarberAvatar;
   DateTime selectedDate = DateTime.now();
   String? selectedTime;
   bool _comboServicesResolved = false;
   bool _hasManualServiceChange = false;
+  BookingFlowMode bookingMode = BookingFlowMode.nextFree;
 
   @override
   void initState() {
@@ -49,11 +55,41 @@ class _BookingScreenState extends State<BookingScreen> {
         final services = provider.services;
         final barbers = provider.barbers;
         _resolveComboServices(provider);
+        final selectedBarberModel = barbers.where((barber) {
+          if (selectedBarberId != null && selectedBarberId!.isNotEmpty) {
+            return barber.uid == selectedBarberId;
+          }
+          return barber.name == selectedBarber;
+        }).toList();
+        final activeBarber =
+            selectedBarberModel.isNotEmpty ? selectedBarberModel.first : null;
+        final selectedInsight = activeBarber == null
+            ? null
+            : provider.queueInsightForBarber(
+                barberId: activeBarber.uid,
+                barberName: activeBarber.name,
+              );
+        final predictedSerialNo = selectedInsight?.nextSerial;
+        final predictedStartAt = activeBarber == null
+            ? null
+            : provider.estimatedStartForBarber(
+                barberId: activeBarber.uid,
+                barberName: activeBarber.name,
+              );
+        final isNextFreeMode = bookingMode == BookingFlowMode.nextFree;
+        final isSelectedBarberAvailable = activeBarber?.isAvailable ?? false;
         final servicePrices = {
           for (final s in services) s.name: s.price,
         };
         final total = selectedServiceList.fold<int>(
             0, (sum, service) => sum + (servicePrices[service] ?? 0));
+        final canProceedNextFree = selectedServiceList.isNotEmpty &&
+            selectedBarber != null &&
+            provider.isSalonOpen &&
+            isSelectedBarberAvailable;
+        final canProceedCustom = selectedServiceList.isNotEmpty &&
+            selectedBarber != null &&
+            selectedTime != null;
         final canLockServices =
             widget.lockServices && selectedServiceList.isNotEmpty;
         return Scaffold(
@@ -123,15 +159,81 @@ class _BookingScreenState extends State<BookingScreen> {
                         ),
                       ],
                       const SizedBox(height: CutlineSpacing.md),
+                      const CutlineSectionHeader(title: 'Booking Type'),
+                      const SizedBox(height: CutlineSpacing.sm),
+                      _BookingModeSelector(
+                        selectedMode: bookingMode,
+                        nextFreeEnabled: provider.isSalonOpen,
+                        onChanged: (mode) async {
+                          if (mode == bookingMode) return;
+                          setState(() {
+                            bookingMode = mode;
+                            if (mode == BookingFlowMode.nextFree) {
+                              selectedTime = null;
+                            }
+                          });
+                          if (mode == BookingFlowMode.nextFree) {
+                            await provider.refreshQueueInsights();
+                            return;
+                          }
+                          if (selectedBarber != null) {
+                            await provider.loadBookedSlots(
+                              selectedDate,
+                              barberName: selectedBarber,
+                            );
+                          }
+                        },
+                      ),
+                      if (!provider.isSalonOpen && isNextFreeMode)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Salon is closed now. Use Custom Date & Time for future booking.',
+                            style: TextStyle(
+                              color: Colors.orange.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      if (isNextFreeMode &&
+                          selectedBarber != null &&
+                          !isSelectedBarberAvailable)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Selected barber is unavailable for next free queue. Choose another barber or switch to custom.',
+                            style: TextStyle(
+                              color: Colors.orange.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: CutlineSpacing.md),
                       const CutlineSectionHeader(title: 'Select Barber'),
                       const SizedBox(height: CutlineSpacing.sm),
                       _BarberGrid(
                         barbers: barbers,
                         selectedBarber: selectedBarber,
-                        onSelected: (value) async {
-                          setState(() => selectedBarber = value);
-                          await provider.loadBookedSlots(selectedDate,
-                              barberName: value);
+                        bookingMode: bookingMode,
+                        insightForBarber: (barber) =>
+                            provider.queueInsightForBarber(
+                          barberId: barber.uid,
+                          barberName: barber.name,
+                        ),
+                        onSelected: (barber) async {
+                          if (isNextFreeMode && !barber.isAvailable) return;
+                          setState(() {
+                            selectedBarber = barber.name;
+                            selectedBarberId = barber.uid;
+                            selectedBarberAvatar = barber.avatarUrl;
+                          });
+                          await provider.refreshQueueInsights();
+                          if (!mounted) return;
+                          if (bookingMode == BookingFlowMode.nextFree) return;
+                          await provider.loadBookedSlots(
+                            selectedDate,
+                            barberName: barber.name,
+                          );
                           if (!mounted) return;
                           if (selectedTime != null &&
                               provider.bookedSlots.contains(selectedTime)) {
@@ -139,32 +241,43 @@ class _BookingScreenState extends State<BookingScreen> {
                           }
                         },
                       ),
-                      const SizedBox(height: CutlineSpacing.md),
-                      const CutlineSectionHeader(title: 'Select Date'),
-                      const SizedBox(height: CutlineSpacing.sm),
-                      _DateScroller(
-                        selectedDate: selectedDate,
-                        isClosed: provider.isClosedOn,
-                        onSelected: (date) {
-                          setState(() {
-                            selectedDate = date;
-                            selectedTime = null;
-                          });
-                          provider.updateTimeSlotsForDate(date);
-                          provider.loadBookedSlots(date, barberName: selectedBarber);
-                        },
-                      ),
-                      const SizedBox(height: CutlineSpacing.md),
-                      const CutlineSectionHeader(title: 'Select Time Slot'),
-                      const SizedBox(height: CutlineSpacing.sm),
-                      _TimeSlotGrid(
-                        timeSlots: provider.timeSlots,
-                        bookedSlots: provider.bookedSlots,
-                        selectedSlot: selectedTime,
-                        selectedDate: selectedDate,
-                        now: DateTime.now(),
-                        onTap: (slot) => setState(() => selectedTime = slot),
-                      ),
+                      if (isNextFreeMode) ...[
+                        const SizedBox(height: CutlineSpacing.md),
+                        _NextFreePreview(
+                          serialNo: predictedSerialNo,
+                          estimatedStart: predictedStartAt,
+                        ),
+                      ] else ...[
+                        const SizedBox(height: CutlineSpacing.md),
+                        const CutlineSectionHeader(title: 'Select Date'),
+                        const SizedBox(height: CutlineSpacing.sm),
+                        _DateScroller(
+                          selectedDate: selectedDate,
+                          isClosed: provider.isClosedOn,
+                          onSelected: (date) {
+                            setState(() {
+                              selectedDate = date;
+                              selectedTime = null;
+                            });
+                            provider.updateTimeSlotsForDate(date);
+                            provider.loadBookedSlots(
+                              date,
+                              barberName: selectedBarber,
+                            );
+                          },
+                        ),
+                        const SizedBox(height: CutlineSpacing.md),
+                        const CutlineSectionHeader(title: 'Select Time Slot'),
+                        const SizedBox(height: CutlineSpacing.sm),
+                        _TimeSlotGrid(
+                          timeSlots: provider.timeSlots,
+                          bookedSlots: provider.bookedSlots,
+                          selectedSlot: selectedTime,
+                          selectedDate: selectedDate,
+                          now: DateTime.now(),
+                          onTap: (slot) => setState(() => selectedTime = slot),
+                        ),
+                      ],
                       const SizedBox(height: CutlineSpacing.sm),
                       Text(
                         provider.currentWaiting <= 0
@@ -175,12 +288,15 @@ class _BookingScreenState extends State<BookingScreen> {
                       const SizedBox(height: CutlineSpacing.lg),
                       _BookingSummaryCard(
                         totalAmount: total,
-                        canProceed: selectedServiceList.isNotEmpty &&
-                            selectedBarber != null &&
-                            selectedTime != null,
+                        canProceed: isNextFreeMode
+                            ? canProceedNextFree
+                            : canProceedCustom,
+                        buttonLabel:
+                            isNextFreeMode ? 'Join Queue' : 'Confirm Booking',
                         onConfirm: () {
                           final auth = context.read<AuthProvider>();
-                          final user = auth.currentUser;
+                          final user = auth.currentUser ??
+                              fb_auth.FirebaseAuth.instance.currentUser;
                           final profile = auth.profile;
                           final customerName =
                               user?.displayName?.trim().isNotEmpty == true
@@ -190,11 +306,17 @@ class _BookingScreenState extends State<BookingScreen> {
                               user?.email?.trim().isNotEmpty == true
                                   ? user!.email!
                                   : '';
-                          final customerPhone = (profile?.phone ??
-                                  user?.phoneNumber ??
-                                  '')
-                              .trim();
+                          final customerPhone =
+                              (profile?.phone ?? user?.phoneNumber ?? '')
+                                  .trim();
                           final customerUid = user?.uid ?? '';
+                          final effectiveStartAt =
+                              predictedStartAt ?? DateTime.now();
+                          final bookingDate =
+                              isNextFreeMode ? effectiveStartAt : selectedDate;
+                          final bookingTime = isNextFreeMode
+                              ? DateFormat('h:mm a').format(effectiveStartAt)
+                              : (selectedTime ?? '');
 
                           Navigator.pushNamed(
                             context,
@@ -204,12 +326,19 @@ class _BookingScreenState extends State<BookingScreen> {
                               salonName: widget.salonName,
                               services: selectedServiceList,
                               barberName: selectedBarber ?? '',
-                              date: selectedDate,
-                              time: selectedTime ?? '',
+                              barberId: selectedBarberId ?? '',
+                              barberAvatar: selectedBarberAvatar,
+                              date: bookingDate,
+                              time: bookingTime,
                               customerName: customerName,
                               customerPhone: customerPhone,
                               customerEmail: customerEmail,
                               customerUid: customerUid,
+                              bookingMode: _modeValue(bookingMode),
+                              predictedSerialNo:
+                                  isNextFreeMode ? predictedSerialNo : null,
+                              predictedStartAt:
+                                  isNextFreeMode ? predictedStartAt : null,
                             ),
                           );
                         },
@@ -220,6 +349,10 @@ class _BookingScreenState extends State<BookingScreen> {
         );
       },
     );
+  }
+
+  String _modeValue(BookingFlowMode mode) {
+    return mode == BookingFlowMode.nextFree ? 'next_free' : 'custom';
   }
 
   void _resolveComboServices(BookingProvider provider) {
@@ -284,10 +417,7 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   String _normalizeServiceName(String input) {
-    return input
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '')
-        .trim();
+    return input.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '').trim();
   }
 }
 
@@ -308,7 +438,10 @@ class _SalonInfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: CutlineDecorations.card(
-        colors: [CutlineColors.background, CutlineColors.primary.withValues(alpha: 0.04)],
+        colors: [
+          CutlineColors.background,
+          CutlineColors.primary.withValues(alpha: 0.04)
+        ],
       ),
       padding: CutlineSpacing.card,
       child: Row(
@@ -325,7 +458,8 @@ class _SalonInfoCard extends StatelessWidget {
                 height: 60,
                 color: Colors.grey.shade200,
                 alignment: Alignment.center,
-                child: const Icon(Icons.image_not_supported, color: Colors.grey),
+                child:
+                    const Icon(Icons.image_not_supported, color: Colors.grey),
               ),
             ),
           ),
@@ -391,7 +525,9 @@ class _ServiceSelector extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(isSelected ? Icons.check : Icons.add, size: 18, color: isSelected ? Colors.white : CutlineColors.primary),
+                Icon(isSelected ? Icons.check : Icons.add,
+                    size: 18,
+                    color: isSelected ? Colors.white : CutlineColors.primary),
                 const SizedBox(width: 6),
                 Text('$service  ৳${servicePrices[service] ?? 0}'),
               ],
@@ -401,10 +537,15 @@ class _ServiceSelector extends StatelessWidget {
           showCheckmark: false,
           selectedColor: CutlineColors.primary,
           backgroundColor: Colors.white,
-          labelStyle: TextStyle(color: isSelected ? Colors.white : CutlineColors.primary, fontWeight: FontWeight.w600),
+          labelStyle: TextStyle(
+              color: isSelected ? Colors.white : CutlineColors.primary,
+              fontWeight: FontWeight.w600),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: isSelected ? CutlineColors.primary : Colors.grey.shade300, width: 1.2),
+            side: BorderSide(
+                color:
+                    isSelected ? CutlineColors.primary : Colors.grey.shade300,
+                width: 1.2),
           ),
           onSelected: (_) => onToggle(service),
         );
@@ -440,7 +581,8 @@ class _SelectedServiceChips extends StatelessWidget {
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: CutlineColors.primary.withValues(alpha: 0.4)),
+            side:
+                BorderSide(color: CutlineColors.primary.withValues(alpha: 0.4)),
           ),
         );
       }).toList(),
@@ -448,12 +590,122 @@ class _SelectedServiceChips extends StatelessWidget {
   }
 }
 
+class _BookingModeSelector extends StatelessWidget {
+  final BookingFlowMode selectedMode;
+  final bool nextFreeEnabled;
+  final ValueChanged<BookingFlowMode> onChanged;
+
+  const _BookingModeSelector({
+    required this.selectedMode,
+    required this.nextFreeEnabled,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: ChoiceChip(
+            label: const Text('Next Free Slot'),
+            selected: selectedMode == BookingFlowMode.nextFree,
+            onSelected: nextFreeEnabled
+                ? (_) => onChanged(BookingFlowMode.nextFree)
+                : null,
+            selectedColor: CutlineColors.primary.withValues(alpha: 0.16),
+            backgroundColor: Colors.grey.shade100,
+            labelStyle: TextStyle(
+              color: selectedMode == BookingFlowMode.nextFree
+                  ? CutlineColors.primary
+                  : Colors.black87,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: ChoiceChip(
+            label: const Text('Custom Date & Time'),
+            selected: selectedMode == BookingFlowMode.custom,
+            onSelected: (_) => onChanged(BookingFlowMode.custom),
+            selectedColor: CutlineColors.primary.withValues(alpha: 0.16),
+            backgroundColor: Colors.grey.shade100,
+            labelStyle: TextStyle(
+              color: selectedMode == BookingFlowMode.custom
+                  ? CutlineColors.primary
+                  : Colors.black87,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _NextFreePreview extends StatelessWidget {
+  final int? serialNo;
+  final DateTime? estimatedStart;
+
+  const _NextFreePreview({
+    required this.serialNo,
+    required this.estimatedStart,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final serialLabel = serialNo != null ? '#$serialNo' : '--';
+    final timeLabel = estimatedStart != null
+        ? DateFormat('EEE, dd MMM • h:mm a').format(estimatedStart!)
+        : '--';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Next Free Slot Preview',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Serial Preview: $serialLabel',
+            style: CutlineTextStyles.subtitleBold,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Estimated Start: $timeLabel',
+            style: CutlineTextStyles.subtitle,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _BarberGrid extends StatelessWidget {
   final List<BookingBarber> barbers;
   final String? selectedBarber;
-  final ValueChanged<String> onSelected;
+  final BookingFlowMode bookingMode;
+  final BarberQueueInsight Function(BookingBarber barber) insightForBarber;
+  final ValueChanged<BookingBarber> onSelected;
 
-  const _BarberGrid({required this.barbers, required this.selectedBarber, required this.onSelected});
+  const _BarberGrid({
+    required this.barbers,
+    required this.selectedBarber,
+    required this.bookingMode,
+    required this.insightForBarber,
+    required this.onSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -463,20 +715,29 @@ class _BarberGrid extends StatelessWidget {
       itemCount: barbers.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 1.25,
+        childAspectRatio: 0.98,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
       ),
       itemBuilder: (context, index) {
         final barber = barbers[index];
+        final insight = insightForBarber(barber);
         final isSelected = barber.name == selectedBarber;
+        final canTap =
+            bookingMode != BookingFlowMode.nextFree || barber.isAvailable;
         final card = GestureDetector(
-          onTap: () => onSelected(barber.name),
+          onTap: canTap ? () => onSelected(barber) : null,
           child: Container(
             decoration: CutlineDecorations.card(
               colors: isSelected
-                  ? [CutlineColors.primary.withValues(alpha: 0.7), CutlineColors.primary]
-                  : [CutlineColors.background, CutlineColors.secondaryBackground],
+                  ? [
+                      CutlineColors.primary.withValues(alpha: 0.7),
+                      CutlineColors.primary
+                    ]
+                  : [
+                      CutlineColors.background,
+                      CutlineColors.secondaryBackground
+                    ],
             ),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Column(
@@ -488,7 +749,8 @@ class _BarberGrid extends StatelessWidget {
                     width: 56,
                     height: 56,
                     color: Colors.grey.shade200,
-                    child: barber.avatarUrl != null && barber.avatarUrl!.isNotEmpty
+                    child: barber.avatarUrl != null &&
+                            barber.avatarUrl!.isNotEmpty
                         ? Image.network(
                             barber.avatarUrl!,
                             fit: BoxFit.cover,
@@ -496,7 +758,8 @@ class _BarberGrid extends StatelessWidget {
                               if (loadingProgress == null) return child;
                               return Center(
                                 child: CircularProgressIndicator(
-                                  value: loadingProgress.expectedTotalBytes != null
+                                  value: loadingProgress.expectedTotalBytes !=
+                                          null
                                       ? loadingProgress.cumulativeBytesLoaded /
                                           loadingProgress.expectedTotalBytes!
                                       : null,
@@ -510,7 +773,8 @@ class _BarberGrid extends StatelessWidget {
                               size: 28,
                             ),
                           )
-                        : const Icon(Icons.person, color: Colors.grey, size: 28),
+                        : const Icon(Icons.person,
+                            color: Colors.grey, size: 28),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -530,7 +794,37 @@ class _BarberGrid extends StatelessWidget {
                 const SizedBox(height: 3),
                 Flexible(
                   child: Text(
-                    'Specialist',
+                    barber.isAvailable ? 'Available' : 'Unavailable',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: isSelected
+                          ? Colors.white70
+                          : (barber.isAvailable
+                              ? Colors.green.shade700
+                              : Colors.redAccent),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Flexible(
+                  child: Text(
+                    '${insight.waitingCount} waiting',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white70 : Colors.black54,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+                Flexible(
+                  child: Text(
+                    'Next serial #${insight.nextSerial}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
@@ -571,7 +865,9 @@ class _DateScroller extends StatelessWidget {
         itemBuilder: (context, index) {
           final date = DateTime.now().add(Duration(days: index));
           final closed = isClosed?.call(date) ?? false;
-          final isSelected = selectedDate.year == date.year && selectedDate.month == date.month && selectedDate.day == date.day;
+          final isSelected = selectedDate.year == date.year &&
+              selectedDate.month == date.month &&
+              selectedDate.day == date.day;
           final card = GestureDetector(
             onTap: closed ? null : () => onSelected(date),
             child: Container(
@@ -648,7 +944,9 @@ class _TimeSlotGrid extends StatelessWidget {
                   ? Colors.grey.shade200
                   : (isSelected ? CutlineColors.primary : Colors.white),
               border: Border.all(
-                  color: isDisabled ? Colors.grey.shade300 : CutlineColors.primary),
+                  color: isDisabled
+                      ? Colors.grey.shade300
+                      : CutlineColors.primary),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Center(
@@ -695,30 +993,36 @@ class _TimeSlotGrid extends StatelessWidget {
 class _BookingSummaryCard extends StatelessWidget {
   final int totalAmount;
   final bool canProceed;
+  final String buttonLabel;
   final VoidCallback onConfirm;
 
   const _BookingSummaryCard({
     required this.totalAmount,
     required this.canProceed,
+    required this.buttonLabel,
     required this.onConfirm,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: CutlineSpacing.md),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: canProceed ? onConfirm : null,
-              style: CutlineButtons.primary(padding: const EdgeInsets.symmetric(vertical: 16)),
-              child: const Text('Confirm Booking', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: CutlineSpacing.md),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: canProceed ? onConfirm : null,
+            style: CutlineButtons.primary(
+                padding: const EdgeInsets.symmetric(vertical: 16)),
+            child: Text(
+              buttonLabel,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),
-        ],
-      );
+        ),
+      ],
+    );
   }
 }
 

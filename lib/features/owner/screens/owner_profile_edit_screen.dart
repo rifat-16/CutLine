@@ -181,6 +181,7 @@ class _OwnerProfileEditScreenState extends State<OwnerProfileEditScreen> {
       email: _emailController.text.trim(),
       phone: _phoneController.text.trim(),
       address: provider.address,
+      mapAddress: provider.mapAddress,
       about: provider.about,
     );
     if (!mounted) return;

@@ -80,8 +80,6 @@ class _FavoriteSalonCard extends StatelessWidget {
           children: [
             _CoverImage(
                 coverImageUrl: salon.coverImageUrl,
-                rating: salon.rating,
-                reviews: salon.reviews,
                 name: salon.name),
             Padding(
               padding: const EdgeInsets.all(16),
@@ -106,14 +104,10 @@ class _FavoriteSalonCard extends StatelessWidget {
 
 class _CoverImage extends StatelessWidget {
   final String? coverImageUrl;
-  final double rating;
-  final int reviews;
   final String name;
 
   const _CoverImage(
       {required this.coverImageUrl,
-      required this.rating,
-      required this.reviews,
       required this.name});
 
   @override
@@ -150,18 +144,9 @@ class _CoverImage extends StatelessWidget {
         Positioned(
           left: 16,
           bottom: 16,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(name, style: CutlineTextStyles.title.copyWith(color: Colors.white)),
-              Row(
-                children: [
-                  const Icon(Icons.star, size: 16, color: CutlineColors.accent),
-                  const SizedBox(width: 4),
-                  Text('$rating ($reviews)', style: const TextStyle(color: Colors.white)),
-                ],
-              ),
-            ],
+          child: Text(
+            name,
+            style: CutlineTextStyles.title.copyWith(color: Colors.white),
           ),
         ),
       ],

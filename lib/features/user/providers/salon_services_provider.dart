@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cutline/shared/services/firestore_cache.dart';
+import 'package:cutline/shared/services/local_ttl_cache.dart';
 
 class SalonServicesProvider extends ChangeNotifier {
   SalonServicesProvider({
@@ -36,6 +37,20 @@ class SalonServicesProvider extends ChangeNotifier {
         _setError('Salon services not found.');
         return;
       }
+
+      final cacheKey = 'salon_services:${doc.id}';
+      final cached = await LocalTtlCache.get<Map<String, dynamic>>(cacheKey);
+      if (cached != null) {
+        final cachedServices = cached['services'];
+        final cachedCombos = cached['combos'];
+        if (cachedServices is List) {
+          _services = _mapServicesFromList(cachedServices);
+        }
+        if (cachedCombos is List) {
+          _combos = _mapCombos(cachedCombos);
+        }
+        notifyListeners();
+      }
       
       final data = doc.data() ?? {};
       
@@ -46,10 +61,10 @@ class SalonServicesProvider extends ChangeNotifier {
             .doc(doc.id)
             .collection('all_services')
             .orderBy('order');
-        final servicesSnap = await FirestoreCache.getQuery(servicesQuery);
+        final servicesSnap = await FirestoreCache.getQueryCacheFirst(servicesQuery);
         _services = _mapServices(servicesSnap.docs);
         if (_services.isEmpty) {
-          final fallbackSnap = await FirestoreCache.getQuery(_firestore
+          final fallbackSnap = await FirestoreCache.getQueryCacheFirst(_firestore
               .collection('salons')
               .doc(doc.id)
               .collection('all_services'));
@@ -57,7 +72,7 @@ class SalonServicesProvider extends ChangeNotifier {
         }
       } catch (e) {
         try {
-          final fallbackSnap = await FirestoreCache.getQuery(_firestore
+          final fallbackSnap = await FirestoreCache.getQueryCacheFirst(_firestore
               .collection('salons')
               .doc(doc.id)
               .collection('all_services'));
@@ -74,6 +89,28 @@ class SalonServicesProvider extends ChangeNotifier {
       } catch (e) {
         _combos = [];
       }
+
+      await LocalTtlCache.set(
+        cacheKey,
+        {
+          'services': _services
+              .map((s) => {
+                    'name': s.name,
+                    'durationMinutes': s.durationMinutes,
+                    'price': s.price,
+                  })
+              .toList(),
+          'combos': _combos
+              .map((c) => {
+                    'name': c.title,
+                    'services': c.details,
+                    'price': c.price,
+                    'discountLabel': c.discountLabel,
+                  })
+              .toList(),
+        },
+        const Duration(hours: 24),
+      );
       
     } catch (e, stackTrace) {
       _services = [];
@@ -98,14 +135,14 @@ class SalonServicesProvider extends ChangeNotifier {
   Future<DocumentSnapshot<Map<String, dynamic>>?> _findSalonDoc() async {
     try {
       if (salonId.trim().isNotEmpty) {
-        final doc = await FirestoreCache.getDoc(
+        final doc = await FirestoreCache.getDocCacheFirst(
           _firestore.collection('salons').doc(salonId),
         );
         if (doc.exists) {
           return doc;
         }
       }
-      final query = await FirestoreCache.getQuery(_firestore
+      final query = await FirestoreCache.getQueryCacheFirst(_firestore
           .collection('salons')
           .where('name', isEqualTo: salonName)
           .limit(1)
@@ -142,6 +179,24 @@ class SalonServicesProvider extends ChangeNotifier {
       }
       return services;
     } catch (e, stackTrace) {
+      return [];
+    }
+  }
+
+  List<SalonService> _mapServicesFromList(List<dynamic> raw) {
+    try {
+      return raw
+          .whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .map((m) => SalonService(
+                name: (m['name'] as String?)?.trim() ?? 'Service',
+                durationMinutes: (m['durationMinutes'] as num?)?.toInt() ??
+                    (m['duration'] as num?)?.toInt() ??
+                    30,
+                price: (m['price'] as num?)?.toInt() ?? 0,
+              ))
+          .toList();
+    } catch (_) {
       return [];
     }
   }

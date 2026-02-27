@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cutline/shared/models/app_notification.dart';
 import 'package:cutline/shared/services/notification_storage_service.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +15,7 @@ class NotificationProvider extends ChangeNotifier {
 
   final String _userId;
   final NotificationStorageService _storageService;
+  StreamSubscription<List<AppNotification>>? _subscription;
 
   List<AppNotification> _notifications = [];
   bool _isLoading = false;
@@ -25,7 +28,8 @@ class NotificationProvider extends ChangeNotifier {
   int get unreadCount => _unreadCount;
 
   void _loadNotifications() {
-    _storageService.getNotifications(_userId).listen((notifications) {
+    _subscription?.cancel();
+    _subscription = _storageService.getNotifications(_userId).listen((notifications) {
       _notifications = notifications;
       _unreadCount = notifications.where((n) => !n.isRead).length;
       notifyListeners();
@@ -46,5 +50,10 @@ class NotificationProvider extends ChangeNotifier {
   Future<void> deleteNotification(String notificationId) async {
     await _storageService.deleteNotification(notificationId);
   }
-}
 
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+}

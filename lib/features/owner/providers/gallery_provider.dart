@@ -106,6 +106,7 @@ class GalleryProvider extends ChangeNotifier {
       await _firestore.collection('salons_summary').doc(ownerId).set(
         {
           'coverImageUrl': url,
+          'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
       );
@@ -158,6 +159,7 @@ class GalleryProvider extends ChangeNotifier {
       await _firestore.collection('salons_summary').doc(ownerId).set(
         {
           'coverImageUrl': url,
+          'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
       );
@@ -272,6 +274,7 @@ class GalleryProvider extends ChangeNotifier {
       await _firestore.collection('salons_summary').doc(ownerId).set(
         {
           'coverImageUrl': FieldValue.delete(),
+          'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
       );
@@ -322,7 +325,10 @@ class GalleryProvider extends ChangeNotifier {
     required String path,
   }) async {
     final ref = _storage.ref().child('salons').child(ownerId).child(path);
-    final uploadTask = ref.putFile(File(file.path));
+    final uploadTask = ref.putFile(
+      File(file.path),
+      SettableMetadata(contentType: _contentTypeFor(file.name)),
+    );
     final snap = await uploadTask.whenComplete(() {});
     return snap.ref.getDownloadURL();
   }
@@ -331,6 +337,21 @@ class GalleryProvider extends ChangeNotifier {
     final dot = name.lastIndexOf('.');
     if (dot == -1 || dot == name.length - 1) return 'jpg';
     return name.substring(dot + 1);
+  }
+
+  String _contentTypeFor(String name) {
+    switch (_ext(name).toLowerCase()) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'heic':
+        return 'image/heic';
+      case 'heif':
+        return 'image/heif';
+      default:
+        return 'image/jpeg';
+    }
   }
 
   void _setLoading(bool value) {

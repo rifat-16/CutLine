@@ -54,11 +54,14 @@ class _CoverUploadCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 120,
-            height: 120,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 360;
+          final previewSize = compact ? 96.0 : 120.0;
+
+          final preview = Container(
+            width: previewSize,
+            height: previewSize,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(20),
@@ -70,54 +73,80 @@ class _CoverUploadCard extends StatelessWidget {
                 if (coverUrl != null)
                   Image.network(coverUrl, fit: BoxFit.cover)
                 else
-                  const Icon(Icons.image_outlined,
-                      color: Colors.white, size: 36),
+                  const Icon(Icons.image_outlined, color: Colors.white, size: 36),
                 if (isUploading)
                   Container(
                     color: Colors.black.withValues(alpha: 0.35),
                     child: const Center(
-                        child:
-                            CircularProgressIndicator(color: Colors.white)),
+                      child: CircularProgressIndicator(color: Colors.white),
+                    ),
                   ),
               ],
             ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Cover Photo',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
+          );
+
+          final content = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Cover Photo',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
                 ),
-                const SizedBox(height: 6),
-                const Text(
-                  'High-quality cover boosts bookings by 42%.',
-                  style: TextStyle(color: Colors.white70, fontSize: 13),
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton.icon(
-                  onPressed:
-                      isUploading ? null : () => provider.uploadCoverPhoto(),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'High-quality cover boosts bookings by 42%.',
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: compact ? double.infinity : null,
+                child: ElevatedButton.icon(
+                  onPressed: isUploading ? null : () => provider.uploadCoverPhoto(),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.blueAccent,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                   icon: const Icon(Icons.upload),
-                  label: Text(isUploading ? 'Uploading...' : 'Upload cover'),
+                  label: Text(
+                    isUploading ? 'Uploading...' : 'Upload cover',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+              ),
+            ],
+          );
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Align(alignment: Alignment.centerLeft, child: preview),
+                const SizedBox(height: 12),
+                content,
               ],
-            ),
-          ),
-        ],
+            );
+          }
+
+          return Row(
+            children: [
+              preview,
+              const SizedBox(width: 16),
+              Expanded(child: content),
+            ],
+          );
+        },
       ),
     );
   }

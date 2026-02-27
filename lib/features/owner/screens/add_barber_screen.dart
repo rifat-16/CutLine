@@ -80,8 +80,8 @@ class _AddBarberScreenState extends State<AddBarberScreen> {
 
     final success = await provider.createBarber(input: barber);
     if (!mounted) return;
-    if (success) {
-      Navigator.pop(context, barber);
+    if (success && provider.result != null) {
+      Navigator.pop(context, provider.result);
     }
   }
 }

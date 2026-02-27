@@ -51,7 +51,7 @@ class UserHomeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> load() async {
+  Future<void> load({bool forceServer = false}) async {
     _setLoading(true);
     _setError(null);
     try {
@@ -66,7 +66,10 @@ class UserHomeProvider extends ChangeNotifier {
         _favoriteIds = {}; // Continue without favorites
       }
 
-      await _loadNextPage();
+      final wasFromCache = await _loadNextPage(forceServer: forceServer);
+      if (!forceServer && wasFromCache) {
+        await _refreshFromServer();
+      }
     } catch (e) {
       _allSalons = [];
       _visibleSalons = [];
@@ -102,25 +105,28 @@ class UserHomeProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadNextPage() async {
-    if (!_hasMore) return;
+  Future<bool> _loadNextPage({bool forceServer = false}) async {
+    if (!_hasMore) return false;
+    bool wasFromCache = false;
     try {
-      Query<Map<String, dynamic>> query = _firestore
-          .collection('salons_summary')
-          .limit(_pageSize);
+      Query<Map<String, dynamic>> query =
+          _firestore.collection('salons_summary').limit(_pageSize);
 
       if (_lastSalonDoc != null) {
         query = query.startAfterDocument(_lastSalonDoc!);
       }
 
-      final snapshot = await FirestoreCache.getQuery(query);
+      final snapshot = forceServer
+          ? await FirestoreCache.getQuery(query)
+          : await FirestoreCache.getQueryCacheFirst(query);
+      wasFromCache = snapshot.metadata.isFromCache;
 
       if (snapshot.docs.isEmpty) {
         _hasMore = false;
         if (_allSalons.isEmpty) {
           _setError(null);
         }
-        return;
+        return wasFromCache;
       }
 
       _lastSalonDoc = snapshot.docs.last;
@@ -143,6 +149,19 @@ class UserHomeProvider extends ChangeNotifier {
     } catch (e) {
       _hasMore = false;
       rethrow;
+    }
+    return wasFromCache;
+  }
+
+  Future<void> _refreshFromServer() async {
+    try {
+      _allSalons = [];
+      _visibleSalons = [];
+      _lastSalonDoc = null;
+      _hasMore = true;
+      await _loadNextPage(forceServer: true);
+    } catch (_) {
+      // Keep cached results if server refresh fails.
     }
   }
 
@@ -226,7 +245,7 @@ class UserHomeProvider extends ChangeNotifier {
       return {};
     }
     try {
-      final userDoc = await FirestoreCache.getDoc(
+      final userDoc = await FirestoreCache.getDocCacheFirst(
         _firestore.collection('users').doc(userId),
       );
       final data = userDoc.data();
@@ -262,21 +281,18 @@ class UserHomeProvider extends ChangeNotifier {
     }
 
     Iterable<UserSalon> list = _allSalons;
-    list = list
-        .map((salon) {
-          final point = salon.geoPoint;
-          if (point == null) return salon.copyWith(distanceMeters: null);
-          final distance = Geolocator.distanceBetween(
-            userLocation.latitude,
-            userLocation.longitude,
-            point.latitude,
-            point.longitude,
-          );
-          return salon.copyWith(distanceMeters: distance);
-        })
-        .where((salon) =>
-            salon.distanceMeters == null ||
-            salon.distanceMeters! <= radiusMeters);
+    list = list.map((salon) {
+      final point = salon.geoPoint;
+      if (point == null) return salon.copyWith(distanceMeters: null);
+      final distance = Geolocator.distanceBetween(
+        userLocation.latitude,
+        userLocation.longitude,
+        point.latitude,
+        point.longitude,
+      );
+      return salon.copyWith(distanceMeters: distance);
+    }).where((salon) =>
+        salon.distanceMeters == null || salon.distanceMeters! <= radiusMeters);
 
     if (query.isNotEmpty) {
       list = list.where((salon) {

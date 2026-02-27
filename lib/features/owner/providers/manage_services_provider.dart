@@ -72,6 +72,7 @@ class ManageServicesProvider extends ChangeNotifier {
       await _firestore.collection('salons_summary').doc(ownerId).set(
         {
           'topServices': _topServices(_services),
+          'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
       );

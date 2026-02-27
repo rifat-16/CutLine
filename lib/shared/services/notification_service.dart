@@ -252,10 +252,6 @@ class NotificationService {
         // Only show to barbers
         return _currentUserRole == UserRole.barber;
       
-      case NotificationType.turnReady:
-        // Only show to customers/users
-        return _currentUserRole == UserRole.customer;
-      
       case NotificationType.unknown:
         // Show unknown notifications to all
         return true;
@@ -339,23 +335,6 @@ class NotificationService {
       case NotificationType.barberWaiting:
         // Navigate to barber home (queue screen)
         Navigator.of(context).pushNamed(AppRoutes.barberHome);
-        break;
-
-      case NotificationType.turnReady:
-        // Navigate to turn ready screen for customer
-        if (payload.salonId != null && payload.bookingId.isNotEmpty) {
-          final salonName = payload.salonName ?? 'Salon';
-          Navigator.of(context).pushNamed(
-            AppRoutes.turnReady,
-            arguments: TurnReadyArgs(
-              bookingId: payload.bookingId,
-              salonId: payload.salonId!,
-              salonName: salonName,
-            ),
-          );
-        } else {
-          Navigator.of(context).pushNamed(AppRoutes.myBookings);
-        }
         break;
 
       case NotificationType.unknown:

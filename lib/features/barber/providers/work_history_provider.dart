@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -31,7 +32,8 @@ class WorkHistoryProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-      final userSnap = await _firestore.collection('users').doc(uid).get();
+      final userSnap = await FirestoreCache.getDocCacheFirst(
+          _firestore.collection('users').doc(uid));
       final userData = userSnap.data() ?? {};
       final ownerId = userData['ownerId'] as String?;
       final barberName = (userData['name'] as String?) ?? '';
@@ -45,8 +47,8 @@ class WorkHistoryProvider extends ChangeNotifier {
       // Fetch salon barbers list for name-to-ID mapping
       Map<String, String> nameToIdMap = {};
       try {
-        final salonDoc =
-            await _firestore.collection('salons').doc(ownerId).get();
+        final salonDoc = await FirestoreCache.getDocCacheFirst(
+            _firestore.collection('salons').doc(ownerId));
         final salonData = salonDoc.data() ?? {};
         final barbersList = salonData['barbers'] as List?;
         if (barbersList != null) {
@@ -64,11 +66,40 @@ class WorkHistoryProvider extends ChangeNotifier {
         // Ignore errors in fetching barbers list
       }
 
-      final snap = await _firestore
-          .collection('salons')
-          .doc(ownerId)
-          .collection('bookings')
-          .get();
+      final bookingsRef =
+          _firestore.collection('salons').doc(ownerId).collection('bookings');
+      QuerySnapshot<Map<String, dynamic>> snap;
+      try {
+        snap = await FirestoreCache.getQuery(bookingsRef
+            .where('barberId', isEqualTo: uid)
+            .where('status', whereIn: ['completed', 'done'])
+            .orderBy('dateTime', descending: true)
+            .limit(200));
+      } catch (_) {
+        try {
+          snap = await FirestoreCache.getQuery(bookingsRef
+              .where('barberUid', isEqualTo: uid)
+              .where('status', whereIn: ['completed', 'done'])
+              .orderBy('dateTime', descending: true)
+              .limit(200));
+        } catch (_) {
+          try {
+            if (barberName.isNotEmpty) {
+              snap = await FirestoreCache.getQuery(bookingsRef
+                  .where('barberName', isEqualTo: barberName)
+                  .where('status', whereIn: ['completed', 'done'])
+                  .orderBy('dateTime', descending: true)
+                  .limit(200));
+            } else {
+              snap = await FirestoreCache.getQuery(
+                  bookingsRef.orderBy('dateTime', descending: true).limit(200));
+            }
+          } catch (_) {
+            snap = await FirestoreCache.getQuery(
+                bookingsRef.orderBy('dateTime', descending: true).limit(200));
+          }
+        }
+      }
 
       _items = snap.docs
           .map((doc) => _mapItem(doc.data(), uid, barberName, nameToIdMap))

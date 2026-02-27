@@ -44,6 +44,7 @@ class OwnerHomeProvider extends ChangeNotifier {
   int _pendingRequests = 0;
   bool _isOpen = false;
   bool _isUpdatingStatus = false;
+  int _lastSyncedPendingRequests = -1;
 
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -104,8 +105,7 @@ class OwnerHomeProvider extends ChangeNotifier {
       } catch (e, stackTrace) {
         // Queue might be empty, that's okay
         _queueItems = [];
-        if (e is FirebaseException && e.code == 'permission-denied') {
-        }
+        if (e is FirebaseException && e.code == 'permission-denied') {}
       }
 
       try {
@@ -113,8 +113,7 @@ class OwnerHomeProvider extends ChangeNotifier {
       } catch (e, stackTrace) {
         // Booking requests might be empty, that's okay
         _pendingRequests = 0;
-        if (e is FirebaseException && e.code == 'permission-denied') {
-        }
+        if (e is FirebaseException && e.code == 'permission-denied') {}
       }
 
       // Set up listeners (these can fail silently)
@@ -129,7 +128,6 @@ class OwnerHomeProvider extends ChangeNotifier {
       } catch (e) {
         // Listener setup failed, but continue
       }
-
 
       // Only show error if salon doesn't exist and no data loaded
       if (_salonName == null && _queueItems.isEmpty && _pendingRequests == 0) {
@@ -185,8 +183,7 @@ class OwnerHomeProvider extends ChangeNotifier {
         if (_photoUrl != null && _photoUrl!.isEmpty) {
           _photoUrl = null;
         }
-      } else {
-      }
+      } else {}
       // If salon doesn't exist, that's okay - owner might not have set up yet
     } catch (e, stackTrace) {
       // Re-throw to be caught by parent try-catch if it's a permission error
@@ -219,27 +216,30 @@ class OwnerHomeProvider extends ChangeNotifier {
   Future<void> _loadBookingRequests(String ownerId) async {
     final collection =
         _firestore.collection('salons').doc(ownerId).collection('bookings');
+    int? summaryPending;
     try {
-      QuerySnapshot<Map<String, dynamic>> snap;
       try {
-        snap = await collection
-            .where('status', whereIn: ['pending', 'upcoming']).get();
-      } catch (e, stackTrace) {
-        // Check if it's a missing index error
-        if (e is FirebaseException && e.code == 'failed-precondition') {
-        } else if (e is FirebaseException && e.code == 'permission-denied') {
+        final summarySnap =
+            await _firestore.collection('salons_summary').doc(ownerId).get();
+        final summaryData = summarySnap.data();
+        final pending = (summaryData?['pendingRequests'] as num?)?.toInt();
+        if (pending != null) {
+          summaryPending = pending < 0 ? 0 : pending;
+          _pendingRequests = summaryPending;
+          notifyListeners();
         }
-        try {
-          snap = await collection.where('status', isEqualTo: 'upcoming').get();
-        } catch (e2, stackTrace2) {
-          snap = await collection.get();
-        }
+      } catch (_) {
+        // summary unavailable; fall back to bookings query
       }
-      _pendingRequests = snap.size;
+
+      _pendingRequests = await _countPendingRequests(collection);
+      await _syncPendingRequests(ownerId, _pendingRequests);
     } catch (e, stackTrace) {
-      _pendingRequests = 0;
+      _pendingRequests = summaryPending ?? 0;
       // Re-throw permission errors
-      if (e is FirebaseException && e.code == 'permission-denied') {
+      if (summaryPending == null &&
+          e is FirebaseException &&
+          e.code == 'permission-denied') {
         rethrow;
       }
     }
@@ -249,79 +249,89 @@ class OwnerHomeProvider extends ChangeNotifier {
     _bookingRequestsSubscription?.cancel();
     final collection =
         _firestore.collection('salons').doc(ownerId).collection('bookings');
+
+    void applyCount(int count) {
+      final normalized = count < 0 ? 0 : count;
+      if (_pendingRequests != normalized) {
+        _pendingRequests = normalized;
+        notifyListeners();
+      }
+      _syncPendingRequests(ownerId, normalized);
+    }
+
+    void startFallbackListener() {
+      _bookingRequestsSubscription?.cancel();
+      _bookingRequestsSubscription = collection.snapshots().listen((snapshot) {
+        applyCount(_countPendingFromDocs(snapshot.docs));
+      }, onError: (e) {});
+    }
+
     try {
       _bookingRequestsSubscription = collection
           .where('status', whereIn: ['pending', 'upcoming'])
           .snapshots()
           .listen((snapshot) {
-            _pendingRequests = snapshot.size;
-            notifyListeners();
+            applyCount(snapshot.size);
           }, onError: (e) {
+            startFallbackListener();
           });
     } catch (e) {
-      try {
-        _bookingRequestsSubscription = collection
-            .where('status', isEqualTo: 'upcoming')
-            .snapshots()
-            .listen((snapshot) {
-          _pendingRequests = snapshot.size;
-          notifyListeners();
-        }, onError: (e2) {
-        });
-      } catch (e3) {
-      }
+      startFallbackListener();
+    }
+  }
+
+  Future<int> _countPendingRequests(
+      CollectionReference<Map<String, dynamic>> collection) async {
+    try {
+      final snap =
+          await collection.where('status', whereIn: ['pending', 'upcoming']).get();
+      return snap.size;
+    } catch (_) {
+      final snap = await collection.get();
+      return _countPendingFromDocs(snap.docs);
+    }
+  }
+
+  int _countPendingFromDocs(
+      Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    return docs.where((doc) {
+      final rawStatus = doc.data()['status'];
+      final status =
+          rawStatus is String ? rawStatus.trim().toLowerCase() : '';
+      return status == 'pending' || status == 'upcoming' || status.isEmpty;
+    }).length;
+  }
+
+  Future<void> _syncPendingRequests(String ownerId, int count) async {
+    if (count == _lastSyncedPendingRequests) return;
+    _lastSyncedPendingRequests = count;
+    try {
+      await _firestore.collection('salons_summary').doc(ownerId).set(
+        {
+          'pendingRequests': count < 0 ? 0 : count,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    } catch (_) {
+      // ignore summary sync failures
     }
   }
 
   void _listenToQueue(String ownerId) {
     _queueLiveSubscription?.cancel();
     try {
-      // Listen only to active queue items
-      try {
-        _queueLiveSubscription = _firestore
-            .collection('salons')
-            .doc(ownerId)
-            .collection('queue')
-            .where('status', whereIn: ['waiting', 'serving'])
-            .snapshots()
-            .listen((_) {
-              _refreshQueue();
-            }, onError: (e) {
-            });
-      } catch (e) {
-        // Fallback: listen to all and filter in service
-        try {
-          _queueLiveSubscription = _firestore
-              .collection('salons')
-              .doc(ownerId)
-              .collection('queue')
-              .snapshots()
-              .listen((_) {
+      // Listen only to active queue items for this salon
+      _queueLiveSubscription = _firestore
+          .collection('salons')
+          .doc(ownerId)
+          .collection('queue')
+          .where('status', whereIn: ['waiting', 'serving'])
+          .snapshots()
+          .listen((_) {
             _refreshQueue();
-          }, onError: (e2) {
-          });
-        } catch (e3) {
-          // fall back to top-level queue collection if nested path fails
-          try {
-            _queueLiveSubscription = _firestore
-                .collection('queue')
-                .where('status', whereIn: ['waiting', 'serving'])
-                .snapshots()
-                .listen((_) {
-                  _refreshQueue();
-                }, onError: (e4) {
-                });
-          } catch (e5) {
-            _queueLiveSubscription =
-                _firestore.collection('queue').snapshots().listen((_) {
-              _refreshQueue();
-            }, onError: (e6) {
-            });
-          }
-        }
-      }
-    } catch (e) {
-    }
+          }, onError: (e) {});
+    } catch (e) {}
   }
 
   Future<void> setSalonOpen(bool value) async {
@@ -341,7 +351,7 @@ class OwnerHomeProvider extends ChangeNotifier {
       );
       batch.set(
         _firestore.collection('salons_summary').doc(ownerId),
-        {'isOpen': value},
+        {'isOpen': value, 'updatedAt': FieldValue.serverTimestamp()},
         SetOptions(merge: true),
       );
       await batch.commit();
@@ -357,11 +367,16 @@ class OwnerHomeProvider extends ChangeNotifier {
   Future<void> updateQueueStatus(String id, OwnerQueueStatus status) async {
     final ownerId = _authProvider.currentUser?.uid;
     if (ownerId == null) return;
+    var didUpdate = true;
     try {
       await _queueService.updateStatus(
           ownerId: ownerId, id: id, status: status);
     } catch (_) {
-      // ignore write failures for now
+      didUpdate = false;
+    }
+    if (!didUpdate) {
+      _setError('Could not update status. Try again.');
+      return;
     }
     final index = _queueItems.indexWhere((item) => item.id == id);
     if (index != -1) {

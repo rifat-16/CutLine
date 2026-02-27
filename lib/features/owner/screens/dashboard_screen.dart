@@ -232,7 +232,7 @@ class _KpiGrid extends StatelessWidget {
         crossAxisCount: 2,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        childAspectRatio: 1.2,
+        childAspectRatio: 1.0,
       ),
       itemCount: stats.length,
       itemBuilder: (_, index) => _KpiCard(data: stats[index]),
@@ -267,7 +267,7 @@ class _KpiCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final showAction = data.actionLabel != null && data.onAction != null;
     final card = Container(
-      padding: CutlineSpacing.card,
+      padding: const EdgeInsets.all(12),
       decoration: CutlineDecorations.card(solidColor: Colors.white),
       child: Stack(
         children: [
@@ -275,19 +275,26 @@ class _KpiCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(9),
                 decoration: BoxDecoration(
                   color: data.color.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(data.icon, color: data.color),
               ),
-              const SizedBox(height: 12),
-              Text(data.label, style: CutlineTextStyles.caption),
+              const SizedBox(height: 10),
+              Text(
+                data.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: CutlineTextStyles.caption,
+              ),
               const SizedBox(height: 4),
               Text(
                 data.value,
-                style: CutlineTextStyles.title.copyWith(fontSize: 22),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: CutlineTextStyles.title.copyWith(fontSize: 20),
               ),
             ],
           ),

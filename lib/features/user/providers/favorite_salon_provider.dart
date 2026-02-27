@@ -45,8 +45,8 @@ class FavoriteSalonProvider extends ChangeNotifier {
   }
 
   Future<List<String>> _fetchFavoriteIds() async {
-    final userDoc =
-        await FirestoreCache.getDoc(_firestore.collection('users').doc(userId));
+    final userDoc = await FirestoreCache.getDocCacheFirst(
+        _firestore.collection('users').doc(userId));
     final data = userDoc.data();
     if (data == null) return [];
     final raw = data['favoriteSalonIds'];
@@ -58,7 +58,7 @@ class FavoriteSalonProvider extends ChangeNotifier {
 
   Future<FavoriteSalon?> _fetchSalon(String salonId) async {
     try {
-      final doc = await FirestoreCache.getDoc(
+      final doc = await FirestoreCache.getDocCacheFirst(
           _firestore.collection('salons_summary').doc(salonId));
       final data = doc.data();
       if (data == null) return null;
