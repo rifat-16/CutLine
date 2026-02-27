@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum OwnerQueueStatus { waiting, turnReady, arrived, serving, done, noShow }
+enum OwnerQueueStatus { waiting, arrived, serving, done, noShow }
 
 enum OwnerBookingStatus { upcoming, completed, cancelled }
 
@@ -14,7 +14,9 @@ class OwnerQueueItem {
   final String id;
   final String customerName;
   final String service;
+  final String serviceId;
   final String barberName;
+  final String barberId;
   final int price;
   final int tipAmount;
   final OwnerQueueStatus status;
@@ -25,12 +27,18 @@ class OwnerQueueItem {
   final String? note;
   final String customerAvatar;
   final String customerUid;
+  final String entrySource;
+  final int? serialNo;
+  final String? serialDate;
+  final String? serialBarberKey;
 
   const OwnerQueueItem({
     required this.id,
     required this.customerName,
     required this.service,
+    this.serviceId = '',
     required this.barberName,
+    this.barberId = '',
     required this.price,
     this.tipAmount = 0,
     required this.status,
@@ -41,24 +49,56 @@ class OwnerQueueItem {
     this.note,
     this.customerAvatar = '',
     this.customerUid = '',
+    this.entrySource = '',
+    this.serialNo,
+    this.serialDate,
+    this.serialBarberKey,
   });
 
-  OwnerQueueItem copyWith({OwnerQueueStatus? status, DateTime? scheduledAt}) {
+  bool get isManual => entrySource.trim().toLowerCase() == 'manual';
+
+  OwnerQueueItem copyWith({
+    OwnerQueueStatus? status,
+    DateTime? scheduledAt,
+    String? customerName,
+    String? service,
+    String? serviceId,
+    String? barberName,
+    String? barberId,
+    int? price,
+    int? tipAmount,
+    int? waitMinutes,
+    String? slotLabel,
+    String? customerPhone,
+    String? note,
+    String? customerAvatar,
+    String? customerUid,
+    String? entrySource,
+    int? serialNo,
+    String? serialDate,
+    String? serialBarberKey,
+  }) {
     return OwnerQueueItem(
       id: id,
-      customerName: customerName,
-      service: service,
-      barberName: barberName,
-      price: price,
-      tipAmount: tipAmount,
+      customerName: customerName ?? this.customerName,
+      service: service ?? this.service,
+      serviceId: serviceId ?? this.serviceId,
+      barberName: barberName ?? this.barberName,
+      barberId: barberId ?? this.barberId,
+      price: price ?? this.price,
+      tipAmount: tipAmount ?? this.tipAmount,
       status: status ?? this.status,
-      waitMinutes: waitMinutes,
-      slotLabel: slotLabel,
+      waitMinutes: waitMinutes ?? this.waitMinutes,
+      slotLabel: slotLabel ?? this.slotLabel,
       scheduledAt: scheduledAt ?? this.scheduledAt,
-      customerPhone: customerPhone,
-      note: note,
-      customerAvatar: customerAvatar,
-      customerUid: customerUid,
+      customerPhone: customerPhone ?? this.customerPhone,
+      note: note ?? this.note,
+      customerAvatar: customerAvatar ?? this.customerAvatar,
+      customerUid: customerUid ?? this.customerUid,
+      entrySource: entrySource ?? this.entrySource,
+      serialNo: serialNo ?? this.serialNo,
+      serialDate: serialDate ?? this.serialDate,
+      serialBarberKey: serialBarberKey ?? this.serialBarberKey,
     );
   }
 }
@@ -298,6 +338,8 @@ class OwnerBookingRequest {
   final String customerAvatar;
   final String customerUid;
   final String barberName;
+  final String barberId;
+  final String barberAvatar;
   final DateTime dateTime;
   final String? date;
   final String? time;
@@ -314,6 +356,8 @@ class OwnerBookingRequest {
     required this.customerAvatar,
     required this.customerUid,
     required this.barberName,
+    this.barberId = '',
+    this.barberAvatar = '',
     required this.dateTime,
     this.date,
     this.time,
@@ -337,6 +381,8 @@ class OwnerBookingRequest {
       customerAvatar: customerAvatar ?? this.customerAvatar,
       customerUid: customerUid,
       barberName: barberName,
+      barberId: barberId,
+      barberAvatar: barberAvatar,
       dateTime: dateTime,
       date: date ?? this.date,
       time: time ?? this.time,

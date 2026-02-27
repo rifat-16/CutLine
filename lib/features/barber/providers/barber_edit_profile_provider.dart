@@ -112,16 +112,9 @@ class BarberEditProfileProvider extends ChangeNotifier {
   Future<void> _updateQueueItems(
       String ownerId, String barberId, String oldName, String newName) async {
     try {
-      final queueRef = _firestore
-          .collection('salons')
-          .doc(ownerId)
-          .collection('queue');
-      QuerySnapshot<Map<String, dynamic>> snap;
-      try {
-        snap = await queueRef.get();
-      } catch (_) {
-        snap = await _firestore.collection('queue').get();
-      }
+      final queueRef =
+          _firestore.collection('salons').doc(ownerId).collection('queue');
+      final snap = await queueRef.get();
 
       final batch = _firestore.batch();
       int batchCount = 0;

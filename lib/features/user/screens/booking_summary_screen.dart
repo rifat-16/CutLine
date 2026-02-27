@@ -9,12 +9,17 @@ class BookingSummaryScreen extends StatefulWidget {
   final String salonName;
   final List<String> services;
   final String barberName;
+  final String barberId;
+  final String? barberAvatar;
   final DateTime date;
   final String time;
   final String customerName;
   final String customerPhone;
   final String customerEmail;
   final String customerUid;
+  final String bookingMode;
+  final int? predictedSerialNo;
+  final DateTime? predictedStartAt;
 
   const BookingSummaryScreen({
     super.key,
@@ -22,12 +27,17 @@ class BookingSummaryScreen extends StatefulWidget {
     required this.salonName,
     required this.services,
     required this.barberName,
+    this.barberId = '',
+    this.barberAvatar,
     required this.date,
     required this.time,
     required this.customerName,
     required this.customerPhone,
     required this.customerEmail,
     required this.customerUid,
+    this.bookingMode = 'custom',
+    this.predictedSerialNo,
+    this.predictedStartAt,
   });
 
   @override
@@ -46,12 +56,17 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
         salonName: widget.salonName,
         selectedServices: widget.services,
         selectedBarber: widget.barberName,
+        selectedBarberId: widget.barberId,
+        selectedBarberAvatar: widget.barberAvatar,
         selectedDate: widget.date,
         selectedTime: widget.time,
         customerName: widget.customerName,
         customerPhone: widget.customerPhone,
         customerEmail: widget.customerEmail,
         customerUid: widget.customerUid,
+        bookingMode: widget.bookingMode,
+        predictedSerialNo: widget.predictedSerialNo,
+        predictedStartAt: widget.predictedStartAt,
       )..load(),
       builder: (context, _) {
         final provider = context.watch<BookingSummaryProvider>();
@@ -59,6 +74,12 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
             .map((s) => {'name': s.name, 'price': s.price})
             .toList();
         final totalWithTip = provider.total + tipAmount;
+        final isNextFree = widget.bookingMode == 'next_free';
+        final bookingTypeLabel =
+            isNextFree ? 'Next Free Slot' : 'Custom Date & Time';
+        final effectiveSerial =
+            provider.lastCreatedSerialNo ?? widget.predictedSerialNo;
+        final effectiveEta = widget.predictedStartAt;
         return Scaffold(
           backgroundColor: CutlineColors.secondaryBackground,
           appBar:
@@ -85,6 +106,13 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                           barberName: widget.barberName,
                           dateLabel: provider.formattedDate,
                           timeLabel: widget.time,
+                          bookingTypeLabel: bookingTypeLabel,
+                          serialLabel: effectiveSerial != null
+                              ? '#$effectiveSerial'
+                              : null,
+                          estimatedStartLabel: effectiveEta != null
+                              ? provider.formatDateTime(effectiveEta)
+                              : null,
                           services: services,
                           selectedPayment: selectedPayment,
                           onPaymentChanged: (value) =>
@@ -96,6 +124,8 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                           total: totalWithTip,
                           serviceCharge: provider.serviceCharge,
                           isSaving: provider.isSaving,
+                          buttonLabel:
+                              isNextFree ? 'Join Queue' : 'Confirm Booking',
                         ),
                       ),
                     ],
@@ -119,13 +149,21 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
       );
       return;
     }
+    final isNextFree = widget.bookingMode == 'next_free';
+    final resolvedSerial =
+        provider.lastCreatedSerialNo ?? widget.predictedSerialNo;
+    final successText = isNextFree
+        ? (resolvedSerial != null
+            ? 'You joined the queue. Serial #$resolvedSerial.'
+            : 'You joined the queue successfully.')
+        : 'Your booking has been successfully submitted.';
 
     showDialog<void>(
       context: navigator.context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Booking Confirmed!', style: CutlineTextStyles.title),
-        content: const Text('Your booking has been successfully submitted.'),
+        content: Text(successText),
         actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
         actions: [
           SizedBox(
@@ -157,6 +195,9 @@ class _SummaryCard extends StatelessWidget {
   final String barberName;
   final String dateLabel;
   final String timeLabel;
+  final String bookingTypeLabel;
+  final String? serialLabel;
+  final String? estimatedStartLabel;
   final List<Map<String, dynamic>> services;
   final String selectedPayment;
   final ValueChanged<String> onPaymentChanged;
@@ -166,6 +207,7 @@ class _SummaryCard extends StatelessWidget {
   final int total;
   final int serviceCharge;
   final bool isSaving;
+  final String buttonLabel;
 
   const _SummaryCard({
     required this.salonName,
@@ -174,6 +216,9 @@ class _SummaryCard extends StatelessWidget {
     required this.barberName,
     required this.dateLabel,
     required this.timeLabel,
+    required this.bookingTypeLabel,
+    this.serialLabel,
+    this.estimatedStartLabel,
     required this.services,
     required this.selectedPayment,
     required this.onPaymentChanged,
@@ -183,6 +228,7 @@ class _SummaryCard extends StatelessWidget {
     required this.total,
     required this.serviceCharge,
     required this.isSaving,
+    required this.buttonLabel,
   });
 
   @override
@@ -206,6 +252,9 @@ class _SummaryCard extends StatelessWidget {
             dateLabel: dateLabel,
             timeLabel: timeLabel,
             barberName: barberName,
+            bookingTypeLabel: bookingTypeLabel,
+            serialLabel: serialLabel,
+            estimatedStartLabel: estimatedStartLabel,
           ),
           const Divider(height: 32),
           _ServiceList(services: services),
@@ -232,9 +281,13 @@ class _SummaryCard extends StatelessWidget {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white),
                     )
-                  : const Text('Confirm Booking',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  : Text(
+                      buttonLabel,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
           ),
         ],
@@ -299,20 +352,43 @@ class _BookingDetails extends StatelessWidget {
   final String dateLabel;
   final String timeLabel;
   final String barberName;
+  final String bookingTypeLabel;
+  final String? serialLabel;
+  final String? estimatedStartLabel;
 
   const _BookingDetails({
     required this.dateLabel,
     required this.timeLabel,
     required this.barberName,
+    required this.bookingTypeLabel,
+    this.serialLabel,
+    this.estimatedStartLabel,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
+        _InfoRow(
+          icon: Icons.category_outlined,
+          label: 'Booking Type',
+          value: bookingTypeLabel,
+        ),
         _InfoRow(icon: Icons.calendar_today, label: 'Date', value: dateLabel),
         _InfoRow(icon: Icons.access_time, label: 'Time', value: timeLabel),
         _InfoRow(icon: Icons.person, label: 'Barber', value: barberName),
+        if (serialLabel != null)
+          _InfoRow(
+            icon: Icons.confirmation_number_outlined,
+            label: 'Serial',
+            value: serialLabel!,
+          ),
+        if (estimatedStartLabel != null)
+          _InfoRow(
+            icon: Icons.schedule_outlined,
+            label: 'Estimated Start',
+            value: estimatedStartLabel!,
+          ),
       ],
     );
   }

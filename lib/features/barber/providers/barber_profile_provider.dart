@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:flutter/material.dart';
 
 class BarberProfileProvider extends ChangeNotifier {
@@ -36,6 +37,12 @@ class BarberProfileProvider extends ChangeNotifier {
         _setError('Could not load profile.');
         return;
       }
+      if (profile.ownerId.trim().isEmpty) {
+        _setError('Salon owner not linked to this account.');
+        _profile = profile;
+        _clientsServed = 0;
+        return;
+      }
       _profile = profile;
       _clientsServed = await _fetchServedCount(profile);
     } catch (_) {
@@ -47,7 +54,8 @@ class BarberProfileProvider extends ChangeNotifier {
 
   Future<BarberProfile?> _fetchProfile(String uid) async {
     try {
-      final snap = await _firestore.collection('users').doc(uid).get();
+      final snap = await FirestoreCache.getDocCacheFirst(
+          _firestore.collection('users').doc(uid));
       if (!snap.exists) return null;
       final data = snap.data() ?? {};
       return BarberProfile(
@@ -66,16 +74,43 @@ class BarberProfileProvider extends ChangeNotifier {
 
   Future<int> _fetchServedCount(BarberProfile profile) async {
     if (profile.ownerId.isEmpty) return 0;
+    final bookingsRef = _firestore
+        .collection('salons')
+        .doc(profile.ownerId)
+        .collection('bookings');
+
+    try {
+      final snap = await bookingsRef
+          .where('barberId', isEqualTo: profile.uid)
+          .where('status', whereIn: ['completed', 'done'])
+          .count()
+          .get();
+      return snap.count ?? 0;
+    } catch (_) {
+      // fall back to barberUid field
+    }
+
+    try {
+      final snap = await bookingsRef
+          .where('barberUid', isEqualTo: profile.uid)
+          .where('status', whereIn: ['completed', 'done'])
+          .count()
+          .get();
+      return snap.count ?? 0;
+    } catch (_) {
+      // fall back to limited scan
+    }
+
     QuerySnapshot<Map<String, dynamic>> snap;
     try {
-      snap = await _firestore
-          .collection('salons')
-          .doc(profile.ownerId)
-          .collection('queue')
+      snap = await bookingsRef
+          .orderBy('dateTime', descending: true)
+          .limit(200)
           .get();
     } catch (_) {
-      snap = await _firestore.collection('queue').get();
+      snap = await bookingsRef.limit(200).get();
     }
+
     int count = 0;
     for (final doc in snap.docs) {
       final data = doc.data();

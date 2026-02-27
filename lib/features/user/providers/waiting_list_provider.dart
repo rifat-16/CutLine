@@ -34,6 +34,13 @@ class WaitingListProvider extends ChangeNotifier {
     _receivedBookings = false;
     _setLoading(true);
     _setError(null);
+    final resolvedSalonId = salonId?.trim() ?? '';
+    if (resolvedSalonId.isEmpty) {
+      _customers = [];
+      _setError('Select a salon to view the waiting list.');
+      _setLoading(false);
+      return;
+    }
     try {
       _queueSubscription = _queueStream().listen((snap) {
         _receivedQueue = true;
@@ -89,12 +96,39 @@ class WaitingListProvider extends ChangeNotifier {
   }
 
   int _compareBySchedule(WaitingCustomer a, WaitingCustomer b) {
+    final statusCmp = _statusOrder(a.status).compareTo(_statusOrder(b.status));
+    if (statusCmp != 0) return statusCmp;
+
+    final barberCmp = _barberSortKey(a).compareTo(_barberSortKey(b));
+    if (barberCmp != 0) return barberCmp;
+
+    final aSerial = a.serialNo ?? (1 << 30);
+    final bSerial = b.serialNo ?? (1 << 30);
+    if (aSerial != bSerial) return aSerial.compareTo(bSerial);
+
     final DateTime? aKey = _sortKeyFor(a);
     final DateTime? bKey = _sortKeyFor(b);
     if (aKey != null && bKey != null) return aKey.compareTo(bKey);
     if (aKey != null) return -1; // scheduled items first
     if (bKey != null) return 1;
     return a.waitMinutes.compareTo(b.waitMinutes);
+  }
+
+  int _statusOrder(WaitingStatus status) {
+    switch (status) {
+      case WaitingStatus.servingSoon:
+        return 0;
+      case WaitingStatus.waiting:
+        return 1;
+      case WaitingStatus.done:
+        return 2;
+    }
+  }
+
+  String _barberSortKey(WaitingCustomer customer) {
+    final serialKey = customer.serialBarberKey.trim().toLowerCase();
+    if (serialKey.isNotEmpty) return serialKey;
+    return customer.barber.trim().toLowerCase();
   }
 
   DateTime? _sortKeyFor(WaitingCustomer customer) {
@@ -154,25 +188,25 @@ class WaitingListProvider extends ChangeNotifier {
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _queueStream() {
-    if (salonId != null && salonId!.isNotEmpty) {
-      return _firestore
-          .collection('salons')
-          .doc(salonId)
-          .collection('queue')
-          .where('status', whereIn: ['waiting', 'serving']).snapshots();
-    }
-    return _firestore.collectionGroup('queue').snapshots();
+    final resolvedSalonId = salonId?.trim() ?? '';
+    return _firestore
+        .collection('salons')
+        .doc(resolvedSalonId)
+        .collection('queue')
+        .where('status', whereIn: ['waiting', 'serving'])
+        .limit(50)
+        .snapshots();
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _bookingStream() {
-    if (salonId != null && salonId!.isNotEmpty) {
-      return _firestore
-          .collection('salons')
-          .doc(salonId)
-          .collection('bookings')
-          .where('status', whereIn: ['waiting', 'serving']).snapshots();
-    }
-    return _firestore.collectionGroup('bookings').snapshots();
+    final resolvedSalonId = salonId?.trim() ?? '';
+    return _firestore
+        .collection('salons')
+        .doc(resolvedSalonId)
+        .collection('bookings')
+        .where('status', whereIn: ['waiting', 'serving'])
+        .limit(50)
+        .snapshots();
   }
 
   WaitingCustomer _combine(WaitingCustomer primary, WaitingCustomer? fallback) {
@@ -195,6 +229,13 @@ class WaitingListProvider extends ChangeNotifier {
       dateTime: bestDateTime,
       customerUid: primary.customerUid ?? fallback.customerUid,
       avatar: primary.avatar.isNotEmpty ? primary.avatar : fallback.avatar,
+      serialNo: primary.serialNo ?? fallback.serialNo,
+      serialBarberKey: primary.serialBarberKey.isNotEmpty
+          ? primary.serialBarberKey
+          : fallback.serialBarberKey,
+      entrySource: primary.entrySource.isNotEmpty
+          ? primary.entrySource
+          : fallback.entrySource,
     );
   }
 
@@ -250,6 +291,9 @@ class WaitingListProvider extends ChangeNotifier {
       time: rawTime,
       dateTime: scheduledAt,
       customerUid: customerUid,
+      serialNo: (data['serialNo'] as num?)?.toInt(),
+      serialBarberKey: (data['serialBarberKey'] as String?) ?? '',
+      entrySource: (data['entrySource'] as String?) ?? '',
     );
   }
 
@@ -380,6 +424,9 @@ class WaitingCustomer {
   final String? time;
   final DateTime? dateTime;
   final String? customerUid;
+  final int? serialNo;
+  final String serialBarberKey;
+  final String entrySource;
 
   const WaitingCustomer({
     required this.id,
@@ -394,6 +441,9 @@ class WaitingCustomer {
     this.time,
     this.dateTime,
     this.customerUid,
+    this.serialNo,
+    this.serialBarberKey = '',
+    this.entrySource = '',
   });
 
   String get scheduleLabel {
@@ -441,6 +491,9 @@ class WaitingCustomer {
     String? time,
     DateTime? dateTime,
     String? customerUid,
+    int? serialNo,
+    String? serialBarberKey,
+    String? entrySource,
   }) {
     return WaitingCustomer(
       id: id,
@@ -455,6 +508,9 @@ class WaitingCustomer {
       time: time ?? this.time,
       dateTime: dateTime ?? this.dateTime,
       customerUid: customerUid ?? this.customerUid,
+      serialNo: serialNo ?? this.serialNo,
+      serialBarberKey: serialBarberKey ?? this.serialBarberKey,
+      entrySource: entrySource ?? this.entrySource,
     );
   }
 }

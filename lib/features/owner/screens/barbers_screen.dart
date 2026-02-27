@@ -68,7 +68,7 @@ class OwnerBarbersScreen extends StatelessWidget {
 
   Future<void> _openAddBarber(
       BuildContext context, BarbersProvider provider) async {
-    final result = await Navigator.push<BarberInput>(
+    final result = await Navigator.push<BarberCreationResult>(
       context,
       MaterialPageRoute(
         builder: (_) => ChangeNotifierProvider(
@@ -81,10 +81,10 @@ class OwnerBarbersScreen extends StatelessWidget {
       ),
     );
     if (result != null) {
-      await provider.addBarber(result);
+      await provider.addBarber(result.input, barberUid: result.uid);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${result.name} added to team')),
+        SnackBar(content: Text('${result.input.name} added to team')),
       );
     }
   }

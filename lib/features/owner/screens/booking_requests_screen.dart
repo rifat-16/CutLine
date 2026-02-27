@@ -43,10 +43,12 @@ class BookingRequestsScreen extends StatelessWidget {
                           return _BookingRequestCard(
                             request: request,
                             formatter: DateFormat('EEE, d MMM • hh:mm a'),
-                            onDecision: (status) => provider.updateStatus(
-                              request.id,
-                              status,
-                            ),
+                            isProcessing: provider.isProcessing(request.id),
+                            processingDecision:
+                                provider.processingDecisionFor(request.id),
+                            onDecision: (status) async {
+                              await provider.updateStatus(request.id, status);
+                            },
                             onOpenDetail: () =>
                                 _openCustomerDetails(context, request),
                           );
@@ -84,19 +86,27 @@ class BookingRequestsScreen extends StatelessWidget {
 class _BookingRequestCard extends StatelessWidget {
   final OwnerBookingRequest request;
   final DateFormat formatter;
-  final ValueChanged<OwnerBookingRequestStatus> onDecision;
+  final Future<void> Function(OwnerBookingRequestStatus status) onDecision;
   final VoidCallback onOpenDetail;
+  final bool isProcessing;
+  final OwnerBookingRequestStatus? processingDecision;
 
   const _BookingRequestCard({
     required this.request,
     required this.formatter,
     required this.onDecision,
     required this.onOpenDetail,
+    required this.isProcessing,
+    required this.processingDecision,
   });
 
   @override
   Widget build(BuildContext context) {
     final bool isPending = request.status == OwnerBookingRequestStatus.pending;
+    final bool isAcceptLoading = isProcessing &&
+        processingDecision == OwnerBookingRequestStatus.accepted;
+    final bool isRejectLoading = isProcessing &&
+        processingDecision == OwnerBookingRequestStatus.rejected;
     final servicesLabel = request.services.join(', ');
     final hasAvatar = request.customerAvatar.isNotEmpty;
     return Container(
@@ -220,6 +230,8 @@ class _BookingRequestCard extends StatelessWidget {
                     label: 'Accept',
                     onTap: () => onDecision(OwnerBookingRequestStatus.accepted),
                     isPrimary: true,
+                    isDisabled: isProcessing,
+                    isLoading: isAcceptLoading,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -228,6 +240,8 @@ class _BookingRequestCard extends StatelessWidget {
                     label: 'Reject',
                     onTap: () => _showRejectConfirmation(context),
                     isPrimary: false,
+                    isDisabled: isProcessing,
+                    isLoading: isRejectLoading,
                   ),
                 ),
               ],
@@ -259,8 +273,8 @@ class _BookingRequestCard extends StatelessWidget {
     return '$first$second';
   }
 
-  void _showRejectConfirmation(BuildContext context) {
-    showDialog(
+  Future<void> _showRejectConfirmation(BuildContext context) async {
+    final shouldReject = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
@@ -291,8 +305,7 @@ class _BookingRequestCard extends StatelessWidget {
             ),
             TextButton(
               onPressed: () {
-                Navigator.of(dialogContext).pop();
-                onDecision(OwnerBookingRequestStatus.rejected);
+                Navigator.of(dialogContext).pop(true);
               },
               child: const Text(
                 'Reject',
@@ -306,6 +319,10 @@ class _BookingRequestCard extends StatelessWidget {
         );
       },
     );
+
+    if (shouldReject == true) {
+      await onDecision(OwnerBookingRequestStatus.rejected);
+    }
   }
 }
 
@@ -395,13 +412,17 @@ class _InfoTile extends StatelessWidget {
 
 class _DecisionButton extends StatelessWidget {
   final String label;
-  final VoidCallback onTap;
+  final Future<void> Function()? onTap;
   final bool isPrimary;
+  final bool isDisabled;
+  final bool isLoading;
 
   const _DecisionButton({
     required this.label,
     required this.onTap,
     required this.isPrimary,
+    required this.isDisabled,
+    required this.isLoading,
   });
 
   @override
@@ -413,39 +434,59 @@ class _DecisionButton extends StatelessWidget {
       end: Alignment.bottomRight,
     );
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: borderRadius,
-        gradient: isPrimary ? gradient : null,
-        color: isPrimary ? null : Colors.white,
-        border: isPrimary
-            ? null
-            : Border.all(color: const Color(0xFFE53935), width: 1.4),
-        boxShadow: isPrimary
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF2563EB).withValues(alpha: 0.28),
-                  blurRadius: 18,
-                  offset: const Offset(0, 10),
-                ),
-              ]
-            : null,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: borderRadius,
-        child: InkWell(
+    return Opacity(
+      opacity: isDisabled && !isLoading ? 0.7 : 1,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
           borderRadius: borderRadius,
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            child: Center(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: isPrimary ? Colors.white : const Color(0xFFE53935),
-                  fontWeight: FontWeight.w700,
-                ),
+          gradient: isPrimary ? gradient : null,
+          color: isPrimary ? null : Colors.white,
+          border: isPrimary
+              ? null
+              : Border.all(color: const Color(0xFFE53935), width: 1.4),
+          boxShadow: isPrimary
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF2563EB).withValues(alpha: 0.28),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
+                  ),
+                ]
+              : null,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: borderRadius,
+          child: InkWell(
+            borderRadius: borderRadius,
+            onTap: isDisabled || onTap == null
+                ? null
+                : () async {
+                    await onTap!.call();
+                  },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Center(
+                child: isLoading
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            isPrimary
+                                ? Colors.white
+                                : const Color(0xFFE53935),
+                          ),
+                        ),
+                      )
+                    : Text(
+                        label,
+                        style: TextStyle(
+                          color: isPrimary ? Colors.white : const Color(0xFFE53935),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
               ),
             ),
           ),

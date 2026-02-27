@@ -8,7 +8,8 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "backfill:owner-salonId": "node scripts/backfill_owner_salon_id.js"
+    "backfill:owner-salonId": "node scripts/backfill_owner_salon_id.js",
+    "backfill:owner-stats": "node scripts/backfill_owner_stats.js"
   },
   "engines": {
     "node": "20"

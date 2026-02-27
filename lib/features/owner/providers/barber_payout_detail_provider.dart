@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/shared/models/barber_tip_models.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:flutter/material.dart';
 
 class BarberPayoutDetailProvider extends ChangeNotifier {
@@ -43,14 +44,12 @@ class BarberPayoutDetailProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-      final ledgerSnap = await _firestore
+      final ledgerSnap = await FirestoreCache.getQuery(_firestore
           .collection('barber_tip_ledger')
-          .where('salonId', isEqualTo: ownerId)
-          .get();
-      final payoutSnap = await _firestore
+          .where('salonId', isEqualTo: ownerId));
+      final payoutSnap = await FirestoreCache.getQuery(_firestore
           .collection('barber_payouts')
-          .where('salonId', isEqualTo: ownerId)
-          .get();
+          .where('salonId', isEqualTo: ownerId));
 
       _ledger = ledgerSnap.docs
           .map((doc) => BarberTipLedgerItem.fromDoc(doc.id, doc.data()))
@@ -64,7 +63,8 @@ class BarberPayoutDetailProvider extends ChangeNotifier {
           .toList()
         ..sort((a, b) => b.paidAt.compareTo(a.paidAt));
 
-      final totalTips = _ledger.fold<int>(0, (acc, item) => acc + item.tipAmount);
+      final totalTips =
+          _ledger.fold<int>(0, (acc, item) => acc + item.tipAmount);
       final paidTips = _payouts
           .where((item) => item.isConfirmed)
           .fold<int>(0, (acc, item) => acc + item.amount);
@@ -130,7 +130,8 @@ class BarberPayoutDetailProvider extends ChangeNotifier {
       String salonName = '';
       String salonPhone = '';
       try {
-        final salonSnap = await _firestore.collection('salons').doc(ownerId).get();
+        final salonSnap =
+            await _firestore.collection('salons').doc(ownerId).get();
         final salonData = salonSnap.data() ?? <String, dynamic>{};
         salonName = (salonData['name'] as String?) ?? '';
         salonPhone = (salonData['contact'] as String?) ??
@@ -148,8 +149,7 @@ class BarberPayoutDetailProvider extends ChangeNotifier {
         remaining -= payAmount;
         rangeStart =
             rangeStart == null ? item.date : _minDate(rangeStart, item.date);
-        rangeEnd =
-            rangeEnd == null ? item.date : _maxDate(rangeEnd, item.date);
+        rangeEnd = rangeEnd == null ? item.date : _maxDate(rangeEnd, item.date);
         final newPaidAmount = item.paidAmount + payAmount;
         final ref = _firestore.collection('barber_tip_ledger').doc(item.id);
         batch.update(ref, {

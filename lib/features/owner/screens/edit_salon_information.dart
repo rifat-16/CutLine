@@ -20,7 +20,8 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
   late final TextEditingController _salonNameController;
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
-  late final TextEditingController _addressController;
+  late final TextEditingController _typedAddressController;
+  late final TextEditingController _mapAddressController;
   late final TextEditingController _aboutController;
   bool _initialized = false;
   GeoPoint? _pickedGeoPoint;
@@ -32,7 +33,8 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
     _salonNameController = TextEditingController();
     _emailController = TextEditingController();
     _phoneController = TextEditingController();
-    _addressController = TextEditingController();
+    _typedAddressController = TextEditingController();
+    _mapAddressController = TextEditingController();
     _aboutController = TextEditingController();
   }
 
@@ -41,7 +43,8 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
     _salonNameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
-    _addressController.dispose();
+    _typedAddressController.dispose();
+    _mapAddressController.dispose();
     _aboutController.dispose();
     super.dispose();
   }
@@ -98,6 +101,25 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
                             ),
                             const SizedBox(height: 18),
                             _buildField(
+                              controller: _typedAddressController,
+                              label: 'Typed address',
+                              icon: Icons.edit_location_alt_outlined,
+                              maxLines: 2,
+                              isRequired: true,
+                            ),
+                            const SizedBox(height: 18),
+                            _buildField(
+                              controller: _mapAddressController,
+                              label: 'Map address',
+                              icon: Icons.location_on_outlined,
+                              maxLines: 2,
+                              isRequired: true,
+                              readOnly: true,
+                              onTap: () => _openAddressPicker(provider),
+                              suffixIcon: const Icon(Icons.map_outlined),
+                            ),
+                            const SizedBox(height: 18),
+                            _buildField(
                               controller: _phoneController,
                               label: 'Contact number',
                               icon: Icons.phone_outlined,
@@ -109,16 +131,6 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
                               label: 'Email address',
                               icon: Icons.email_outlined,
                               keyboardType: TextInputType.emailAddress,
-                            ),
-                            const SizedBox(height: 18),
-                            _buildField(
-                              controller: _addressController,
-                              label: 'Address',
-                              icon: Icons.location_on_outlined,
-                              maxLines: 2,
-                              readOnly: true,
-                              onTap: () => _openAddressPicker(provider),
-                              suffixIcon: const Icon(Icons.map_outlined),
                             ),
                             const SizedBox(height: 18),
                             _buildField(
@@ -231,7 +243,8 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
     _salonNameController.text = provider.salonName;
     _emailController.text = provider.email;
     _phoneController.text = provider.phone;
-    _addressController.text = provider.address;
+    _typedAddressController.text = provider.address;
+    _mapAddressController.text = provider.mapAddress;
     _aboutController.text = provider.about;
     _initialized = true;
   }
@@ -239,7 +252,7 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
   Future<void> _submit(EditSalonProvider provider) async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     if ((provider.location == null && _pickedGeoPoint == null) &&
-        _addressController.text.trim().isNotEmpty) {
+        _mapAddressController.text.trim().isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please set your salon location on the map.'),
@@ -253,7 +266,8 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
       ownerName: provider.ownerName,
       email: _emailController.text.trim(),
       phone: _phoneController.text.trim(),
-      address: _addressController.text.trim(),
+      address: _typedAddressController.text.trim(),
+      mapAddress: _mapAddressController.text.trim(),
       about: _aboutController.text.trim(),
       location: _pickedGeoPoint,
       geohash: _pickedGeohash,
@@ -276,7 +290,7 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
     final result = await Navigator.of(context).push<PickedLocation>(
       MaterialPageRoute(
         builder: (_) => AddressPickerScreen(
-          initialAddress: _addressController.text.trim(),
+          initialAddress: _mapAddressController.text.trim(),
           initialLocation: existing == null
               ? null
               : LatLng(existing.latitude, existing.longitude),
@@ -292,7 +306,10 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
     );
 
     setState(() {
-      _addressController.text = result.address;
+      _mapAddressController.text = result.address;
+      if (_typedAddressController.text.trim().isEmpty) {
+        _typedAddressController.text = result.address;
+      }
       _pickedGeoPoint = GeoPoint(result.latitude, result.longitude);
       _pickedGeohash = geohash;
     });

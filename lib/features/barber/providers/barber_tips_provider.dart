@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/shared/models/barber_tip_models.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:flutter/material.dart';
 
 class BarberTipsProvider extends ChangeNotifier {
@@ -37,14 +38,12 @@ class BarberTipsProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-      final ledgerSnap = await _firestore
+      final ledgerSnap = await FirestoreCache.getQuery(_firestore
           .collection('barber_tip_ledger')
-          .where('barberId', isEqualTo: barberId)
-          .get();
-      final payoutSnap = await _firestore
+          .where('barberId', isEqualTo: barberId));
+      final payoutSnap = await FirestoreCache.getQuery(_firestore
           .collection('barber_payouts')
-          .where('barberId', isEqualTo: barberId)
-          .get();
+          .where('barberId', isEqualTo: barberId));
 
       _ledger = ledgerSnap.docs
           .map((doc) => BarberTipLedgerItem.fromDoc(doc.id, doc.data()))
@@ -56,7 +55,8 @@ class BarberTipsProvider extends ChangeNotifier {
           .toList()
         ..sort((a, b) => b.paidAt.compareTo(a.paidAt));
 
-      final totalTips = _ledger.fold<int>(0, (acc, item) => acc + item.tipAmount);
+      final totalTips =
+          _ledger.fold<int>(0, (acc, item) => acc + item.tipAmount);
       final paidTips = _payouts
           .where((item) => item.isConfirmed)
           .fold<int>(0, (acc, item) => acc + item.amount);

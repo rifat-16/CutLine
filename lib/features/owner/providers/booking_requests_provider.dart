@@ -17,24 +17,30 @@ class BookingRequestsProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   List<OwnerBookingRequest> _requests = [];
+  final Map<String, OwnerBookingRequestStatus> _processingRequests = {};
 
   bool get isLoading => _isLoading;
   String? get error => _error;
   List<OwnerBookingRequest> get requests => _requests;
+  bool isProcessing(String requestId) =>
+      _processingRequests.containsKey(requestId);
+  OwnerBookingRequestStatus? processingDecisionFor(String requestId) =>
+      _processingRequests[requestId];
 
   Future<void> load() async {
-    final ownerId = _authProvider.currentUser?.uid;
-    if (ownerId == null) {
-      _setError('Please log in again.');
-      return;
-    }
-
     _setLoading(true);
     _setError(null);
+    final scope = await _resolveScope();
+    if (scope == null) {
+      _setLoading(false);
+      return;
+    }
     try {
       QuerySnapshot<Map<String, dynamic>> snap;
-      final collection =
-          _firestore.collection('salons').doc(ownerId).collection('bookings');
+      final collection = _firestore
+          .collection('salons')
+          .doc(scope.salonId)
+          .collection('bookings');
 
       // Booking requests screen should only show new requests (pending/upcoming).
       // Some devices may not have the required index for (status + createdAt),
@@ -54,11 +60,15 @@ class BookingRequestsProvider extends ChangeNotifier {
       }
 
       _requests = snap.docs
+          .where((doc) => _canActorAccessRequest(doc.data(), scope))
           .map((doc) => _mapRequest(doc.id, doc.data()))
           .whereType<OwnerBookingRequest>()
           .toList();
 
       _requests.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+      if (scope.isOwner) {
+        await _syncPendingRequests(scope.salonId, _requests.length);
+      }
       await _hydrateCustomerAvatars();
     } catch (_) {
       _setError('Failed to load requests. Pull to refresh.');
@@ -142,6 +152,11 @@ class BookingRequestsProvider extends ChangeNotifier {
           '',
       customerPhone: (data['customerPhone'] as String?)?.trim() ?? '',
       barberName: (data['barberName'] as String?)?.trim() ?? 'Any',
+      barberId:
+          (data['barberId'] as String?) ?? (data['barberUid'] as String?) ?? '',
+      barberAvatar: (data['barberAvatar'] as String?) ??
+          (data['barberPhotoUrl'] as String?) ??
+          '',
       services: services,
       dateTime: dateTime,
       date: rawDate.isNotEmpty ? rawDate : null,
@@ -223,14 +238,22 @@ class BookingRequestsProvider extends ChangeNotifier {
 
   bool _isBookingRequestStatus(String status) {
     // Only show items that still need an owner decision.
-    // Statuses like waiting/serving/arrived/turn_ready are active queue items,
+    // Statuses like waiting/serving/arrived are active queue items,
     // not booking requests.
     return status == 'pending' || status == 'upcoming' || status.isEmpty;
   }
 
-  Future<void> updateStatus(String id, OwnerBookingRequestStatus status) async {
-    final ownerId = _authProvider.currentUser?.uid;
-    if (ownerId == null) return;
+  Future<bool> updateStatus(String id, OwnerBookingRequestStatus status) async {
+    final scope = await _resolveScope();
+    if (scope == null) {
+      return false;
+    }
+    if (_processingRequests.containsKey(id)) return false;
+
+    _error = null;
+    _processingRequests[id] = status;
+    notifyListeners();
+
     final statusToSave =
         status == OwnerBookingRequestStatus.accepted ? 'waiting' : 'rejected';
     OwnerBookingRequest? request;
@@ -240,19 +263,34 @@ class BookingRequestsProvider extends ChangeNotifier {
         break;
       }
     }
+    if (request == null) {
+      _setError('Booking request not found.');
+      _processingRequests.remove(id);
+      notifyListeners();
+      return false;
+    }
+    if (!_isRequestAssignedToActor(request, scope)) {
+      _setError('You can only decide requests assigned to you.');
+      _processingRequests.remove(id);
+      notifyListeners();
+      return false;
+    }
 
     try {
       await _firestore
           .collection('salons')
-          .doc(ownerId)
+          .doc(scope.salonId)
           .collection('bookings')
           .doc(id)
           .set({'status': statusToSave}, SetOptions(merge: true));
     } catch (_) {
       _setError('Could not update status. Try again.');
+      _processingRequests.remove(id);
+      notifyListeners();
+      return false;
     }
 
-    if (status == OwnerBookingRequestStatus.accepted && request != null) {
+    if (status == OwnerBookingRequestStatus.accepted) {
       final dateKey = (request.date?.trim().isNotEmpty == true)
           ? request.date!.trim()
           : DateFormat('yyyy-MM-dd').format(request.dateTime);
@@ -265,6 +303,9 @@ class BookingRequestsProvider extends ChangeNotifier {
         'customerName': request.customerName,
         'service': request.services.join(', '),
         'barberName': request.barberName,
+        if (request.barberId.isNotEmpty) 'barberId': request.barberId,
+        if (request.barberAvatar.isNotEmpty)
+          'barberAvatar': request.barberAvatar,
         'price': request.totalPrice,
         'tipAmount': request.tipAmount,
         'status': 'waiting',
@@ -274,21 +315,135 @@ class BookingRequestsProvider extends ChangeNotifier {
         'date': dateKey,
         'time': timeLabel,
         'dateTime': Timestamp.fromDate(scheduledAt),
+        if (request.customerUid.isNotEmpty) 'customerUid': request.customerUid,
+        if (request.customerAvatar.isNotEmpty)
+          'customerAvatar': request.customerAvatar,
       };
       try {
         await _firestore
             .collection('salons')
-            .doc(ownerId)
+            .doc(scope.salonId)
             .collection('queue')
             .doc(id)
             .set(queueData, SetOptions(merge: true));
+        if (scope.isOwner) {
+          await _firestore.collection('salons_summary').doc(scope.salonId).set(
+            {
+              'waitingCount': FieldValue.increment(1),
+              'updatedAt': FieldValue.serverTimestamp(),
+            },
+            SetOptions(merge: true),
+          );
+        }
       } catch (_) {
         // keep UI in sync even if queue write fails
       }
     }
 
     _requests = _requests.where((r) => r.id != id).toList();
+    _processingRequests.remove(id);
     notifyListeners();
+    if (scope.isOwner) {
+      await _syncPendingRequests(scope.salonId, _requests.length);
+    }
+    return true;
+  }
+
+  Future<_BookingScope?> _resolveScope() async {
+    final actorUid = _authProvider.currentUser?.uid;
+    if (actorUid == null) {
+      _setError('Please log in again.');
+      return null;
+    }
+
+    try {
+      final userDoc = await _firestore.collection('users').doc(actorUid).get();
+      final userData = userDoc.data() ?? const <String, dynamic>{};
+      final role = ((userData['role'] as String?) ?? '').trim().toLowerCase();
+      final actorName = ((userData['name'] as String?) ?? '').trim();
+
+      if (role == 'owner') {
+        return _BookingScope(
+          salonId: actorUid,
+          actorUid: actorUid,
+          actorName: actorName,
+          role: _BookingActorRole.owner,
+        );
+      }
+
+      final ownerId = ((userData['ownerId'] as String?) ?? '').trim();
+      if (role == 'barber' || ownerId.isNotEmpty) {
+        if (ownerId.isEmpty) {
+          _setError('Salon owner not linked to this barber account.');
+          return null;
+        }
+        return _BookingScope(
+          salonId: ownerId,
+          actorUid: actorUid,
+          actorName: actorName,
+          role: _BookingActorRole.barber,
+        );
+      }
+
+      _setError('You do not have permission to review booking requests.');
+      return null;
+    } catch (_) {
+      _setError('Could not verify account access. Try again.');
+      return null;
+    }
+  }
+
+  bool _canActorAccessRequest(
+    Map<String, dynamic> data,
+    _BookingScope scope,
+  ) {
+    if (scope.isOwner) return true;
+    final barberId =
+        ((data['barberId'] as String?) ?? (data['barberUid'] as String?) ?? '')
+            .trim();
+    final barberName =
+        ((data['barberName'] as String?) ?? (data['barber'] as String?) ?? '')
+            .trim();
+    return _matchesAssignedBarber(
+      barberId: barberId,
+      barberName: barberName,
+      actorUid: scope.actorUid,
+      actorName: scope.actorName,
+    );
+  }
+
+  bool _isRequestAssignedToActor(
+    OwnerBookingRequest request,
+    _BookingScope scope,
+  ) {
+    if (scope.isOwner) return true;
+    return _matchesAssignedBarber(
+      barberId: request.barberId,
+      barberName: request.barberName,
+      actorUid: scope.actorUid,
+      actorName: scope.actorName,
+    );
+  }
+
+  bool _matchesAssignedBarber({
+    required String barberId,
+    required String barberName,
+    required String actorUid,
+    required String actorName,
+  }) {
+    final normalizedBarberId = barberId.trim().toLowerCase();
+    final normalizedActorUid = actorUid.trim().toLowerCase();
+    if (normalizedBarberId.isNotEmpty &&
+        normalizedBarberId == normalizedActorUid) {
+      return true;
+    }
+
+    final normalizedBarberName = barberName.trim().toLowerCase();
+    final normalizedActorName = actorName.trim().toLowerCase();
+    if (normalizedBarberName.isEmpty || normalizedActorName.isEmpty) {
+      return false;
+    }
+    return normalizedBarberName == normalizedActorName;
   }
 
   void _setLoading(bool value) {
@@ -300,4 +455,36 @@ class BookingRequestsProvider extends ChangeNotifier {
     _error = message;
     notifyListeners();
   }
+
+  Future<void> _syncPendingRequests(String ownerId, int count) async {
+    try {
+      await _firestore.collection('salons_summary').doc(ownerId).set(
+        {
+          'pendingRequests': count < 0 ? 0 : count,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    } catch (_) {
+      // ignore summary sync failures
+    }
+  }
+}
+
+enum _BookingActorRole { owner, barber }
+
+class _BookingScope {
+  const _BookingScope({
+    required this.salonId,
+    required this.actorUid,
+    required this.actorName,
+    required this.role,
+  });
+
+  final String salonId;
+  final String actorUid;
+  final String actorName;
+  final _BookingActorRole role;
+
+  bool get isOwner => role == _BookingActorRole.owner;
 }

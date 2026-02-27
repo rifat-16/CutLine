@@ -40,7 +40,6 @@ enum NotificationType {
   bookingRequest,
   bookingAccepted,
   barberWaiting,
-  turnReady,
   unknown,
 }
 
@@ -53,8 +52,6 @@ extension NotificationTypeExtension on NotificationType {
         return 'booking_accepted';
       case NotificationType.barberWaiting:
         return 'barber_waiting';
-      case NotificationType.turnReady:
-        return 'turn_ready';
       case NotificationType.unknown:
         return 'unknown';
     }
@@ -68,11 +65,8 @@ extension NotificationTypeExtension on NotificationType {
         return NotificationType.bookingAccepted;
       case 'barber_waiting':
         return NotificationType.barberWaiting;
-      case 'turn_ready':
-        return NotificationType.turnReady;
       default:
         return NotificationType.unknown;
     }
   }
 }
-

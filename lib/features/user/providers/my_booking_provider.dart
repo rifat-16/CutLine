@@ -45,16 +45,6 @@ class MyBookingProvider extends ChangeNotifier {
     _setError(null);
     try {
       await _loadWithFilter();
-    } catch (e) {
-      // fall back to client-side filter to avoid missing index issues
-      try {
-        await _loadWithFallback();
-      } catch (e2) {
-        _setError('Failed to load bookings. Pull to refresh.');
-        _upcoming = [];
-        _completed = [];
-        _cancelled = [];
-      }
     } finally {
       _setLoading(false);
     }
@@ -73,6 +63,18 @@ class MyBookingProvider extends ChangeNotifier {
         await _firestore.collection('users').doc(userId).set(
           {
             'activeBookingIds': FieldValue.arrayRemove([booking.id]),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+        await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('bookings')
+            .doc(booking.id)
+            .set(
+          {
+            'status': 'cancelled',
             'updatedAt': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true),
@@ -151,6 +153,129 @@ class MyBookingProvider extends ChangeNotifier {
     }
   }
 
+  UserBooking? _mapUserBooking(
+      QueryDocumentSnapshot<Map<String, dynamic>> snapshot) {
+    try {
+      final data = snapshot.data();
+      final salonId = (data['salonId'] as String?)?.trim() ?? '';
+      if (salonId.isEmpty) return null;
+
+      DateTime? dateTime;
+      final ts = data['dateTime'];
+      if (ts is Timestamp) {
+        dateTime = ts.toDate();
+      } else {
+        final dateStr = (data['date'] as String?)?.trim() ?? '';
+        final timeStr = (data['time'] as String?)?.trim() ?? '';
+        if (dateStr.isNotEmpty && timeStr.isNotEmpty) {
+          dateTime = _parseDateTime(dateStr, timeStr);
+        }
+      }
+      if (dateTime == null) return null;
+
+      return UserBooking(
+        id: snapshot.id,
+        salonId: salonId,
+        salonName: (data['salonName'] as String?)?.trim() ?? 'Salon',
+        customerUid: (data['customerUid'] as String?)?.trim() ?? userId,
+        customerEmail: (data['customerEmail'] as String?)?.trim() ??
+            (data['email'] as String?)?.trim() ??
+            '',
+        customerPhone: (data['customerPhone'] as String?)?.trim() ??
+            (data['phone'] as String?)?.trim() ??
+            '',
+        coverImageUrl: (data['coverImageUrl'] as String?)?.trim() ??
+            (data['coverPhoto'] as String?)?.trim(),
+        services: (data['services'] as List?)
+                ?.whereType<String>()
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty)
+                .toList() ??
+            const [],
+        barberName: (data['barberName'] as String?)?.trim() ?? '',
+        dateTime: dateTime,
+        status: (data['status'] as String?)?.trim() ?? 'upcoming',
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _backfillUserBookings(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
+    if (userId.isEmpty || docs.isEmpty) return;
+    try {
+      final batch = _firestore.batch();
+      int batchCount = 0;
+      for (final doc in docs) {
+        final data = doc.data();
+        final parent = doc.reference.parent.parent;
+        final salonId =
+            (data['salonId'] as String?)?.trim() ?? parent?.id ?? '';
+        if (salonId.isEmpty) continue;
+
+        final mirrorRef = _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('bookings')
+            .doc(doc.id);
+
+        final services = (data['services'] as List?)
+                ?.map((e) {
+                  if (e is Map && e['name'] is String) {
+                    return (e['name'] as String).trim();
+                  }
+                  if (e is String) return e.trim();
+                  return '';
+                })
+                .whereType<String>()
+                .where((e) => e.isNotEmpty)
+                .toList() ??
+            const [];
+
+        final payload = <String, dynamic>{
+          'salonId': salonId,
+          'salonName': (data['salonName'] as String?)?.trim() ?? 'Salon',
+          'services': services,
+          'barberName': (data['barberName'] as String?)?.trim() ?? '',
+          'date': (data['date'] as String?)?.trim() ?? '',
+          'time': (data['time'] as String?)?.trim() ?? '',
+          if (data['dateTime'] is Timestamp) 'dateTime': data['dateTime'],
+          'status': (data['status'] as String?)?.trim() ?? 'upcoming',
+          'customerUid': (data['customerUid'] as String?)?.trim() ??
+              (data['userId'] as String?)?.trim() ??
+              userId,
+          'customerEmail': (data['customerEmail'] as String?)?.trim() ??
+              (data['email'] as String?)?.trim() ??
+              '',
+          'customerPhone': (data['customerPhone'] as String?)?.trim() ??
+              (data['phone'] as String?)?.trim() ??
+              '',
+          if (data['coverImageUrl'] is String) 'coverImageUrl': data['coverImageUrl'],
+          if (data['coverPhoto'] is String) 'coverPhoto': data['coverPhoto'],
+          if (data['customerAvatar'] is String)
+            'customerAvatar': data['customerAvatar'],
+          if (data['barberId'] is String) 'barberId': data['barberId'],
+          if (data['barberAvatar'] is String) 'barberAvatar': data['barberAvatar'],
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+
+        batch.set(mirrorRef, payload, SetOptions(merge: true));
+        batchCount++;
+        if (batchCount >= 400) {
+          await batch.commit();
+          batchCount = 0;
+        }
+      }
+      if (batchCount > 0) {
+        await batch.commit();
+      }
+    } catch (_) {
+      // ignore backfill failures
+    }
+  }
+
   void _categorize(List<UserBooking> items) {
     final upcoming = <UserBooking>[];
     final completed = <UserBooking>[];
@@ -209,124 +334,26 @@ class MyBookingProvider extends ChangeNotifier {
 
   Future<void> _loadWithFilter() async {
     try {
-
-      // Try customerUid first
-      try {
-        final snap = await FirestoreCache.getQuery(_firestore
-            .collectionGroup('bookings')
-            .where('customerUid', isEqualTo: userId));
-
-
-        if (snap.docs.isNotEmpty) {
-          final coverCache = await _loadCoverCache(snap.docs);
-
-          final items = snap.docs
-              .map((doc) => _mapBooking(doc, coverCache))
-              .whereType<UserBooking>()
-              .where(_isCurrentUser)
-              .toList();
-
-          _categorize(items);
-
-          if (items.isEmpty) {
-          }
-          return;
-        }
-      } catch (e) {
-      }
-
-      // Fallback: try userId field
-      try {
-        final snap = await FirestoreCache.getQuery(_firestore
-            .collectionGroup('bookings')
-            .where('userId', isEqualTo: userId));
-
-
-        final coverCache = await _loadCoverCache(snap.docs);
+      final snap = await FirestoreCache.getQueryCacheFirst(_firestore
+          .collection('users')
+          .doc(userId)
+          .collection('bookings')
+          .orderBy('dateTime', descending: true)
+          .limit(200));
+      if (snap.docs.isNotEmpty) {
         final items = snap.docs
-            .map((doc) => _mapBooking(doc, coverCache))
+            .map((doc) => _mapUserBooking(doc))
             .whereType<UserBooking>()
-            .where(_isCurrentUser)
             .toList();
-
         _categorize(items);
-
-        if (items.isEmpty) {
-        }
-        return;
-      } catch (e) {
-        rethrow;
+      } else {
+        _setError('No bookings found for this account.');
+        _upcoming = [];
+        _completed = [];
+        _cancelled = [];
       }
-    } catch (e, stackTrace) {
-      rethrow;
-    }
-  }
-
-  Future<void> _loadWithFallback() async {
-    try {
-      // Fallback 1: Match by email if available
-      if (userEmail.isNotEmpty) {
-        try {
-          final snap = await FirestoreCache.getQuery(_firestore
-              .collectionGroup('bookings')
-              .where('customerEmail', isEqualTo: userEmail));
-          final coverCache = await _loadCoverCache(snap.docs);
-          final items = snap.docs
-              .map((doc) => _mapBooking(doc, coverCache))
-              .whereType<UserBooking>()
-              .where(_isCurrentUser)
-              .toList();
-          if (items.isNotEmpty) {
-            _categorize(items);
-            _setError(null);
-            return;
-          }
-        } catch (_) {}
-      }
-
-      // Fallback 2: Match by phone if available
-      if (userPhone.isNotEmpty) {
-        try {
-          final snap = await FirestoreCache.getQuery(_firestore
-              .collectionGroup('bookings')
-              .where('customerPhone', isEqualTo: userPhone));
-          final coverCache = await _loadCoverCache(snap.docs);
-          final items = snap.docs
-              .map((doc) => _mapBooking(doc, coverCache))
-              .whereType<UserBooking>()
-              .where(_isCurrentUser)
-              .toList();
-          if (items.isNotEmpty) {
-            _categorize(items);
-            _setError(null);
-            return;
-          }
-        } catch (_) {}
-      }
-
-      // If fallback filters fail
-      _setError('No bookings found for this account.');
-      _upcoming = [];
-      _completed = [];
-      _cancelled = [];
-    } catch (e, stackTrace) {
-
-      String errorMessage = 'Failed to load bookings. Pull to refresh.';
-      if (e is FirebaseException) {
-        if (e.code == 'permission-denied') {
-          errorMessage =
-              'Permission denied. Please check Firestore rules are deployed.';
-        } else if (e.code == 'unavailable') {
-          errorMessage = 'Network error. Check your connection.';
-        } else if (e.code == 'failed-precondition') {
-          errorMessage =
-              'Database query failed. Please ensure Firestore indexes are created.';
-        } else {
-          errorMessage = 'Firebase error: ${e.message ?? e.code}';
-        }
-      }
-
-      _setError(errorMessage);
+    } catch (_) {
+      _setError('Failed to load bookings. Pull to refresh.');
       _upcoming = [];
       _completed = [];
       _cancelled = [];

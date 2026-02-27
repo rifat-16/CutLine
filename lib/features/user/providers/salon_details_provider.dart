@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/shared/services/firestore_cache.dart';
+import 'package:cutline/shared/services/local_ttl_cache.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -22,6 +23,9 @@ class SalonDetailsProvider extends ChangeNotifier {
   List<SalonBarber> _barbers = [];
   List<SalonQueueEntry> _queue = [];
   bool _isFavorite = false;
+  bool _isQueueLoading = false;
+  bool _queueLoaded = false;
+  int? _summaryWaitMinutesCache;
 
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -29,6 +33,7 @@ class SalonDetailsProvider extends ChangeNotifier {
   List<SalonBarber> get barbers => _barbers;
   List<SalonQueueEntry> get queue => _queue;
   bool get isFavorite => _isFavorite;
+  bool get isQueueLoading => _isQueueLoading;
 
   Future<void> load() async {
     _setLoading(true);
@@ -42,8 +47,7 @@ class SalonDetailsProvider extends ChangeNotifier {
       }
 
       final summary = await _fetchSalonSummary(doc.id);
-      final summaryWaitMinutes = _summaryWaitMinutes(summary);
-
+      _summaryWaitMinutesCache = _summaryWaitMinutes(summary);
 
       // Load data with error handling - continue even if some parts fail
       try {
@@ -54,8 +58,7 @@ class SalonDetailsProvider extends ChangeNotifier {
 
       try {
         await _hydrateBarberAvatars(_barbers);
-      } catch (e) {
-      }
+      } catch (e) {}
 
       List<SalonService> services = [];
       try {
@@ -71,24 +74,11 @@ class SalonDetailsProvider extends ChangeNotifier {
         galleryPhotos = [];
       }
 
-      try {
-        _queue = await _loadQueue(doc.id);
-      } catch (e) {
-        _queue = [];
-      }
+      _queue = [];
+      _queueLoaded = false;
 
-      try {
-        await _hydrateQueueAvatars(_queue);
-      } catch (e) {
-      }
-
-      // Update barber waiting counts from queue
-      try {
-        _updateBarberWaitingCounts(_barbers, _queue);
-      } catch (e) {
-      }
-
-      final waitMinutes = summaryWaitMinutes ?? _computeWaitMinutes(_queue);
+      final waitMinutes =
+          _summaryWaitMinutesCache ?? _computeWaitMinutes(_queue);
       _details = _mapSalon(
         doc.id,
         doc.data() ?? {},
@@ -104,7 +94,6 @@ class SalonDetailsProvider extends ChangeNotifier {
       } catch (e) {
         _isFavorite = false;
       }
-
     } catch (e, stackTrace) {
       _details = null;
 
@@ -124,30 +113,58 @@ class SalonDetailsProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> loadQueue() async {
+    if (_isQueueLoading || _queueLoaded) return;
+    _isQueueLoading = true;
+    notifyListeners();
+    try {
+      final entries = await _loadQueue(salonId);
+      await _hydrateQueueAvatars(entries);
+      _queue = entries;
+      _queueLoaded = true;
+      try {
+        _updateBarberWaitingCounts(_barbers, _queue);
+      } catch (_) {
+        // ignore waiting count failures
+      }
+      final waitMinutes =
+          _summaryWaitMinutesCache ?? _computeWaitMinutes(_queue);
+      if (_details != null) {
+        _details = _details!.copyWith(
+          queue: _queue,
+          barbers: _barbers,
+          waitMinutes: waitMinutes,
+        );
+      }
+    } catch (_) {
+      // keep queue empty on failure
+    } finally {
+      _isQueueLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<DocumentSnapshot<Map<String, dynamic>>?> _fetchSalonDoc() async {
     try {
       DocumentSnapshot<Map<String, dynamic>>? doc;
       if (salonId.isNotEmpty) {
-        doc = await FirestoreCache.getDoc(
+        doc = await FirestoreCache.getDocCacheFirst(
             _firestore.collection('salons').doc(salonId));
         if (doc.exists) {
           return doc;
-        } else {
-        }
+        } else {}
       }
       if (salonName.isNotEmpty) {
         try {
-          final query = await FirestoreCache.getQuery(_firestore
+          final query = await FirestoreCache.getQueryCacheFirst(_firestore
               .collection('salons')
               .where('name', isEqualTo: salonName)
               .where('verificationStatus', isEqualTo: 'verified')
               .limit(1));
           if (query.docs.isNotEmpty) {
             return query.docs.first;
-          } else {
-          }
-        } catch (e) {
-        }
+          } else {}
+        } catch (e) {}
       }
       return null;
     } catch (e, stackTrace) {
@@ -157,7 +174,7 @@ class SalonDetailsProvider extends ChangeNotifier {
 
   Future<Map<String, dynamic>?> _fetchSalonSummary(String salonId) async {
     try {
-      final doc = await FirestoreCache.getDoc(
+      final doc = await FirestoreCache.getDocCacheFirst(
         _firestore.collection('salons_summary').doc(salonId),
       );
       return doc.data();
@@ -186,16 +203,19 @@ class SalonDetailsProvider extends ChangeNotifier {
     final combos = _mapCombos(data['combos']);
     final workingHours = _mapWorkingHours(data['workingHours']);
     final topServicesFromServices = services.map((s) => s.name).toList();
-    final topServices = _parseTopServices(summaryTopServices ?? data['topServices']);
+    final topServices =
+        _parseTopServices(summaryTopServices ?? data['topServices']);
 
     final locationField = data['location'];
-    final GeoPoint? geoPoint =
-        locationField is GeoPoint ? locationField : null;
+    final GeoPoint? geoPoint = locationField is GeoPoint ? locationField : null;
 
     return SalonDetailsData(
       id: id,
       name: (data['name'] as String?) ?? salonName,
       address: (data['address'] as String?) ?? 'Address unavailable',
+      mapAddress: (data['mapAddress'] as String?) ??
+          (data['address'] as String?) ??
+          'Address unavailable',
       location: geoPoint,
       contact: (data['contact'] as String?) ?? '',
       email: (data['email'] as String?) ?? '',
@@ -218,29 +238,43 @@ class SalonDetailsProvider extends ChangeNotifier {
   }
 
   Future<List<SalonBarber>> _loadBarbers(String salonId) async {
+    List<SalonBarber> cachedBarbers = const [];
     try {
-      final snap = await FirestoreCache.getQuery(_firestore
-          .collection('salons')
-          .doc(salonId)
-          .collection('barbers'));
+      final cached = await LocalTtlCache.get<List<dynamic>>(
+          'salon_details_barbers:$salonId');
+      if (cached != null && cached.isNotEmpty) {
+        cachedBarbers = cached
+            .whereType<Map>()
+            .map((m) => m.cast<String, dynamic>())
+            .map((data) => _mapBarber(
+                  (data['id'] as String?) ?? '',
+                  data,
+                ))
+            .whereType<SalonBarber>()
+            .toList();
+      }
+    } catch (_) {
+      cachedBarbers = const [];
+    }
+
+    try {
+      final snap = await FirestoreCache.getQueryCacheFirst(
+          _firestore.collection('salons').doc(salonId).collection('barbers'));
 
       final docs = snap.docs
           .map((doc) => _mapBarber(doc.id, doc.data()))
           .whereType<SalonBarber>()
           .toList();
-      if (docs.isNotEmpty) {
-        return docs;
-      }
 
-      // Fallback: read embedded array "barbers" from salon document
+      // Also read embedded array "barbers" from salon document and merge.
+      final embeddedBarbers = <SalonBarber>[];
       try {
-        final salonDoc = await FirestoreCache.getDoc(
+        final salonDoc = await FirestoreCache.getDocCacheFirst(
             _firestore.collection('salons').doc(salonId));
         final data = salonDoc.data() ?? {};
         final barbersField = data['barbers'];
 
         if (barbersField is List) {
-          final barbers = <SalonBarber>[];
           for (var i = 0; i < barbersField.length; i++) {
             final item = barbersField[i];
             if (item is Map) {
@@ -254,46 +288,90 @@ class SalonDetailsProvider extends ChangeNotifier {
 
                 final barber = _mapBarber(barberId, barberMap);
                 if (barber != null) {
-                  barbers.add(barber);
-                } else {
-                }
-              } catch (e) {
-              }
-            } else {
-            }
+                  embeddedBarbers.add(barber);
+                } else {}
+              } catch (e) {}
+            } else {}
           }
-          if (barbers.isNotEmpty) {
-            return barbers;
-          }
-        } else {
-        }
-      } catch (e, stackTrace) {
-      }
+        } else {}
+      } catch (e, stackTrace) {}
 
+      final merged = _mergeBarberSources(docs, embeddedBarbers);
+      if (merged.isNotEmpty) {
+        await LocalTtlCache.set(
+          'salon_details_barbers:$salonId',
+          merged
+              .map((b) => {
+                    'id': b.id,
+                    'uid': b.uid,
+                    'name': b.name,
+                    'skills': b.skills,
+                    'rating': b.rating,
+                    'isAvailable': b.isAvailable,
+                    'waitingClients': b.waitingClients,
+                    'avatarUrl': b.avatarUrl,
+                  })
+              .toList(),
+          const Duration(hours: 6),
+        );
+        return merged;
+      }
+      if (cachedBarbers.isNotEmpty) {
+        return cachedBarbers;
+      }
       return const [];
     } catch (e, stackTrace) {
+      if (cachedBarbers.isNotEmpty) {
+        return cachedBarbers;
+      }
       return const [];
     }
   }
 
   Future<List<SalonService>> _loadServices(String salonId) async {
     try {
+      final cached = await LocalTtlCache.get<List<dynamic>>(
+          'salon_details_services:$salonId');
+      if (cached != null && cached.isNotEmpty) {
+        return cached
+            .whereType<Map>()
+            .map((m) => m.cast<String, dynamic>())
+            .map((data) => SalonService(
+                  name: (data['name'] as String?) ?? 'Service',
+                  price: (data['price'] as num?)?.toInt() ?? 0,
+                  durationMinutes:
+                      (data['durationMinutes'] as num?)?.toInt() ?? 0,
+                ))
+            .toList();
+      }
       final query = _firestore
           .collection('salons')
           .doc(salonId)
           .collection('all_services')
           .orderBy('order');
-      final snap = await FirestoreCache.getQuery(query);
+      final snap = await FirestoreCache.getQueryCacheFirst(query);
       final services = snap.docs.map((doc) {
         final data = doc.data();
         return SalonService(
           name: (data['name'] as String?) ?? 'Service',
           price: (data['price'] as num?)?.toInt() ?? 0,
-          durationMinutes:
-              (data['durationMinutes'] as num?)?.toInt() ?? 0,
+          durationMinutes: (data['durationMinutes'] as num?)?.toInt() ?? 0,
         );
       }).toList();
-      if (services.isNotEmpty) return services;
+      if (services.isNotEmpty) {
+        await LocalTtlCache.set(
+          'salon_details_services:$salonId',
+          services
+              .map((s) => {
+                    'name': s.name,
+                    'price': s.price,
+                    'durationMinutes': s.durationMinutes,
+                  })
+              .toList(),
+          const Duration(hours: 24),
+        );
+        return services;
+      }
     } catch (_) {
       // fall through to fallback
     }
@@ -302,16 +380,29 @@ class SalonDetailsProvider extends ChangeNotifier {
           .collection('salons')
           .doc(salonId)
           .collection('all_services');
-      final snap = await FirestoreCache.getQuery(fallbackQuery);
-      return snap.docs.map((doc) {
+      final snap = await FirestoreCache.getQueryCacheFirst(fallbackQuery);
+      final services = snap.docs.map((doc) {
         final data = doc.data();
         return SalonService(
           name: (data['name'] as String?) ?? 'Service',
           price: (data['price'] as num?)?.toInt() ?? 0,
-          durationMinutes:
-              (data['durationMinutes'] as num?)?.toInt() ?? 0,
+          durationMinutes: (data['durationMinutes'] as num?)?.toInt() ?? 0,
         );
       }).toList();
+      if (services.isNotEmpty) {
+        await LocalTtlCache.set(
+          'salon_details_services:$salonId',
+          services
+              .map((s) => {
+                    'name': s.name,
+                    'price': s.price,
+                    'durationMinutes': s.durationMinutes,
+                  })
+              .toList(),
+          const Duration(hours: 24),
+        );
+      }
+      return services;
     } catch (_) {
       return [];
     }
@@ -319,33 +410,95 @@ class SalonDetailsProvider extends ChangeNotifier {
 
   Future<List<String>> _loadGalleryPhotos(String salonId) async {
     try {
+      final cached = await LocalTtlCache.get<List<dynamic>>(
+          'salon_details_gallery:$salonId');
+      if (cached != null && cached.isNotEmpty) {
+        return cached.whereType<String>().toList();
+      }
       final query = _firestore
           .collection('salons')
           .doc(salonId)
           .collection('photos')
           .orderBy('order');
-      final snap = await FirestoreCache.getQuery(query);
+      final snap = await FirestoreCache.getQueryCacheFirst(query);
       final photos = snap.docs
           .map((doc) => (doc.data()['url'] as String?)?.trim() ?? '')
           .where((url) => url.isNotEmpty)
           .toList();
-      if (photos.isNotEmpty) return photos;
+      if (photos.isNotEmpty) {
+        await LocalTtlCache.set(
+          'salon_details_gallery:$salonId',
+          photos,
+          const Duration(hours: 24),
+        );
+        return photos;
+      }
     } catch (_) {
       // fall through to fallback
     }
     try {
-      final fallbackQuery = _firestore
-          .collection('salons')
-          .doc(salonId)
-          .collection('photos');
-      final snap = await FirestoreCache.getQuery(fallbackQuery);
-      return snap.docs
+      final fallbackQuery =
+          _firestore.collection('salons').doc(salonId).collection('photos');
+      final snap = await FirestoreCache.getQueryCacheFirst(fallbackQuery);
+      final photos = snap.docs
           .map((doc) => (doc.data()['url'] as String?)?.trim() ?? '')
           .where((url) => url.isNotEmpty)
           .toList();
+      if (photos.isNotEmpty) {
+        await LocalTtlCache.set(
+          'salon_details_gallery:$salonId',
+          photos,
+          const Duration(hours: 24),
+        );
+      }
+      return photos;
     } catch (_) {
-      return [];
+      // fall through to embedded gallery fallback
     }
+
+    // Final fallback: read embedded gallery fields from salon document.
+    try {
+      final salonDoc = await FirestoreCache.getDocCacheFirst(
+        _firestore.collection('salons').doc(salonId),
+      );
+      final data = salonDoc.data() ?? {};
+      final candidates = [
+        data['galleryPhotos'],
+        data['galleryImages'],
+        data['photos'],
+        data['gallery'],
+        data['coverPhoto'],
+        data['coverImageUrl'],
+      ];
+      final urls = <String>{};
+      for (final field in candidates) {
+        if (field is List) {
+          for (final item in field) {
+            if (item is String && item.trim().isNotEmpty) {
+              urls.add(item.trim());
+            } else if (item is Map) {
+              final url = (item['url'] as String?)?.trim();
+              if (url != null && url.isNotEmpty) urls.add(url);
+            }
+          }
+        } else if (field is String && field.trim().isNotEmpty) {
+          urls.add(field.trim());
+        }
+      }
+      final list = urls.toList();
+      if (list.isNotEmpty) {
+        await LocalTtlCache.set(
+          'salon_details_gallery:$salonId',
+          list,
+          const Duration(hours: 24),
+        );
+        return list;
+      }
+    } catch (_) {
+      // ignore
+    }
+
+    return [];
   }
 
   Future<void> _loadFavorite(String id) async {
@@ -353,7 +506,7 @@ class SalonDetailsProvider extends ChangeNotifier {
       return;
     }
     try {
-      final userDoc = await FirestoreCache.getDoc(
+      final userDoc = await FirestoreCache.getDocCacheFirst(
         _firestore.collection('users').doc(userId),
       );
       final data = userDoc.data();
@@ -380,8 +533,7 @@ class SalonDetailsProvider extends ChangeNotifier {
       if (_isFavorite) {
         await userRef.set(
           {
-            'favoriteSalonIds':
-                FieldValue.arrayRemove([_details!.id]),
+            'favoriteSalonIds': FieldValue.arrayRemove([_details!.id]),
             'updatedAt': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true),
@@ -390,8 +542,7 @@ class SalonDetailsProvider extends ChangeNotifier {
       } else {
         await userRef.set(
           {
-            'favoriteSalonIds':
-                FieldValue.arrayUnion([_details!.id]),
+            'favoriteSalonIds': FieldValue.arrayUnion([_details!.id]),
             'updatedAt': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true),
@@ -408,7 +559,6 @@ class SalonDetailsProvider extends ChangeNotifier {
 
   SalonBarber? _mapBarber(String id, Map<String, dynamic> data) {
     try {
-
       // Try to get uid from data, fallback to id
       final barberUid = (data['uid'] as String?) ??
           (data['barberUid'] as String?) ??
@@ -417,8 +567,7 @@ class SalonDetailsProvider extends ChangeNotifier {
 
       // Get name with multiple fallback options
       final name = (data['name'] as String?)?.trim() ?? 'Barber';
-      if (name.isEmpty || name == 'Barber') {
-      }
+      if (name.isEmpty || name == 'Barber') {}
 
       // Get specialization/skills
       final specialization = (data['specialization'] as String?)?.trim() ?? '';
@@ -455,6 +604,43 @@ class SalonDetailsProvider extends ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+
+  List<SalonBarber> _mergeBarberSources(
+    List<SalonBarber> primary,
+    List<SalonBarber> secondary,
+  ) {
+    final merged = <String, SalonBarber>{};
+    for (final barber in [...primary, ...secondary]) {
+      final key = _barberMergeKey(
+        uid: barber.uid,
+        id: barber.id,
+        name: barber.name,
+      );
+      final existing = merged[key];
+      if (existing == null) {
+        merged[key] = barber;
+        continue;
+      }
+      if ((existing.avatarUrl == null || existing.avatarUrl!.isEmpty) &&
+          barber.avatarUrl != null &&
+          barber.avatarUrl!.isNotEmpty) {
+        merged[key] = existing.copyWith(avatarUrl: barber.avatarUrl);
+      }
+    }
+    return merged.values.toList();
+  }
+
+  String _barberMergeKey({
+    required String? uid,
+    required String id,
+    required String name,
+  }) {
+    final normalizedUid = (uid ?? '').trim().toLowerCase();
+    if (normalizedUid.isNotEmpty) return 'uid:$normalizedUid';
+    final normalizedId = id.trim().toLowerCase();
+    if (normalizedId.isNotEmpty) return 'id:$normalizedId';
+    return 'name:${name.trim().toLowerCase()}';
   }
 
   String _parseSkills(dynamic skills) {
@@ -545,13 +731,13 @@ class SalonDetailsProvider extends ChangeNotifier {
           .collection('salons')
           .doc(salonId)
           .collection('queue')
-          .where('status', whereIn: ['waiting', 'serving']));
+          .where('status', whereIn: ['waiting', 'serving']).limit(50));
 
       final bookingSnap = await FirestoreCache.getQuery(_firestore
           .collection('salons')
           .doc(salonId)
           .collection('bookings')
-          .where('status', whereIn: ['waiting', 'serving']));
+          .where('status', whereIn: ['waiting', 'serving']).limit(50));
 
       final queueEntries = queueSnap.docs
           .map((doc) => _mapQueue(doc.id, doc.data()))
@@ -568,8 +754,7 @@ class SalonDetailsProvider extends ChangeNotifier {
         ..sort(_queueComparator);
       try {
         await _hydrateQueueAvatars(merged);
-      } catch (e) {
-      }
+      } catch (e) {}
       return merged;
     } catch (e) {
       // Fallback: try without status filter if query fails
@@ -577,11 +762,13 @@ class SalonDetailsProvider extends ChangeNotifier {
         final queueSnap = await FirestoreCache.getQuery(_firestore
             .collection('salons')
             .doc(salonId)
-            .collection('queue'));
+            .collection('queue')
+            .limit(200));
         final bookingSnap = await FirestoreCache.getQuery(_firestore
             .collection('salons')
             .doc(salonId)
-            .collection('bookings'));
+            .collection('bookings')
+            .limit(200));
 
         final queueEntries = queueSnap.docs
             .map((doc) => _mapQueue(doc.id, doc.data()))
@@ -598,8 +785,7 @@ class SalonDetailsProvider extends ChangeNotifier {
           ..sort(_queueComparator);
         try {
           await _hydrateQueueAvatars(merged);
-        } catch (e2) {
-        }
+        } catch (e2) {}
         return merged;
       } catch (e2) {
         return const [];
@@ -617,12 +803,26 @@ class SalonDetailsProvider extends ChangeNotifier {
     final statusCompare =
         (order[a.status] ?? 9).compareTo(order[b.status] ?? 9);
     if (statusCompare != 0) return statusCompare;
+
+    final barberCmp = _queueBarberSortKey(a).compareTo(_queueBarberSortKey(b));
+    if (barberCmp != 0) return barberCmp;
+
+    final aSerial = a.serialNo ?? (1 << 30);
+    final bSerial = b.serialNo ?? (1 << 30);
+    if (aSerial != bSerial) return aSerial.compareTo(bSerial);
+
     final aKey = _scheduleKey(a);
     final bKey = _scheduleKey(b);
     if (aKey != null && bKey != null) return aKey.compareTo(bKey);
     if (aKey != null) return -1;
     if (bKey != null) return 1;
     return a.waitMinutes.compareTo(b.waitMinutes);
+  }
+
+  String _queueBarberSortKey(SalonQueueEntry entry) {
+    final serialKey = entry.serialBarberKey.trim().toLowerCase();
+    if (serialKey.isNotEmpty) return serialKey;
+    return entry.barberName.trim().toLowerCase();
   }
 
   DateTime? _scheduleKey(SalonQueueEntry entry) {
@@ -677,8 +877,7 @@ class SalonDetailsProvider extends ChangeNotifier {
 
       _barbers = updatedBarbers;
       notifyListeners();
-    } catch (e, stackTrace) {
-    }
+    } catch (e, stackTrace) {}
   }
 
   Future<void> _hydrateQueueAvatars(List<SalonQueueEntry> entries) async {
@@ -710,7 +909,7 @@ class SalonDetailsProvider extends ChangeNotifier {
 
     for (final uid in uids) {
       try {
-        final doc = await FirestoreCache.getDoc(
+        final doc = await FirestoreCache.getDocCacheFirst(
           _firestore.collection('users').doc(uid),
         );
         if (doc.exists) {
@@ -721,10 +920,8 @@ class SalonDetailsProvider extends ChangeNotifier {
               (data['photo'] as String?)?.trim();
           if (url != null && url.isNotEmpty) {
             result[uid] = url;
-          } else {
-          }
-        } else {
-        }
+          } else {}
+        } else {}
       } catch (e) {
         // Continue with other users
       }
@@ -736,7 +933,6 @@ class SalonDetailsProvider extends ChangeNotifier {
   void _updateBarberWaitingCounts(
       List<SalonBarber> barbers, List<SalonQueueEntry> queue) {
     try {
-
       // Count waiting items per barber by matching barber name or UID
       final waitingCounts = <String, int>{};
 
@@ -750,7 +946,6 @@ class SalonDetailsProvider extends ChangeNotifier {
         }
       }
 
-
       // Update barbers with waiting counts
       for (var i = 0; i < barbers.length; i++) {
         final barber = barbers[i];
@@ -763,8 +958,7 @@ class SalonDetailsProvider extends ChangeNotifier {
       }
 
       notifyListeners();
-    } catch (e, stackTrace) {
-    }
+    } catch (e, stackTrace) {}
   }
 
   int _computeWaitMinutes(List<SalonQueueEntry> queue) {
@@ -808,6 +1002,13 @@ class SalonDetailsProvider extends ChangeNotifier {
       dateTime: bestDateTime,
       avatarUrl: primary.avatarUrl ?? fallback.avatarUrl,
       customerUid: primary.customerUid ?? fallback.customerUid,
+      serialNo: primary.serialNo ?? fallback.serialNo,
+      serialBarberKey: primary.serialBarberKey.isNotEmpty
+          ? primary.serialBarberKey
+          : fallback.serialBarberKey,
+      entrySource: primary.entrySource.isNotEmpty
+          ? primary.entrySource
+          : fallback.entrySource,
     );
   }
 
@@ -853,6 +1054,9 @@ class SalonDetailsProvider extends ChangeNotifier {
       dateTime: dateTime,
       avatarUrl: avatarUrl,
       customerUid: customerUid,
+      serialNo: (data['serialNo'] as num?)?.toInt(),
+      serialBarberKey: (data['serialBarberKey'] as String?) ?? '',
+      entrySource: (data['entrySource'] as String?) ?? '',
     );
   }
 
@@ -884,6 +1088,9 @@ class SalonDetailsProvider extends ChangeNotifier {
       dateTime: dateTime,
       avatarUrl: avatarUrl,
       customerUid: customerUid,
+      serialNo: (data['serialNo'] as num?)?.toInt(),
+      serialBarberKey: (data['serialBarberKey'] as String?) ?? '',
+      entrySource: (data['entrySource'] as String?) ?? '',
     );
   }
 
@@ -975,6 +1182,7 @@ class SalonDetailsData {
   final String id;
   final String name;
   final String address;
+  final String mapAddress;
   final GeoPoint? location;
   final String contact;
   final String email;
@@ -995,6 +1203,7 @@ class SalonDetailsData {
     required this.id,
     required this.name,
     required this.address,
+    required this.mapAddress,
     required this.location,
     required this.contact,
     required this.email,
@@ -1024,6 +1233,7 @@ class SalonDetailsData {
     String? id,
     String? name,
     String? address,
+    String? mapAddress,
     GeoPoint? location,
     String? contact,
     String? email,
@@ -1044,6 +1254,7 @@ class SalonDetailsData {
       id: id ?? this.id,
       name: name ?? this.name,
       address: address ?? this.address,
+      mapAddress: mapAddress ?? this.mapAddress,
       location: location ?? this.location,
       contact: contact ?? this.contact,
       email: email ?? this.email,
@@ -1131,6 +1342,9 @@ class SalonQueueEntry {
   final DateTime? dateTime;
   final String? avatarUrl;
   final String? customerUid;
+  final int? serialNo;
+  final String serialBarberKey;
+  final String entrySource;
 
   const SalonQueueEntry({
     required this.id,
@@ -1144,6 +1358,9 @@ class SalonQueueEntry {
     this.dateTime,
     this.avatarUrl,
     this.customerUid,
+    this.serialNo,
+    this.serialBarberKey = '',
+    this.entrySource = '',
   });
 
   bool get isWaiting => status == 'waiting';
@@ -1178,6 +1395,9 @@ class SalonQueueEntry {
     DateTime? dateTime,
     String? avatarUrl,
     String? customerUid,
+    int? serialNo,
+    String? serialBarberKey,
+    String? entrySource,
   }) {
     return SalonQueueEntry(
       id: id,
@@ -1191,6 +1411,9 @@ class SalonQueueEntry {
       dateTime: dateTime ?? this.dateTime,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       customerUid: customerUid ?? this.customerUid,
+      serialNo: serialNo ?? this.serialNo,
+      serialBarberKey: serialBarberKey ?? this.serialBarberKey,
+      entrySource: entrySource ?? this.entrySource,
     );
   }
 }

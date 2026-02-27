@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/shared/models/barber_tip_models.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:flutter/material.dart';
 
 class OwnerBarberPayoutsProvider extends ChangeNotifier {
@@ -31,7 +32,8 @@ class OwnerBarberPayoutsProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-      final salonDoc = await _firestore.collection('salons').doc(ownerId).get();
+      final salonDoc = await FirestoreCache.getDocCacheFirst(
+          _firestore.collection('salons').doc(ownerId));
       final salonData = salonDoc.data() ?? <String, dynamic>{};
       final barbersList = salonData['barbers'] as List?;
 
@@ -39,9 +41,8 @@ class OwnerBarberPayoutsProvider extends ChangeNotifier {
       if (barbersList != null) {
         for (final barber in barbersList) {
           if (barber is Map) {
-            final id = (barber['id'] as String?) ??
-                (barber['uid'] as String?) ??
-                '';
+            final id =
+                (barber['id'] as String?) ?? (barber['uid'] as String?) ?? '';
             final name = (barber['name'] as String?) ?? '';
             if (id.isNotEmpty) {
               nameById[id] = name.isNotEmpty ? name : 'Barber';
@@ -50,14 +51,12 @@ class OwnerBarberPayoutsProvider extends ChangeNotifier {
         }
       }
 
-      final ledgerSnap = await _firestore
+      final ledgerSnap = await FirestoreCache.getQuery(_firestore
           .collection('barber_tip_ledger')
-          .where('salonId', isEqualTo: ownerId)
-          .get();
-      final payoutSnap = await _firestore
+          .where('salonId', isEqualTo: ownerId));
+      final payoutSnap = await FirestoreCache.getQuery(_firestore
           .collection('barber_payouts')
-          .where('salonId', isEqualTo: ownerId)
-          .get();
+          .where('salonId', isEqualTo: ownerId));
 
       final ledgerItems = ledgerSnap.docs
           .map((doc) => BarberTipLedgerItem.fromDoc(doc.id, doc.data()))
@@ -96,8 +95,7 @@ class OwnerBarberPayoutsProvider extends ChangeNotifier {
         final totalTips = totalByBarber[id] ?? 0;
         final paidTips = paidByBarber[id] ?? 0;
         final dueTips = totalTips - paidTips;
-        final name =
-            nameById[id] ?? fallbackNameById[id] ?? 'Barber';
+        final name = nameById[id] ?? fallbackNameById[id] ?? 'Barber';
         return BarberPayoutOverview(
           barberId: id,
           barberName: name,

@@ -58,20 +58,13 @@ class DashboardProvider extends ChangeNotifier {
     _setError(null);
 
     try {
-      // Load bookings
+      final periodFilter = _getPeriodFilter(_period);
+      final statsAggregate = await _loadStatsAggregate(ownerId, periodFilter);
+
+      // Load bookings (period-filtered when possible)
       List<OwnerBooking> bookings = [];
       try {
-        final bookingsSnap = await _firestore
-            .collection('salons')
-            .doc(ownerId)
-            .collection('bookings')
-            .get();
-
-        bookings = bookingsSnap.docs
-            .map((d) => _mapBooking(d.id, d.data()))
-            .whereType<OwnerBooking>()
-            .toList()
-          ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
+        bookings = await _loadBookingsForPeriod(ownerId, periodFilter);
       } catch (e) {
         // Continue with empty bookings
       }
@@ -85,7 +78,6 @@ class DashboardProvider extends ChangeNotifier {
       }
 
       // Filter bookings and queue by selected period BEFORE computing metrics
-      final periodFilter = _getPeriodFilter(_period);
       final filteredBookings = _filterBookingsByPeriod(bookings, periodFilter);
       final filteredQueue = _filterQueueByPeriod(queue, periodFilter);
 
@@ -97,7 +89,7 @@ class DashboardProvider extends ChangeNotifier {
 
       // Compute metrics and performance data using FILTERED data
       try {
-        _computeMetrics(filteredBookings, filteredQueue);
+        _computeMetrics(filteredBookings, filteredQueue, statsAggregate);
         _services = _computeServicePerformance(filteredBookings);
         _barbers = _computeBarberPerformance(filteredBookings);
         _bookingStatusCounts = _countBookings(filteredBookings);
@@ -251,17 +243,25 @@ class DashboardProvider extends ChangeNotifier {
   }
 
   void _computeMetrics(
-      List<OwnerBooking> bookings, List<OwnerQueueItem> queue) {
+    List<OwnerBooking> bookings,
+    List<OwnerQueueItem> queue,
+    _StatsAggregate? stats,
+  ) {
     final completedBookings = bookings
         .where((b) => b.status == OwnerBookingStatus.completed)
         .toList();
-    final totalBookings = completedBookings.length;
-    final totalRevenue =
-        completedBookings.fold<int>(0, (acc, b) => acc + b.total);
-    final totalTips =
-        completedBookings.fold<int>(0, (acc, b) => acc + b.tipAmount);
-    final totalPlatformFees =
-        completedBookings.fold<int>(0, (acc, b) => acc + b.serviceCharge);
+    final statsAvailable = stats != null && stats.hasData;
+    final totalBookings =
+        statsAvailable ? stats.completedBookings : completedBookings.length;
+    final totalRevenue = statsAvailable
+        ? stats.revenue
+        : completedBookings.fold<int>(0, (acc, b) => acc + b.total);
+    final totalTips = statsAvailable
+        ? stats.tips
+        : completedBookings.fold<int>(0, (acc, b) => acc + b.tipAmount);
+    final totalPlatformFees = statsAvailable
+        ? stats.serviceCharge
+        : completedBookings.fold<int>(0, (acc, b) => acc + b.serviceCharge);
     final cancelled =
         bookings.where((b) => b.status == OwnerBookingStatus.cancelled).length;
     final uniqueCustomers = completedBookings
@@ -372,7 +372,6 @@ class DashboardProvider extends ChangeNotifier {
   OwnerBookingStatus _statusFromString(String status) {
     switch (status) {
       case 'waiting':
-      case 'turn_ready':
       case 'arrived':
       case 'serving':
       case 'pending':
@@ -429,6 +428,90 @@ class DashboardProvider extends ChangeNotifier {
     _error = message;
     notifyListeners();
   }
+
+  Future<_StatsAggregate> _loadStatsAggregate(
+      String ownerId, PeriodFilter filter) async {
+    final startKey = DateFormat('yyyy-MM-dd').format(filter.start);
+    final endKey = DateFormat('yyyy-MM-dd').format(filter.end);
+    try {
+      final snap = await _firestore
+          .collection('salons')
+          .doc(ownerId)
+          .collection('stats')
+          .where('dateKey', isGreaterThanOrEqualTo: startKey)
+          .where('dateKey', isLessThan: endKey)
+          .get();
+
+      int totalBookings = 0;
+      int completedBookings = 0;
+      int revenue = 0;
+      int tips = 0;
+      int serviceCharge = 0;
+
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        totalBookings += (data['totalBookings'] as num?)?.toInt() ?? 0;
+        completedBookings += (data['completedBookings'] as num?)?.toInt() ?? 0;
+        revenue += (data['revenue'] as num?)?.toInt() ?? 0;
+        tips += (data['tips'] as num?)?.toInt() ?? 0;
+        serviceCharge += (data['serviceCharge'] as num?)?.toInt() ?? 0;
+      }
+
+      return _StatsAggregate(
+        totalBookings: totalBookings,
+        completedBookings: completedBookings,
+        revenue: revenue,
+        tips: tips,
+        serviceCharge: serviceCharge,
+        hasData: snap.docs.isNotEmpty,
+      );
+    } catch (_) {
+      return const _StatsAggregate.empty();
+    }
+  }
+
+  Future<List<OwnerBooking>> _loadBookingsForPeriod(
+      String ownerId, PeriodFilter filter) async {
+    final collection =
+        _firestore.collection('salons').doc(ownerId).collection('bookings');
+    final startTs = Timestamp.fromDate(filter.start);
+    final endTs = Timestamp.fromDate(filter.end);
+    try {
+      final snap = await collection
+          .where('dateTime', isGreaterThanOrEqualTo: startTs)
+          .where('dateTime', isLessThan: endTs)
+          .get();
+      return snap.docs
+          .map((d) => _mapBooking(d.id, d.data()))
+          .whereType<OwnerBooking>()
+          .toList()
+        ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
+    } catch (_) {
+      final startKey = DateFormat('yyyy-MM-dd').format(filter.start);
+      final endKey = DateFormat('yyyy-MM-dd').format(filter.end);
+      try {
+        final snap = await collection
+            .where('date', isGreaterThanOrEqualTo: startKey)
+            .where('date', isLessThan: endKey)
+            .get();
+        return snap.docs
+            .map((d) => _mapBooking(d.id, d.data()))
+            .whereType<OwnerBooking>()
+            .toList()
+          ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
+      } catch (_) {
+        final snap = await collection
+            .orderBy('dateTime', descending: true)
+            .limit(200)
+            .get();
+        return snap.docs
+            .map((d) => _mapBooking(d.id, d.data()))
+            .whereType<OwnerBooking>()
+            .toList()
+          ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
+      }
+    }
+  }
 }
 
 /// Helper class for period filtering
@@ -476,6 +559,32 @@ class DashboardMetrics {
         returningCustomers: 0,
         peakHour: 'N/A',
       );
+}
+
+class _StatsAggregate {
+  final int totalBookings;
+  final int completedBookings;
+  final int revenue;
+  final int tips;
+  final int serviceCharge;
+  final bool hasData;
+
+  const _StatsAggregate({
+    required this.totalBookings,
+    required this.completedBookings,
+    required this.revenue,
+    required this.tips,
+    required this.serviceCharge,
+    required this.hasData,
+  });
+
+  const _StatsAggregate.empty()
+      : totalBookings = 0,
+        completedBookings = 0,
+        revenue = 0,
+        tips = 0,
+        serviceCharge = 0,
+        hasData = false;
 }
 
 class ServicePerformance {

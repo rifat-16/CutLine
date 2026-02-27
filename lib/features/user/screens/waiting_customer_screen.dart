@@ -65,7 +65,9 @@ class _WaitingListScreenState extends State<WaitingListScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     CachedProfileImage(
-                                      imageUrl: item.avatar.isNotEmpty ? item.avatar : null,
+                                      imageUrl: item.avatar.isNotEmpty
+                                          ? item.avatar
+                                          : null,
                                       radius: 28,
                                       errorWidget: const Icon(Icons.person),
                                     ),
@@ -123,11 +125,9 @@ class _WaitingDetails extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(item.name,
-                style:
-                    CutlineTextStyles.subtitleBold.copyWith(fontSize: 16)),
+                style: CutlineTextStyles.subtitleBold.copyWith(fontSize: 16)),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                   color: statusColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12)),
@@ -144,6 +144,9 @@ class _WaitingDetails extends StatelessWidget {
             style: CutlineTextStyles.caption.copyWith(fontSize: 13)),
         Text('Service: ${item.service}',
             style: CutlineTextStyles.caption.copyWith(fontSize: 13)),
+        if (item.serialNo != null)
+          Text('Serial: #${item.serialNo}',
+              style: CutlineTextStyles.caption.copyWith(fontSize: 13)),
         const SizedBox(height: 6),
         Row(
           children: [

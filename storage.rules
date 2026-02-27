@@ -1,0 +1,36 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isImageUpload() {
+      return request.resource != null
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Salon setup + gallery photos
+    match /salons/{ownerId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(ownerId) && isImageUpload();
+      allow delete: if isOwner(ownerId);
+    }
+
+    // Owner profile photos
+    match /owners/{ownerId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(ownerId) && isImageUpload();
+      allow delete: if isOwner(ownerId);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

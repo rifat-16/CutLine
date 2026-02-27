@@ -11,7 +11,8 @@ class SalonService {
   Future<void> saveSalon({
     required String ownerId,
     required String name,
-    required String address,
+    required String typedAddress,
+    required String mapAddress,
     required GeoPoint location,
     required String geohash,
     required String contact,
@@ -35,7 +36,8 @@ class SalonService {
       {
         'ownerId': ownerId,
         'name': name.trim(),
-        'address': address.trim(),
+        'address': typedAddress.trim(),
+        'mapAddress': mapAddress.trim(),
         'location': location,
         'geohash': geohash,
         'contact': contact.trim(),
@@ -62,12 +64,15 @@ class SalonService {
     await _firestore.collection('salons_summary').doc(ownerId).set(
       {
         'name': name.trim(),
-        'address': address.trim(),
+        'address': typedAddress.trim(),
         if (coverPhotoUrl != null && coverPhotoUrl.isNotEmpty)
           'coverImageUrl': coverPhotoUrl,
         'topServices': _topServices(services),
         if (isOpen != null) 'isOpen': isOpen,
         if (isNewSalon) 'avgWaitMinutes': 0,
+        if (isNewSalon) 'waitingCount': 0,
+        if (isNewSalon) 'servingCount': 0,
+        'updatedAt': now,
       },
       SetOptions(merge: true),
     );

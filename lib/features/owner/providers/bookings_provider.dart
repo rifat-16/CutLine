@@ -98,41 +98,7 @@ class BookingsProvider extends ChangeNotifier {
     _setError(null);
 
     try {
-      // Try collectionGroup first
-      try {
-        _subscription =
-            _firestore.collectionGroup('bookings').snapshots().listen((snap) {
-          final items = snap.docs
-              .where((doc) {
-                final parentId = doc.reference.parent.parent?.id;
-                final data = doc.data();
-                final salonId = (data['salonId'] as String?) ??
-                    (data['salon'] as String?) ??
-                    parentId;
-                final matches = salonId == ownerId;
-                if (matches) {}
-                return matches;
-              })
-              .map((doc) => _mapBooking(
-                    doc.id,
-                    doc.data(),
-                    doc.reference.parent.parent?.id,
-                  ))
-              .whereType<OwnerBooking>()
-              .toList();
-
-          _bookings = items;
-          _hydrateCustomerAvatars();
-          notifyListeners();
-          _setLoading(false);
-        }, onError: (e) {
-          // Fallback to direct salon collection query
-          _loadFromSalonCollection(ownerId);
-        });
-      } catch (e) {
-        // Fallback to direct salon collection query
-        _loadFromSalonCollection(ownerId);
-      }
+      await _loadFromSalonCollection(ownerId);
     } catch (e, stackTrace) {
       _bookings = [];
       String errorMessage = 'Failed to load bookings. Pull to refresh.';
@@ -282,7 +248,6 @@ class BookingsProvider extends ChangeNotifier {
   OwnerBookingStatus _statusFromString(String status) {
     switch (status) {
       case 'waiting':
-      case 'turn_ready':
       case 'arrived':
       case 'serving':
       case 'pending':

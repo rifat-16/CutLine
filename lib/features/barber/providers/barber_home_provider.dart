@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/shared/services/firestore_cache.dart';
+import 'package:cutline/shared/services/queue_serial_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
@@ -10,12 +11,18 @@ class BarberHomeProvider extends ChangeNotifier {
   BarberHomeProvider({
     required AuthProvider authProvider,
     FirebaseFirestore? firestore,
+    QueueSerialService? serialService,
   })  : _authProvider = authProvider,
-        _firestore = firestore ?? FirebaseFirestore.instance;
+        _firestore = firestore ?? FirebaseFirestore.instance,
+        _serialService =
+            serialService ?? QueueSerialService(firestore: firestore);
 
   final AuthProvider _authProvider;
   final FirebaseFirestore _firestore;
+  final QueueSerialService _serialService;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _queueSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _bookingRequestSubscription;
 
   bool _isLoading = false;
   String? _error;
@@ -26,6 +33,8 @@ class BarberHomeProvider extends ChangeNotifier {
   bool _isUpdatingAvailability = false;
   String? _salonName;
   int _todayTips = 0;
+  List<QueueServiceOption> _services = [];
+  int _pendingRequestCount = 0;
 
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -36,6 +45,8 @@ class BarberHomeProvider extends ChangeNotifier {
   bool get isUpdatingAvailability => _isUpdatingAvailability;
   String? get salonName => _salonName;
   int get todayTips => _todayTips;
+  List<QueueServiceOption> get services => _services;
+  int get pendingRequestCount => _pendingRequestCount;
 
   int get waitingCount => _countStatus(BarberQueueStatus.waiting);
   int get servingCount => _countStatus(BarberQueueStatus.serving);
@@ -85,8 +96,14 @@ class BarberHomeProvider extends ChangeNotifier {
         _setLoading(false);
         return;
       }
+      if (profile.ownerId.trim().isEmpty) {
+        _setError('Salon owner not linked to this account.');
+        _setLoading(false);
+        return;
+      }
 
       await _loadSalonMeta(profile.ownerId);
+      _services = await _serialService.loadServices(salonId: profile.ownerId);
       _todayTips = await _loadTodayTips(profile);
 
       try {
@@ -94,6 +111,7 @@ class BarberHomeProvider extends ChangeNotifier {
       } catch (e) {
         _isAvailable = true; // Default to available
       }
+      _startBookingRequestsListener(profile);
 
       if (_salonOpen) {
         _startQueueListener(profile);
@@ -142,7 +160,6 @@ class BarberHomeProvider extends ChangeNotifier {
       final activeStatuses = [
         'waiting',
         'serving',
-        'turn_ready',
         'arrived',
         'done',
         'completed',
@@ -157,7 +174,8 @@ class BarberHomeProvider extends ChangeNotifier {
             .map((doc) => _mapQueue(doc.id, doc.data(), profile))
             .whereType<BarberQueueItem>()
             .toList()
-          ..sort((a, b) => a.waitMinutes.compareTo(b.waitMinutes));
+          ..sort(_compareQueueItems);
+        _error = null;
         notifyListeners();
       }, onError: (_) {
         _setError('Failed to load queue. Pull to refresh.');
@@ -167,10 +185,54 @@ class BarberHomeProvider extends ChangeNotifier {
     }
   }
 
+  void _startBookingRequestsListener(BarberProfile profile) {
+    _bookingRequestSubscription?.cancel();
+    try {
+      final bookingRef = _firestore
+          .collection('salons')
+          .doc(profile.ownerId)
+          .collection('bookings');
+
+      void applyCount(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+        final nextCount = docs
+            .where((doc) => _isBookingRequestStatus(doc.data()))
+            .where((doc) => _matchesBarber(doc.data(), profile))
+            .length;
+        if (_pendingRequestCount != nextCount) {
+          _pendingRequestCount = nextCount;
+          notifyListeners();
+        }
+      }
+
+      _bookingRequestSubscription = bookingRef
+          .where('status', whereIn: ['pending', 'upcoming'])
+          .snapshots()
+          .listen((snapshot) {
+            applyCount(snapshot.docs);
+          }, onError: (_) {
+            _bookingRequestSubscription?.cancel();
+            _bookingRequestSubscription =
+                bookingRef.snapshots().listen((snapshot) {
+              applyCount(snapshot.docs);
+            });
+          });
+    } catch (_) {
+      _pendingRequestCount = 0;
+    }
+  }
+
+  bool _isBookingRequestStatus(Map<String, dynamic> data) {
+    final rawStatus = data['status'];
+    final status = rawStatus is String ? rawStatus.trim().toLowerCase() : '';
+    return status == 'pending' || status == 'upcoming' || status.isEmpty;
+  }
+
   Future<int> _loadTodayTips(BarberProfile profile) async {
     final today = DateTime.now();
     final todayKey = DateFormat('yyyy-MM-dd')
         .format(DateTime(today.year, today.month, today.day));
+    final start = DateTime(today.year, today.month, today.day);
+    final end = start.add(const Duration(days: 1));
     try {
       QuerySnapshot<Map<String, dynamic>> snap;
       final collection = _firestore
@@ -178,10 +240,22 @@ class BarberHomeProvider extends ChangeNotifier {
           .doc(profile.ownerId)
           .collection('bookings');
       try {
-        snap = await collection
-            .where('status', whereIn: ['completed', 'done']).get();
+        snap = await FirestoreCache.getQuery(collection
+            .where('barberId', isEqualTo: profile.uid)
+            .where('status', whereIn: ['completed', 'done'])
+            .where('dateTime',
+                isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+            .where('dateTime', isLessThan: Timestamp.fromDate(end)));
       } catch (_) {
-        snap = await collection.get();
+        try {
+          snap = await FirestoreCache.getQuery(collection
+              .where('barberId', isEqualTo: profile.uid)
+              .where('status', whereIn: ['completed', 'done']).where('date',
+                  isEqualTo: todayKey));
+        } catch (_) {
+          snap = await FirestoreCache.getQuery(
+              collection.orderBy('dateTime', descending: true).limit(200));
+        }
       }
 
       int total = 0;
@@ -261,6 +335,7 @@ class BarberHomeProvider extends ChangeNotifier {
       id: id,
       customerName: (data['customerName'] as String?) ?? 'Customer',
       service: (data['service'] as String?) ?? 'Service',
+      serviceId: (data['serviceId'] as String?) ?? '',
       barberName: (data['barberName'] as String?) ?? profile.name,
       price: (data['price'] as num?)?.toInt() ?? 0,
       tipAmount: (data['tipAmount'] as num?)?.toInt() ?? 0,
@@ -273,7 +348,79 @@ class BarberHomeProvider extends ChangeNotifier {
       completedAt: completedAt,
       scheduledAt: scheduledAt,
       customerAvatar: avatar,
+      entrySource: (data['entrySource'] as String?) ?? '',
+      serialNo: (data['serialNo'] as num?)?.toInt(),
+      serialBarberKey: (data['serialBarberKey'] as String?) ?? '',
     );
+  }
+
+  int _compareQueueItems(BarberQueueItem a, BarberQueueItem b) {
+    const order = {
+      BarberQueueStatus.waiting: 0,
+      BarberQueueStatus.serving: 1,
+      BarberQueueStatus.done: 2,
+      BarberQueueStatus.cancelled: 3,
+    };
+    final statusCmp = (order[a.status] ?? 9).compareTo(order[b.status] ?? 9);
+    if (statusCmp != 0) return statusCmp;
+
+    final aSerial = a.serialNo ?? (1 << 30);
+    final bSerial = b.serialNo ?? (1 << 30);
+    if (aSerial != bSerial) return aSerial.compareTo(bSerial);
+
+    final aDt = a.scheduledAt;
+    final bDt = b.scheduledAt;
+    if (aDt != null && bDt != null) return aDt.compareTo(bDt);
+    if (aDt != null) return -1;
+    if (bDt != null) return 1;
+    return a.waitMinutes.compareTo(b.waitMinutes);
+  }
+
+  Future<bool> createManualEntry({
+    required String customerName,
+    required String serviceId,
+  }) async {
+    final profile = _profile;
+    if (profile == null) {
+      _setError('Profile unavailable. Please refresh.');
+      return false;
+    }
+
+    if (_services.isEmpty) {
+      _services = await _serialService.loadServices(salonId: profile.ownerId);
+    }
+
+    final selected = _services.where((s) => s.id == serviceId).toList();
+    if (selected.isEmpty) {
+      _setError('Please select a valid service.');
+      return false;
+    }
+
+    final barber = QueueBarberOption(
+      id: profile.uid,
+      name: profile.name.trim().isNotEmpty ? profile.name.trim() : 'Barber',
+    );
+
+    _setError(null);
+    try {
+      await _serialService.createManualByBarber(
+        salonId: profile.ownerId,
+        actorUid: profile.uid,
+        customerName: customerName,
+        barber: barber,
+        service: selected.first,
+      );
+      _setError(null);
+      return true;
+    } catch (e) {
+      if (e is FirebaseException && e.code == 'permission-denied') {
+        _setError(
+            'Permission denied while adding manual customer. Check Firestore rules deployment and salon verification status.');
+      } else {
+        _setError('Could not add manual customer.');
+      }
+      return false;
+    }
   }
 
   Future<void> _loadSalonMeta(String ownerId) async {
@@ -468,9 +615,56 @@ class BarberHomeProvider extends ChangeNotifier {
           SetOptions(merge: true),
         );
       }
+
+      await _updateDailyStats(profile.ownerId, data);
     } catch (_) {
       // ignore ledger failures
     }
+  }
+
+  Future<void> _updateDailyStats(
+    String ownerId,
+    Map<String, dynamic> data,
+  ) async {
+    final dateKey = _statsDateKey(data);
+    if (dateKey.isEmpty) return;
+    final total = (data['total'] as num?)?.toInt() ??
+        (data['price'] as num?)?.toInt() ??
+        0;
+    final tip = (data['tipAmount'] as num?)?.toInt() ?? 0;
+    final serviceCharge = (data['serviceCharge'] as num?)?.toInt() ?? 0;
+
+    await _firestore
+        .collection('salons')
+        .doc(ownerId)
+        .collection('stats')
+        .doc(dateKey)
+        .set(
+      {
+        'dateKey': dateKey,
+        'totalBookings': FieldValue.increment(1),
+        'completedBookings': FieldValue.increment(1),
+        'revenue': FieldValue.increment(total),
+        'tips': FieldValue.increment(tip),
+        'serviceCharge': FieldValue.increment(serviceCharge),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  String _statsDateKey(Map<String, dynamic> data) {
+    final completedAt = data['completedAt'];
+    if (completedAt is Timestamp) {
+      return DateFormat('yyyy-MM-dd').format(completedAt.toDate());
+    }
+    final dateTime = data['dateTime'];
+    if (dateTime is Timestamp) {
+      return DateFormat('yyyy-MM-dd').format(dateTime.toDate());
+    }
+    final rawDate = (data['date'] as String?)?.trim() ?? '';
+    if (rawDate.isNotEmpty) return rawDate;
+    return '';
   }
 
   int _countStatus(BarberQueueStatus status) {
@@ -511,6 +705,7 @@ class BarberHomeProvider extends ChangeNotifier {
   @override
   void dispose() {
     _queueSubscription?.cancel();
+    _bookingRequestSubscription?.cancel();
     super.dispose();
   }
 }
@@ -533,6 +728,7 @@ class BarberQueueItem {
   final String id;
   final String customerName;
   final String service;
+  final String serviceId;
   final String barberName;
   final int price;
   final int tipAmount;
@@ -545,11 +741,15 @@ class BarberQueueItem {
   final DateTime? scheduledAt;
   final DateTime? startedAt;
   final DateTime? completedAt;
+  final String entrySource;
+  final int? serialNo;
+  final String serialBarberKey;
 
   const BarberQueueItem({
     required this.id,
     required this.customerName,
     required this.service,
+    this.serviceId = '',
     required this.barberName,
     required this.price,
     required this.tipAmount,
@@ -562,6 +762,9 @@ class BarberQueueItem {
     this.note,
     this.startedAt,
     this.completedAt,
+    this.entrySource = '',
+    this.serialNo,
+    this.serialBarberKey = '',
   });
 
   BarberQueueItem copyWith({
@@ -575,6 +778,7 @@ class BarberQueueItem {
       id: id,
       customerName: customerName,
       service: service,
+      serviceId: serviceId,
       barberName: barberName,
       price: price,
       tipAmount: tipAmount,
@@ -587,6 +791,9 @@ class BarberQueueItem {
       scheduledAt: scheduledAt ?? this.scheduledAt,
       startedAt: startedAt ?? this.startedAt,
       completedAt: completedAt ?? this.completedAt,
+      entrySource: entrySource,
+      serialNo: serialNo,
+      serialBarberKey: serialBarberKey,
     );
   }
 }

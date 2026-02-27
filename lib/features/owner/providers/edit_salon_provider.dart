@@ -29,6 +29,7 @@ class EditSalonProvider extends ChangeNotifier {
   String email = '';
   String phone = '';
   String address = '';
+  String mapAddress = '';
   GeoPoint? location;
   String? geohash;
   String about = '';
@@ -57,6 +58,7 @@ class EditSalonProvider extends ChangeNotifier {
       email = (data['email'] as String?) ?? '';
       phone = (data['contact'] as String?) ?? '';
       address = (data['address'] as String?) ?? '';
+      mapAddress = (data['mapAddress'] as String?) ?? address;
       location = data['location'] as GeoPoint?;
       geohash = (data['geohash'] as String?)?.trim();
       about = (data['description'] as String?) ?? '';
@@ -65,11 +67,10 @@ class EditSalonProvider extends ChangeNotifier {
         _firestore.collection('users').doc(ownerId),
       );
       final userData = userDoc.data() ?? {};
-      final userEmail = (_authProvider.currentUser?.email ??
-              userData['email'] as String?)
-          ?.trim();
-      final displayName =
-          (_authProvider.currentUser?.displayName ?? '').trim();
+      final userEmail =
+          (_authProvider.currentUser?.email ?? userData['email'] as String?)
+              ?.trim();
+      final displayName = (_authProvider.currentUser?.displayName ?? '').trim();
       final profileName = (userData['name'] as String?)?.trim() ?? '';
       final pickedName = ownerName.isNotEmpty
           ? ownerName
@@ -97,6 +98,7 @@ class EditSalonProvider extends ChangeNotifier {
     required String email,
     required String phone,
     required String address,
+    required String mapAddress,
     required String about,
     GeoPoint? location,
     String? geohash,
@@ -116,6 +118,7 @@ class EditSalonProvider extends ChangeNotifier {
           'email': email,
           'contact': phone,
           'address': address,
+          'mapAddress': mapAddress,
           if (location != null) 'location': location,
           if (geohash != null && geohash.trim().isNotEmpty)
             'geohash': geohash.trim(),
@@ -128,6 +131,7 @@ class EditSalonProvider extends ChangeNotifier {
         {
           'name': salonName,
           'address': address,
+          'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
       );
@@ -136,6 +140,7 @@ class EditSalonProvider extends ChangeNotifier {
       this.email = email;
       this.phone = phone;
       this.address = address;
+      this.mapAddress = mapAddress;
       if (location != null) this.location = location;
       if (geohash != null && geohash.trim().isNotEmpty) this.geohash = geohash;
       this.about = about;
@@ -186,11 +191,9 @@ class EditSalonProvider extends ChangeNotifier {
         'profile/profile_${DateTime.now().millisecondsSinceEpoch}.${_ext(file.name)}',
       );
       photoUrl = url;
-      await _firestore
-          .collection('salons')
-          .doc(ownerId)
-          .set({'photoUrl': url, 'updatedAt': FieldValue.serverTimestamp()},
-              SetOptions(merge: true));
+      await _firestore.collection('salons').doc(ownerId).set(
+          {'photoUrl': url, 'updatedAt': FieldValue.serverTimestamp()},
+          SetOptions(merge: true));
       // Delete old photo if it exists and is different from the new one
       if (previousUrl != null && previousUrl.isNotEmpty && previousUrl != url) {
         await _deleteOldPhoto(previousUrl);
@@ -205,7 +208,10 @@ class EditSalonProvider extends ChangeNotifier {
 
   Future<String> _uploadFile(String ownerId, XFile file, String path) async {
     final ref = _storage.ref().child('owners').child(ownerId).child(path);
-    final uploadTask = ref.putFile(File(file.path));
+    final uploadTask = ref.putFile(
+      File(file.path),
+      SettableMetadata(contentType: _contentTypeFor(file.name)),
+    );
     final snap = await uploadTask.whenComplete(() {});
     return snap.ref.getDownloadURL();
   }
@@ -214,6 +220,21 @@ class EditSalonProvider extends ChangeNotifier {
     final dot = name.lastIndexOf('.');
     if (dot == -1 || dot == name.length - 1) return 'jpg';
     return name.substring(dot + 1);
+  }
+
+  String _contentTypeFor(String name) {
+    switch (_ext(name).toLowerCase()) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'heic':
+        return 'image/heic';
+      case 'heif':
+        return 'image/heif';
+      default:
+        return 'image/jpeg';
+    }
   }
 
   Future<void> _deleteOldPhoto(String url) async {

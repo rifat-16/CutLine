@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:flutter/material.dart';
 
 class PlatformFeeReportProvider extends ChangeNotifier {
@@ -36,14 +37,12 @@ class PlatformFeeReportProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-      final ledgerSnap = await _firestore
+      final ledgerSnap = await FirestoreCache.getQuery(_firestore
           .collection('platform_fee_ledger')
-          .where('salonId', isEqualTo: ownerId)
-          .get();
-      final paymentSnap = await _firestore
+          .where('salonId', isEqualTo: ownerId));
+      final paymentSnap = await FirestoreCache.getQuery(_firestore
           .collection('platform_fee_payments')
-          .where('salonId', isEqualTo: ownerId)
-          .get();
+          .where('salonId', isEqualTo: ownerId));
 
       _ledger = ledgerSnap.docs
           .map((doc) => PlatformFeeLedgerItem.fromDoc(doc.id, doc.data()))
@@ -121,7 +120,8 @@ class PlatformFeeReportProvider extends ChangeNotifier {
       String salonName = '';
       String salonPhone = '';
       try {
-        final salonSnap = await _firestore.collection('salons').doc(ownerId).get();
+        final salonSnap =
+            await _firestore.collection('salons').doc(ownerId).get();
         final salonData = salonSnap.data() ?? <String, dynamic>{};
         salonName = (salonData['name'] as String?) ?? '';
         salonPhone = (salonData['contact'] as String?) ??
@@ -237,8 +237,7 @@ class PlatformFeeLedgerItem {
     final amount = (data['feeAmount'] as num?)?.toInt() ?? 0;
     final status = (data['status'] as String?) ?? 'unpaid';
     final paidAmountRaw = (data['paidAmount'] as num?)?.toInt();
-    final paidAmount =
-        paidAmountRaw ?? (status == 'paid' ? amount : 0);
+    final paidAmount = paidAmountRaw ?? (status == 'paid' ? amount : 0);
     return PlatformFeeLedgerItem(
       id: id,
       bookingId: (data['bookingId'] as String?) ?? id,

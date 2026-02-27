@@ -23,6 +23,7 @@ class SalonSetupScreen extends StatefulWidget {
 class _SalonSetupScreenState extends State<SalonSetupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  final _typedAddressController = TextEditingController();
   final _addressController = TextEditingController();
   final _contactController = TextEditingController();
   final _emailController = TextEditingController();
@@ -133,11 +134,20 @@ class _SalonSetupScreenState extends State<SalonSetupScreen> {
           ),
           const SizedBox(height: 12),
           TextFormField(
+            controller: _typedAddressController,
+            decoration: _fieldDecoration(
+                'Typed Address', Icons.edit_location_alt_outlined),
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Required' : null,
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
             controller: _addressController,
             readOnly: true,
             onTap: _openAddressPicker,
-            decoration: _fieldDecoration('Address', Icons.location_on_outlined)
-                .copyWith(
+            decoration:
+                _fieldDecoration('Map Address', Icons.location_on_outlined)
+                    .copyWith(
               suffixIcon: const Icon(Icons.map_outlined),
             ),
             validator: (_) {
@@ -279,7 +289,8 @@ class _SalonSetupScreenState extends State<SalonSetupScreen> {
 
     final success = await provider.saveSalon(
       name: _nameController.text,
-      address: _addressController.text,
+      typedAddress: _typedAddressController.text,
+      mapAddress: _addressController.text,
       location: picked.toGeoPoint(),
       geohash: geohash,
       contact: _contactController.text,
@@ -352,6 +363,9 @@ class _SalonSetupScreenState extends State<SalonSetupScreen> {
       _pickedLocation = result;
       _pickedGeohash = geohash;
       _addressController.text = result.address;
+      if (_typedAddressController.text.trim().isEmpty) {
+        _typedAddressController.text = result.address;
+      }
     });
   }
 }
@@ -372,12 +386,17 @@ class _CardSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 12, offset: Offset(0, 8))
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: const Color(0xFFDDE5F8)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blueGrey.withValues(alpha: 0.07),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
         ],
       ),
       child: Column(
@@ -386,14 +405,18 @@ class _CardSection extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
-                  color: Colors.blueAccent.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
+                  borderRadius: BorderRadius.circular(14),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFE9F0FF), Color(0xFFD8E6FF)],
+                  ),
                 ),
-                child: Icon(icon, color: Colors.blueAccent),
+                child: Icon(icon, color: const Color(0xFF2F65D9), size: 24),
               ),
-              const SizedBox(width: 12),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -402,12 +425,20 @@ class _CardSection extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.w700),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF121727),
+                        height: 1.1,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: const TextStyle(color: Colors.black54),
+                      style: const TextStyle(
+                        color: Color(0xFF576078),
+                        fontSize: 14,
+                        height: 1.35,
+                      ),
                     ),
                   ],
                 ),
@@ -415,7 +446,15 @@ class _CardSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          child,
+          Container(
+            padding: const EdgeInsets.only(top: 16),
+            decoration: const BoxDecoration(
+              border: Border(
+                top: BorderSide(color: Color(0xFFE6ECF8)),
+              ),
+            ),
+            child: child,
+          ),
         ],
       ),
     );
@@ -432,29 +471,73 @@ class _StepHeader extends StatelessWidget {
     final steps = SetupStep.values;
     final currentIndex = steps.indexOf(provider.currentStep);
     final progress = (currentIndex + 1) / steps.length;
+    final percent = (progress * 100).round();
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.blueAccent.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFD8E4FF)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF5A8DFF).withValues(alpha: 0.18),
+            const Color(0xFFC9DAFF).withValues(alpha: 0.35),
+          ],
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Step ${currentIndex + 1} of ${steps.length}',
-              style: const TextStyle(
-                  color: Colors.black54, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
+          Row(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.88),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: const Color(0xFFD4E1FD)),
+                ),
+                child: Text(
+                  'Step ${currentIndex + 1} of ${steps.length}',
+                  style: const TextStyle(
+                    color: Color(0xFF30446B),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$percent% complete',
+                style: const TextStyle(
+                  color: Color(0xFF30446B),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           const Text(
             'Complete each section to finish your salon setup.',
-            style: TextStyle(fontSize: 15, color: Colors.black87),
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF121727),
+              height: 1.25,
+            ),
           ),
-          const SizedBox(height: 12),
-          LinearProgressIndicator(
-            value: progress,
-            minHeight: 6,
-            backgroundColor: Colors.white,
-            color: Colors.blueAccent,
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: Colors.white.withValues(alpha: 0.95),
+              color: const Color(0xFF2F65D9),
+            ),
           ),
         ],
       ),

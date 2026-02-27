@@ -116,6 +116,8 @@ class SalonDetailsScreen extends StatelessWidget {
                 waitMinutes: details.waitMinutes,
                 queue: details.queue,
                 salonId: details.id,
+                isLoading: provider.isQueueLoading,
+                onLoadQueue: provider.loadQueue,
               ),
             ] else ...[
               const SizedBox(height: 30),
@@ -273,7 +275,8 @@ class SalonInfoSection extends StatelessWidget {
                   if (point == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Location is not available for this salon.'),
+                        content:
+                            Text('Location is not available for this salon.'),
                       ),
                     );
                     return;
@@ -283,7 +286,9 @@ class SalonInfoSection extends StatelessWidget {
                     AppRoutes.salonMap,
                     arguments: SalonMapArgs(
                       salonName: details.name,
-                      address: details.address,
+                      address: details.mapAddress.isNotEmpty
+                          ? details.mapAddress
+                          : details.address,
                       lat: point.latitude,
                       lng: point.longitude,
                     ),
@@ -928,8 +933,8 @@ class ComboOfferCard extends StatelessWidget {
                   Navigator.pushNamed(
                     context,
                     AppRoutes.viewAllServices,
-                    arguments:
-                        ViewAllServicesArgs(salonName: salonName, salonId: salonId),
+                    arguments: ViewAllServicesArgs(
+                        salonName: salonName, salonId: salonId),
                   );
                 },
                 child: const Text('See all', style: CutlineTextStyles.link),
@@ -1157,12 +1162,16 @@ class LiveQueueSection extends StatefulWidget {
   final int waitMinutes;
   final List<SalonQueueEntry> queue;
   final String? salonId;
+  final bool isLoading;
+  final VoidCallback? onLoadQueue;
 
   const LiveQueueSection({
     super.key,
     this.waitMinutes = 0,
     this.queue = const [],
     this.salonId,
+    this.isLoading = false,
+    this.onLoadQueue,
   });
 
   @override
@@ -1176,6 +1185,8 @@ class _LiveQueueSectionState extends State<LiveQueueSection> {
       waitMinutes: widget.waitMinutes,
       queue: widget.queue,
       salonId: widget.salonId,
+      isLoading: widget.isLoading,
+      onLoadQueue: widget.onLoadQueue,
     );
   }
 }
@@ -1184,11 +1195,15 @@ class _LiveQueueContent extends StatefulWidget {
   final int waitMinutes;
   final List<SalonQueueEntry> queue;
   final String? salonId;
+  final bool isLoading;
+  final VoidCallback? onLoadQueue;
 
   const _LiveQueueContent({
     required this.waitMinutes,
     required this.queue,
     this.salonId,
+    this.isLoading = false,
+    this.onLoadQueue,
   });
 
   @override
@@ -1276,6 +1291,7 @@ class _LiveQueueContentState extends State<_LiveQueueContent> {
   Widget build(BuildContext context) {
     final waitLabel =
         widget.waitMinutes <= 0 ? 'No wait' : '≈ ${widget.waitMinutes} mins';
+    final hasQueue = widget.queue.isNotEmpty;
     final nowServing = widget.queue.firstWhere(
       (e) => e.isServing,
       orElse: () => const SalonQueueEntry(
@@ -1298,22 +1314,43 @@ class _LiveQueueContentState extends State<_LiveQueueContent> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('Live Queue', style: CutlineTextStyles.title),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    children: const [
-                      Icon(Icons.refresh,
-                          size: 16, color: CutlineColors.primary),
-                      SizedBox(width: 4),
-                      Text('Updating live...',
-                          style: CutlineTextStyles.caption),
-                    ],
-                  ),
-                  Text('Estimated wait: $waitLabel',
-                      style: CutlineTextStyles.caption),
-                ],
-              ),
+              hasQueue
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Row(
+                          children: const [
+                            Icon(Icons.refresh,
+                                size: 16, color: CutlineColors.primary),
+                            SizedBox(width: 4),
+                            Text('Updating live...',
+                                style: CutlineTextStyles.caption),
+                          ],
+                        ),
+                        Text('Estimated wait: $waitLabel',
+                            style: CutlineTextStyles.caption),
+                      ],
+                    )
+                  : TextButton(
+                      onPressed: widget.isLoading ? null : widget.onLoadQueue,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.refresh,
+                              size: 16, color: CutlineColors.primary),
+                          const SizedBox(width: 4),
+                          const Text('Refresh', style: CutlineTextStyles.link),
+                          if (widget.isLoading) ...[
+                            const SizedBox(width: 6),
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
             ],
           ),
           const SizedBox(height: 14),
@@ -1441,12 +1478,34 @@ class _LiveQueueContentState extends State<_LiveQueueContent> {
 }
 
 int _compareQueueEntries(SalonQueueEntry a, SalonQueueEntry b) {
+  final statusCmp = _statusOrder(a).compareTo(_statusOrder(b));
+  if (statusCmp != 0) return statusCmp;
+
+  final barberCmp = _barberSortKey(a).compareTo(_barberSortKey(b));
+  if (barberCmp != 0) return barberCmp;
+
+  final aSerial = a.serialNo ?? (1 << 30);
+  final bSerial = b.serialNo ?? (1 << 30);
+  if (aSerial != bSerial) return aSerial.compareTo(bSerial);
+
   final aKey = _scheduleKey(a);
   final bKey = _scheduleKey(b);
   if (aKey != null && bKey != null) return aKey.compareTo(bKey);
   if (aKey != null) return -1;
   if (bKey != null) return 1;
   return a.waitMinutes.compareTo(b.waitMinutes);
+}
+
+int _statusOrder(SalonQueueEntry entry) {
+  if (entry.isServing) return 0;
+  if (entry.isWaiting) return 1;
+  return 2;
+}
+
+String _barberSortKey(SalonQueueEntry entry) {
+  final serialKey = entry.serialBarberKey.trim().toLowerCase();
+  if (serialKey.isNotEmpty) return serialKey;
+  return entry.barberName.trim().toLowerCase();
 }
 
 DateTime? _scheduleKey(SalonQueueEntry entry) {
@@ -1510,6 +1569,11 @@ class _QueueCard extends StatelessWidget {
           Text('Barber: ${entry.barberName}', style: CutlineTextStyles.caption),
           const SizedBox(height: 4),
           Text('Service: ${entry.service}', style: CutlineTextStyles.caption),
+          if (entry.serialNo != null) ...[
+            const SizedBox(height: 4),
+            Text('Serial: #${entry.serialNo}',
+                style: CutlineTextStyles.caption),
+          ],
           const SizedBox(height: 4),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
