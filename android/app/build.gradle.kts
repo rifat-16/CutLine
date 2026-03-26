@@ -120,8 +120,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.cutline.prod"
+        // Base app id (flavors can override this per environment).
+        applicationId = "com.cutline"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -150,7 +150,7 @@ android {
         }
         create("prod") {
             dimension = "env"
-            applicationId = "com.cutline.prod"
+            applicationId = "com.cutline"
             resValue("string", "app_name", "CutLine")
             manifestPlaceholders["MAPS_API_KEY"] = mapsApiKeyProd
         }

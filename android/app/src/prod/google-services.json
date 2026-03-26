@@ -7,15 +7,15 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:266702152062:android:8581052ff35fbd2d11532f",
+        "mobilesdk_app_id": "1:266702152062:android:0532c9b8eddcb44111532f",
         "android_client_info": {
-          "package_name": "com.cutline.prod"
+          "package_name": "com.cutline"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBGBXhRAKU2b5CTYhilmKYEnXIH2hymXZk"
+          "current_key": "AIzaSyBktKtZHNhjvZzEXdwRSRG1VBOUI6ah3T4"
         }
       ],
       "services": {
