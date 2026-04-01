@@ -9,6 +9,7 @@
 const {onDocumentCreated, onDocumentUpdated, onDocumentWritten} =
   require("firebase-functions/v2/firestore");
 const {setGlobalOptions} = require("firebase-functions/v2");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const logger = require("firebase-functions/logger");
 
@@ -16,6 +17,52 @@ admin.initializeApp();
 
 // Set global options for all functions
 setGlobalOptions({maxInstances: 10});
+
+/**
+ * Ensure the caller has the superadmin claim.
+ * @param {?Object} auth
+ */
+function assertSuperadmin(auth) {
+  if (!auth) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+  if (auth.token.superadmin !== true) {
+    throw new HttpsError("permission-denied", "Super admin access required.");
+  }
+}
+
+/**
+ * Persist an admin audit log entry.
+ * @param {Object} payload
+ * @param {string} payload.actorUid
+ * @param {string} payload.actorEmail
+ * @param {string} payload.action
+ * @param {string} payload.targetType
+ * @param {string} payload.targetId
+ * @param {Object} payload.before
+ * @param {Object} payload.after
+ * @return {Promise<void>}
+ */
+async function writeAdminAuditLog({
+  actorUid,
+  actorEmail,
+  action,
+  targetType,
+  targetId,
+  before,
+  after,
+}) {
+  await admin.firestore().collection("admin_audit_logs").add({
+    actorUid,
+    actorEmail,
+    action,
+    targetType,
+    targetId,
+    before,
+    after,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
 
 /**
  * Enforce unique ownership of FCM tokens across user documents.
@@ -392,6 +439,241 @@ exports.onBookingUpdate = onDocumentUpdated(
       }
     },
 );
+
+exports.reviewSalon = onCall(async (request) => {
+  assertSuperadmin(request.auth);
+
+  const data = request.data || {};
+  const salonId = (data.salonId || "").toString().trim();
+  const decision = (data.decision || "").toString().trim().toLowerCase();
+  const reviewNote = (data.reviewNote || "").toString().trim();
+
+  if (!salonId) {
+    throw new HttpsError("invalid-argument", "salonId is required.");
+  }
+  if (!["verified", "rejected"].includes(decision)) {
+    throw new HttpsError(
+        "invalid-argument",
+        "decision must be verified or rejected.",
+    );
+  }
+  if (decision === "rejected" && !reviewNote) {
+    throw new HttpsError(
+        "invalid-argument",
+        "reviewNote is required for rejection.",
+    );
+  }
+
+  const firestore = admin.firestore();
+  const salonRef = firestore.collection("salons").doc(salonId);
+  const salonSnap = await salonRef.get();
+  if (!salonSnap.exists) {
+    throw new HttpsError("not-found", "Salon not found.");
+  }
+
+  const before = salonSnap.data() || {};
+  const ownerId = (before.ownerId || salonId).toString().trim();
+  const update = {
+    verificationStatus: decision,
+    reviewedAt: admin.firestore.FieldValue.serverTimestamp(),
+    reviewedBy: request.auth.uid,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (decision === "rejected") {
+    update.reviewNote = reviewNote;
+  } else {
+    update.reviewNote = admin.firestore.FieldValue.delete();
+  }
+
+  await salonRef.update(update);
+  await firestore.collection("salons_summary").doc(salonId).set({
+    verificationStatus: decision,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  await writeAdminAuditLog({
+    actorUid: request.auth.uid,
+    actorEmail: request.auth.token.email || "",
+    action: decision === "verified" ? "salon_approved" : "salon_rejected",
+    targetType: "salon",
+    targetId: salonId,
+    before: {
+      verificationStatus: before.verificationStatus || "verified",
+      reviewNote: before.reviewNote || "",
+    },
+    after: {
+      verificationStatus: decision,
+      reviewNote: decision === "rejected" ? reviewNote : "",
+    },
+  });
+
+  const salonName = (before.name || "").toString().trim();
+  const title =
+    decision === "verified" ? "Salon Verified" : "Salon Rejected";
+  const body = decision === "verified" ?
+    `${salonName || "Your salon"} has been approved.` :
+    `${salonName || "Your salon"} was rejected. ` +
+    "Check the review note in the owner app.";
+
+  await firestore.collection("notifications").add({
+    userId: ownerId,
+    type: "salon_verification",
+    title,
+    body,
+    salonId,
+    isRead: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return {ok: true};
+});
+
+exports.setSalonRestriction = onCall(async (request) => {
+  assertSuperadmin(request.auth);
+
+  const data = request.data || {};
+  const salonId = (data.salonId || "").toString().trim();
+  const restricted = data.restricted === true;
+  const reason = (data.reason || "").toString().trim();
+
+  if (!salonId) {
+    throw new HttpsError("invalid-argument", "salonId is required.");
+  }
+  if (restricted && !reason) {
+    throw new HttpsError(
+        "invalid-argument",
+        "reason is required when restricting a salon.",
+    );
+  }
+
+  const firestore = admin.firestore();
+  const salonRef = firestore.collection("salons").doc(salonId);
+  const salonSnap = await salonRef.get();
+  if (!salonSnap.exists) {
+    throw new HttpsError("not-found", "Salon not found.");
+  }
+
+  const before = salonSnap.data() || {};
+  const ownerId = (before.ownerId || salonId).toString().trim();
+  const update = {
+    isRestricted: restricted,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (restricted) {
+    update.restrictionReason = reason;
+    update.restrictedAt = admin.firestore.FieldValue.serverTimestamp();
+    update.restrictedBy = request.auth.uid;
+    update.unrestrictedAt = admin.firestore.FieldValue.delete();
+    update.unrestrictedBy = admin.firestore.FieldValue.delete();
+  } else {
+    update.restrictionReason = admin.firestore.FieldValue.delete();
+    update.unrestrictedAt = admin.firestore.FieldValue.serverTimestamp();
+    update.unrestrictedBy = request.auth.uid;
+  }
+
+  await salonRef.set(update, {merge: true});
+  await firestore.collection("salons_summary").doc(salonId).set({
+    isRestricted: restricted,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  await writeAdminAuditLog({
+    actorUid: request.auth.uid,
+    actorEmail: request.auth.token.email || "",
+    action: restricted ? "salon_restricted" : "salon_unrestricted",
+    targetType: "salon",
+    targetId: salonId,
+    before: {
+      isRestricted: before.isRestricted === true,
+      restrictionReason: before.restrictionReason || "",
+    },
+    after: {
+      isRestricted: restricted,
+      restrictionReason: restricted ? reason : "",
+    },
+  });
+
+  const salonName = (before.name || "").toString().trim();
+  await firestore.collection("notifications").add({
+    userId: ownerId,
+    type: "salon_restriction",
+    title: restricted ? "Salon Restricted" : "Salon Restriction Removed",
+    body: restricted ?
+      `${salonName || "Your salon"} was restricted. ${reason}` :
+      `${salonName || "Your salon"} is active again.`,
+    salonId,
+    isRead: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return {ok: true};
+});
+
+exports.updateSupportRequest = onCall(async (request) => {
+  assertSuperadmin(request.auth);
+
+  const data = request.data || {};
+  const requestId = (data.requestId || "").toString().trim();
+  const status = (data.status || "").toString().trim().toLowerCase();
+  const adminNote = (data.adminNote || "").toString().trim();
+  const assignedAdminUid =
+    (data.assignedAdminUid || "").toString().trim();
+  const allowedStatuses = ["open", "in_progress", "resolved", "closed"];
+
+  if (!requestId) {
+    throw new HttpsError("invalid-argument", "requestId is required.");
+  }
+  if (!allowedStatuses.includes(status)) {
+    throw new HttpsError("invalid-argument", "Invalid support request status.");
+  }
+
+  const firestore = admin.firestore();
+  const supportRef = firestore.collection("supportRequests").doc(requestId);
+  const supportSnap = await supportRef.get();
+  if (!supportSnap.exists) {
+    throw new HttpsError("not-found", "Support request not found.");
+  }
+
+  const before = supportSnap.data() || {};
+  const update = {
+    status,
+    adminNote,
+    assignedAdminUid,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (status === "resolved" || status === "closed") {
+    update.resolvedBy = request.auth.uid;
+    update.resolvedAt = admin.firestore.FieldValue.serverTimestamp();
+  } else {
+    update.resolvedBy = admin.firestore.FieldValue.delete();
+    update.resolvedAt = admin.firestore.FieldValue.delete();
+  }
+
+  await supportRef.set(update, {merge: true});
+
+  await writeAdminAuditLog({
+    actorUid: request.auth.uid,
+    actorEmail: request.auth.token.email || "",
+    action: "support_request_updated",
+    targetType: "supportRequest",
+    targetId: requestId,
+    before: {
+      status: before.status || "open",
+      assignedAdminUid: before.assignedAdminUid || "",
+      adminNote: before.adminNote || "",
+    },
+    after: {
+      status,
+      assignedAdminUid,
+      adminNote,
+    },
+  });
+
+  return {ok: true};
+});
 
 /**
  * Notify user when booking is accepted

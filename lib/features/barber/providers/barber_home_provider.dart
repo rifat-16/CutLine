@@ -29,6 +29,7 @@ class BarberHomeProvider extends ChangeNotifier {
   BarberProfile? _profile;
   List<BarberQueueItem> _queue = [];
   bool _salonOpen = false;
+  bool _isRestricted = false;
   bool _isAvailable = true;
   bool _isUpdatingAvailability = false;
   String? _salonName;
@@ -41,6 +42,8 @@ class BarberHomeProvider extends ChangeNotifier {
   BarberProfile? get profile => _profile;
   List<BarberQueueItem> get queue => _queue;
   bool get isSalonOpen => _salonOpen;
+  bool get isRestricted => _isRestricted;
+  bool get canOperate => _salonOpen && !_isRestricted;
   bool get isAvailable => _isAvailable;
   bool get isUpdatingAvailability => _isUpdatingAvailability;
   String? get salonName => _salonName;
@@ -380,6 +383,12 @@ class BarberHomeProvider extends ChangeNotifier {
     required String customerName,
     required String serviceId,
   }) async {
+    if (_isRestricted) {
+      _setError(
+        'Salon is temporarily unavailable right now. Please contact the owner.',
+      );
+      return false;
+    }
     final profile = _profile;
     if (profile == null) {
       _setError('Profile unavailable. Please refresh.');
@@ -426,6 +435,7 @@ class BarberHomeProvider extends ChangeNotifier {
   Future<void> _loadSalonMeta(String ownerId) async {
     if (ownerId.isEmpty) {
       _salonOpen = false;
+      _isRestricted = false;
       _salonName = null;
       return;
     }
@@ -434,14 +444,17 @@ class BarberHomeProvider extends ChangeNotifier {
           _firestore.collection('salons').doc(ownerId));
       if (!doc.exists) {
         _salonOpen = false;
+        _isRestricted = false;
         _salonName = null;
         return;
       }
       final data = doc.data() ?? {};
       _salonOpen = (data['isOpen'] as bool?) ?? false;
+      _isRestricted = data['isRestricted'] == true;
       _salonName = data['name'] as String?;
     } catch (e) {
       _salonOpen = false;
+      _isRestricted = false;
       _salonName = null;
     }
   }
@@ -465,6 +478,12 @@ class BarberHomeProvider extends ChangeNotifier {
   }
 
   Future<void> setAvailability(bool value) async {
+    if (_isRestricted) {
+      _setError(
+        'Salon is temporarily unavailable right now. Please contact the owner.',
+      );
+      return;
+    }
     final profile = _profile;
     if (profile == null) return;
     final previous = _isAvailable;
@@ -509,6 +528,12 @@ class BarberHomeProvider extends ChangeNotifier {
   }
 
   Future<void> updateStatus(String id, BarberQueueStatus status) async {
+    if (_isRestricted) {
+      _setError(
+        'Salon is temporarily unavailable right now. Please contact the owner.',
+      );
+      return;
+    }
     final profile = _profile;
     if (profile == null) return;
     try {

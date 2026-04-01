@@ -38,6 +38,8 @@ class OwnerHomeProvider extends ChangeNotifier {
   SalonVerificationStatus _verificationStatus =
       SalonVerificationStatus.verified;
   String? _reviewNote;
+  bool _isRestricted = false;
+  String? _restrictionReason;
   bool _hasLoadedSalon = false;
   bool _salonDocExists = false;
   List<OwnerQueueItem> _queueItems = [];
@@ -52,10 +54,13 @@ class OwnerHomeProvider extends ChangeNotifier {
   String? get photoUrl => _photoUrl;
   SalonVerificationStatus get verificationStatus => _verificationStatus;
   String? get reviewNote => _reviewNote;
+  bool get isRestricted => _isRestricted;
+  String? get restrictionReason => _restrictionReason;
   bool get hasLoadedSalon => _hasLoadedSalon;
   bool get salonDocExists => _salonDocExists;
   bool get isVerified =>
       _verificationStatus == SalonVerificationStatus.verified;
+  bool get canOperate => isVerified && !_isRestricted;
   List<OwnerQueueItem> get queueItems => _queueItems;
   int get pendingRequests => _pendingRequests;
   bool get isOpen => _isOpen;
@@ -180,6 +185,8 @@ class OwnerHomeProvider extends ChangeNotifier {
         _verificationStatus =
             salonVerificationStatusFromFirestore(data['verificationStatus']);
         _reviewNote = (data['reviewNote'] as String?)?.trim();
+        _isRestricted = data['isRestricted'] == true;
+        _restrictionReason = (data['restrictionReason'] as String?)?.trim();
         if (_photoUrl != null && _photoUrl!.isEmpty) {
           _photoUrl = null;
         }
@@ -283,8 +290,8 @@ class OwnerHomeProvider extends ChangeNotifier {
   Future<int> _countPendingRequests(
       CollectionReference<Map<String, dynamic>> collection) async {
     try {
-      final snap =
-          await collection.where('status', whereIn: ['pending', 'upcoming']).get();
+      final snap = await collection
+          .where('status', whereIn: ['pending', 'upcoming']).get();
       return snap.size;
     } catch (_) {
       final snap = await collection.get();
@@ -296,8 +303,7 @@ class OwnerHomeProvider extends ChangeNotifier {
       Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
     return docs.where((doc) {
       final rawStatus = doc.data()['status'];
-      final status =
-          rawStatus is String ? rawStatus.trim().toLowerCase() : '';
+      final status = rawStatus is String ? rawStatus.trim().toLowerCase() : '';
       return status == 'pending' || status == 'upcoming' || status.isEmpty;
     }).length;
   }

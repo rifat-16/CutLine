@@ -188,7 +188,7 @@ class AppRouter {
       case AppRoutes.salonMap:
         final args = settings.arguments;
         final parsedArgs = args is SalonMapArgs ? args : null;
-        return _page(
+        return _fadePage(
           SalonMapScreen(
             salonName: parsedArgs?.salonName ?? 'Salon',
             address: parsedArgs?.address ?? 'Address unavailable',
@@ -340,6 +340,26 @@ class AppRouter {
 
   static MaterialPageRoute _page(Widget child, RouteSettings settings) {
     return MaterialPageRoute(builder: (_) => child, settings: settings);
+  }
+
+  static Route<dynamic> _fadePage(Widget child, RouteSettings settings) {
+    return PageRouteBuilder(
+      settings: settings,
+      transitionDuration: const Duration(milliseconds: 220),
+      reverseTransitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (_, __, ___) => child,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: child,
+        );
+      },
+    );
   }
 }
 

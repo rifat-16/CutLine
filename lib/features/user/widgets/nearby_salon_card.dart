@@ -9,6 +9,7 @@ class NearbySalonCard extends StatelessWidget {
   final String distanceLabel;
   final int waitMinutes;
   final bool isOpen;
+  final bool isTemporarilyUnavailable;
   final bool isFavorite;
   final List<String> topServices;
   final VoidCallback onTap;
@@ -21,6 +22,7 @@ class NearbySalonCard extends StatelessWidget {
     required this.distanceLabel,
     required this.waitMinutes,
     required this.isOpen,
+    this.isTemporarilyUnavailable = false,
     this.isFavorite = false,
     required this.topServices,
     required this.onTap,
@@ -29,10 +31,17 @@ class NearbySalonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final waitLabel = waitMinutes <= 0 ? 'No wait' : '$waitMinutes mins';
+    final waitLabel = isTemporarilyUnavailable
+        ? 'Temporarily unavailable'
+        : waitMinutes <= 0
+            ? 'No wait'
+            : '$waitMinutes mins';
     final servicesLabel = topServices.isEmpty
         ? 'Popular services will appear here'
         : topServices.join(', ');
+    final distanceText = distanceLabel.trim();
+    final locationText =
+        distanceText.isEmpty ? location : '$location • $distanceText';
 
     return InkWell(
       onTap: onTap,
@@ -149,7 +158,7 @@ class NearbySalonCard extends StatelessWidget {
                       SizedBox(width: 4.w),
                       Expanded(
                         child: Text(
-                          '$location • $distanceLabel',
+                          locationText,
                           style: CutlineTextStyles.body,
                         ),
                       ),
@@ -158,17 +167,37 @@ class NearbySalonCard extends StatelessWidget {
                   SizedBox(height: 6.h),
                   Row(
                     children: [
-                      Icon(Icons.access_time, size: 16, color: Colors.grey),
-                      SizedBox(width: 4.w),
-                      Text('Wait time: $waitLabel  •  ',
-                          style: CutlineTextStyles.body),
-                      Text(
-                        isOpen ? 'Open Now' : 'Closed',
-                        style: TextStyle(
-                          color: isOpen ? Colors.green : Colors.red,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Icon(
+                        isTemporarilyUnavailable
+                            ? Icons.info_outline
+                            : Icons.access_time,
+                        size: 16,
+                        color: isTemporarilyUnavailable
+                            ? Colors.orange.shade700
+                            : Colors.grey,
                       ),
+                      SizedBox(width: 4.w),
+                      if (isTemporarilyUnavailable)
+                        Expanded(
+                          child: Text(
+                            waitLabel,
+                            style: CutlineTextStyles.body.copyWith(
+                              color: Colors.orange.shade800,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        )
+                      else ...[
+                        Text('Wait time: $waitLabel  •  ',
+                            style: CutlineTextStyles.body),
+                        Text(
+                          isOpen ? 'Open Now' : 'Closed',
+                          style: TextStyle(
+                            color: isOpen ? Colors.green : Colors.red,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   SizedBox(height: 6.h),

@@ -349,6 +349,7 @@ class _SalonSetupScreenState extends State<SalonSetupScreen> {
           initialLocation: current == null
               ? null
               : LatLng(current.latitude, current.longitude),
+          selectCurrentLocationOnOpen: true,
         ),
       ),
     );

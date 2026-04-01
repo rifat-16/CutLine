@@ -131,6 +131,7 @@ class EditSalonProvider extends ChangeNotifier {
         {
           'name': salonName,
           'address': address,
+          if (location != null) 'location': location,
           'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),

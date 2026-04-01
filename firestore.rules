@@ -5,14 +5,47 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.superadmin == true;
+    }
+
     function isSalonVerifiedByData(data) {
       // Backwards-compat: older salon docs might not have this field yet.
       return !('verificationStatus' in data) || data.verificationStatus == 'verified';
     }
 
+    function salonAdminManagedFields() {
+      return [
+        'verificationStatus',
+        'submittedAt',
+        'reviewedAt',
+        'reviewedBy',
+        'reviewNote',
+        'isRestricted',
+        'restrictionReason',
+        'restrictedAt',
+        'restrictedBy',
+        'unrestrictedAt',
+        'unrestrictedBy'
+      ];
+    }
+
+    function isSalonRestrictedByData(data) {
+      return ('isRestricted' in data) && data.isRestricted == true;
+    }
+
+    function isSalonOperationalByData(data) {
+      return isSalonVerifiedByData(data) && !isSalonRestrictedByData(data);
+    }
+
     function isSalonVerified(salonId) {
       return exists(/databases/$(database)/documents/salons/$(salonId))
         && isSalonVerifiedByData(get(/databases/$(database)/documents/salons/$(salonId)).data);
+    }
+
+    function isSalonOperational(salonId) {
+      return exists(/databases/$(database)/documents/salons/$(salonId))
+        && isSalonOperationalByData(get(/databases/$(database)/documents/salons/$(salonId)).data);
     }
 
     function isSalonOwnerId(salonId) {
@@ -76,6 +109,7 @@ service cloud.firestore {
       // Barbers can read their own document
       // Customers can read barber user documents to display barber profiles/avatars
       allow read: if isAuthenticated() && (
+        isAdmin() ||
         request.auth.uid == userId ||
         isOwner(request.auth.uid) ||
         isBarber(request.auth.uid) ||
@@ -98,17 +132,28 @@ service cloud.firestore {
 
     match /salons/{salonId} {
       allow read: if isAuthenticated()
-        && (isOwnerOrBarberOfSalon(salonId) || isSalonVerifiedByData(resource.data));
+        && (isAdmin() || isOwnerOrBarberOfSalon(salonId) || isSalonVerifiedByData(resource.data));
 
       allow create: if isAuthenticated()
         && isOwner(request.auth.uid)
         && salonId == request.auth.uid
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.verificationStatus == 'pending'
-        && request.resource.data.isOpen == false;
+        && request.resource.data.isOpen == false
+        && (!('isRestricted' in request.resource.data) || request.resource.data.isRestricted == false)
+        && !request.resource.data.keys().hasAny([
+          'reviewedAt',
+          'reviewedBy',
+          'reviewNote',
+          'restrictionReason',
+          'restrictedAt',
+          'restrictedBy',
+          'unrestrictedAt',
+          'unrestrictedBy'
+        ]);
 
       function salonVerificationFields() {
-        return ['verificationStatus', 'submittedAt', 'reviewedAt', 'reviewNote'];
+        return salonAdminManagedFields();
       }
 
       function salonUnverifiedOwnerAllowedUpdateKeys() {
@@ -181,17 +226,17 @@ service cloud.firestore {
         // Barber can read their owner's salon queue
         // Customers can read queue to see wait times and live queue status
         allow read: if isAuthenticated()
-          && (isOwnerOrBarberOfSalon(salonId) || isSalonVerified(salonId));
+          && (isAdmin() || isOwnerOrBarberOfSalon(salonId) || isSalonOperational(salonId));
 
         allow create: if isAuthenticated()
-          && isSalonVerified(salonId)
+          && isSalonOperational(salonId)
           && (
             isOwnerOrBarberOfSalon(salonId) ||
             isCustomerNextFreeQueueCreate(salonId, queueId)
           );
 
         allow update, delete: if isAuthenticated()
-          && isSalonVerified(salonId)
+          && isSalonOperational(salonId)
           && isOwnerOrBarberOfSalon(salonId);
       }
       
@@ -199,10 +244,10 @@ service cloud.firestore {
       match /bookings/{bookingId} {
         // Keep current behavior (readable for live queue), but only after verification.
         allow read: if isAuthenticated()
-          && (isOwnerOrBarberOfSalon(salonId) || isSalonVerified(salonId));
+          && (isAdmin() || isOwnerOrBarberOfSalon(salonId) || isSalonOperational(salonId));
 
         allow create: if isAuthenticated()
-          && isSalonVerified(salonId)
+          && isSalonOperational(salonId)
           && (
             salonId == request.auth.uid ||
             request.resource.data.userId == request.auth.uid ||
@@ -211,7 +256,7 @@ service cloud.firestore {
           );
 
         allow update: if isAuthenticated()
-          && isSalonVerified(salonId)
+          && isSalonOperational(salonId)
           && (
             salonId == request.auth.uid ||
             resource.data.userId == request.auth.uid ||
@@ -227,7 +272,7 @@ service cloud.firestore {
           );
 
         allow delete: if isAuthenticated()
-          && isSalonVerified(salonId)
+          && isSalonOperational(salonId)
           && (
             salonId == request.auth.uid ||
             (
@@ -242,10 +287,10 @@ service cloud.firestore {
       match /barbers/{barberId} {
         // Anyone authenticated can read barbers (customers need to see barbers for booking)
         allow read: if isAuthenticated()
-          && (isOwnerOrBarberOfSalon(salonId) || isSalonVerified(salonId));
+          && (isAdmin() || isOwnerOrBarberOfSalon(salonId) || isSalonVerified(salonId));
 
         allow create, update, delete: if isAuthenticated()
-          && isSalonVerified(salonId)
+          && isSalonOperational(salonId)
           && (
             salonId == request.auth.uid ||
             barberId == request.auth.uid
@@ -255,7 +300,7 @@ service cloud.firestore {
       // Nested photos collection (salon gallery)
       match /photos/{photoId} {
         allow read: if isAuthenticated()
-          && (isOwnerOrBarberOfSalon(salonId) || isSalonVerified(salonId));
+          && (isAdmin() || isOwnerOrBarberOfSalon(salonId) || isSalonVerified(salonId));
         allow create, update, delete: if isAuthenticated()
           && salonId == request.auth.uid
           && isOwner(request.auth.uid);
@@ -264,7 +309,7 @@ service cloud.firestore {
       // Nested services collection (salon services)
       match /all_services/{serviceId} {
         allow read: if isAuthenticated()
-          && (isOwnerOrBarberOfSalon(salonId) || isSalonVerified(salonId));
+          && (isAdmin() || isOwnerOrBarberOfSalon(salonId) || isSalonVerified(salonId));
         allow create, update, delete: if isAuthenticated()
           && salonId == request.auth.uid
           && isOwner(request.auth.uid);
@@ -273,7 +318,7 @@ service cloud.firestore {
       // Nested stats collection (owner dashboard aggregates)
       match /stats/{dateKey} {
         allow read: if isAuthenticated()
-          && isOwnerOrBarberOfSalon(salonId);
+          && (isAdmin() || isOwnerOrBarberOfSalon(salonId));
         allow create, update, delete: if isAuthenticated()
           && salonId == request.auth.uid;
       }
@@ -281,18 +326,58 @@ service cloud.firestore {
       // Nested per-barber daily serial counters for manual queue entries
       match /serial_counters/{counterId} {
         allow read: if isAuthenticated()
-          && isOwnerOrBarberOfSalon(salonId);
+          && (isAdmin() || isOwnerOrBarberOfSalon(salonId));
         allow create, update, delete: if isAuthenticated()
-          && isSalonVerified(salonId)
+          && isSalonOperational(salonId)
           && isOwnerOrBarberOfSalon(salonId);
       }
     }
 
     match /salons_summary/{salonId} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated()
+      allow create: if isAuthenticated()
         && isOwner(request.auth.uid)
-        && request.auth.uid == salonId;
+        && request.auth.uid == salonId
+        && (!('verificationStatus' in request.resource.data) || request.resource.data.verificationStatus == 'pending')
+        && (!('isRestricted' in request.resource.data) || request.resource.data.isRestricted == false)
+        && !request.resource.data.keys().hasAny([
+          'reviewedAt',
+          'reviewedBy',
+          'reviewNote',
+          'restrictionReason',
+          'restrictedAt',
+          'restrictedBy',
+          'unrestrictedAt',
+          'unrestrictedBy'
+        ]);
+      allow update: if isAuthenticated()
+        && isOwner(request.auth.uid)
+        && request.auth.uid == salonId
+        && !request.resource.data.diff(resource.data).changedKeys().hasAny(salonAdminManagedFields());
+      allow delete: if false;
+    }
+
+    match /supportRequests/{requestId} {
+      allow create: if isAuthenticated()
+        && isOwner(request.auth.uid)
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.status == 'open';
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.ownerId == request.auth.uid
+      );
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          resource.data.ownerId == request.auth.uid &&
+          request.resource.data.ownerId == resource.data.ownerId &&
+          request.resource.data.status == resource.data.status &&
+          request.resource.data.adminNote == resource.data.adminNote &&
+          request.resource.data.assignedAdminUid == resource.data.assignedAdminUid &&
+          request.resource.data.resolvedBy == resource.data.resolvedBy &&
+          request.resource.data.resolvedAt == resource.data.resolvedAt
+        )
+      );
       allow delete: if false;
     }
 
@@ -303,28 +388,33 @@ service cloud.firestore {
 
     match /bookings/{bookingId} {
       allow read: if isAuthenticated() && (
+        isAdmin() ||
         resource.data.userId == request.auth.uid ||
         salonOwner(resource.data.salonId) == request.auth.uid
       );
 
       allow create: if isAuthenticated()
-        && isSalonVerified(request.resource.data.salonId)
+        && isSalonOperational(request.resource.data.salonId)
         && request.resource.data.userId == request.auth.uid
         && isValidStatus(request.resource.data.status);
 
       allow update: if isAuthenticated()
         && (
+          isAdmin() ||
           resource.data.userId == request.auth.uid ||
           salonOwner(resource.data.salonId) == request.auth.uid
         )
-        && isSalonVerified(resource.data.salonId)
+        && isSalonOperational(resource.data.salonId)
         && isValidStatus(request.resource.data.status);
 
       allow delete: if false;
     }
 
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid
+      );
       allow create: if false; // Only Cloud Functions can create
       allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
@@ -332,6 +422,7 @@ service cloud.firestore {
 
     match /barber_tip_ledger/{entryId} {
       allow read: if isAuthenticated() && (
+        isAdmin() ||
         (isOwner(request.auth.uid) && request.auth.uid == resource.data.salonId) ||
         (isBarber(request.auth.uid) && request.auth.uid == resource.data.barberId)
       );
@@ -354,6 +445,7 @@ service cloud.firestore {
 
     match /platform_fee_ledger/{entryId} {
       allow read: if isAuthenticated() && (
+        isAdmin() ||
         (isOwner(request.auth.uid) && request.auth.uid == resource.data.salonId) ||
         (isBarber(request.auth.uid) && barberOwnerId(request.auth.uid) == resource.data.salonId)
       );
@@ -369,6 +461,7 @@ service cloud.firestore {
 
     match /barber_payouts/{payoutId} {
       allow read: if isAuthenticated() && (
+        isAdmin() ||
         (isOwner(request.auth.uid) && request.auth.uid == resource.data.salonId) ||
         (isBarber(request.auth.uid) && request.auth.uid == resource.data.barberId)
       );
@@ -386,12 +479,22 @@ service cloud.firestore {
 
     match /platform_fee_payments/{paymentId} {
       allow read: if isAuthenticated()
-        && isOwner(request.auth.uid)
-        && request.auth.uid == resource.data.salonId;
+        && (
+          isAdmin() ||
+          (
+            isOwner(request.auth.uid)
+            && request.auth.uid == resource.data.salonId
+          )
+        );
       allow create: if isAuthenticated()
         && isOwner(request.auth.uid)
         && request.resource.data.salonId == request.auth.uid;
       allow update, delete: if false;
+    }
+
+    match /admin_audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
     }
     
     // Top-level queue collection (fallback)

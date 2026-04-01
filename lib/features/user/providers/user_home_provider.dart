@@ -134,9 +134,11 @@ class UserHomeProvider extends ChangeNotifier {
         _hasMore = false;
       }
 
-      final salons = await Future.wait(
+      final salons = (await Future.wait(
         snapshot.docs.map((doc) => _mapSalon(doc.id, doc.data())),
-      );
+      ))
+          .whereType<UserSalon>()
+          .toList();
 
       final merged = <String, UserSalon>{
         for (final salon in _allSalons) salon.id: salon,
@@ -165,17 +167,30 @@ class UserHomeProvider extends ChangeNotifier {
     }
   }
 
-  Future<UserSalon> _mapSalon(String id, Map<String, dynamic> data) async {
+  Future<UserSalon?> _mapSalon(String id, Map<String, dynamic> data) async {
     try {
+      final verificationStatus = _verificationStatus(data);
+      if (verificationStatus != 'verified') {
+        return null;
+      }
+
+      final supplement = await _fetchSalonSupplement(
+        id,
+        needsSupplement:
+            !data.containsKey('isRestricted') || !data.containsKey('isOpen'),
+      );
       final topServices = _parseTopServices(data['topServices']);
       final services = topServices.isNotEmpty ? topServices : const <String>[];
 
       final isOpenFlag = data['isOpen'];
-      final bool isOpenNow = isOpenFlag is bool ? isOpenFlag : false;
+      final bool isOpenNow = isOpenFlag is bool
+          ? isOpenFlag
+          : (supplement?['isOpen'] as bool?) ?? false;
+      final bool isRestricted =
+          data['isRestricted'] == true || supplement?['isRestricted'] == true;
 
-      final locationField = data['location'];
-      final GeoPoint? geoPoint =
-          locationField is GeoPoint ? locationField : null;
+      final geoPoint = _parseGeoPoint(data) ??
+          (supplement != null ? _parseGeoPoint(supplement) : null);
 
       final waitMinutes = _summaryWaitMinutes(data);
 
@@ -185,6 +200,7 @@ class UserHomeProvider extends ChangeNotifier {
         address: (data['address'] as String?) ?? 'Address unavailable',
         contact: (data['contact'] as String?) ?? '',
         isOpenNow: isOpenNow,
+        isTemporarilyUnavailable: isRestricted,
         waitMinutes: waitMinutes,
         topServices: services.take(3).toList(),
         isFavorite: _favoriteIds.contains(id),
@@ -202,6 +218,7 @@ class UserHomeProvider extends ChangeNotifier {
         address: (data['address'] as String?) ?? 'Address unavailable',
         contact: (data['contact'] as String?) ?? '',
         isOpenNow: false,
+        isTemporarilyUnavailable: false,
         waitMinutes: 0,
         topServices: <String>[],
         isFavorite: _favoriteIds.contains(id),
@@ -224,6 +241,59 @@ class UserHomeProvider extends ChangeNotifier {
           .toList();
     }
     return [];
+  }
+
+  Future<Map<String, dynamic>?> _fetchSalonSupplement(
+    String salonId, {
+    required bool needsSupplement,
+  }) async {
+    if (!needsSupplement) return null;
+    try {
+      final salonDoc = await FirestoreCache.getDocCacheFirst(
+        _firestore.collection('salons').doc(salonId),
+      );
+      return salonDoc.data();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _verificationStatus(Map<String, dynamic> data) {
+    final raw = (data['verificationStatus'] as String?)?.trim().toLowerCase();
+    if (raw == null || raw.isEmpty) return 'verified';
+    return raw;
+  }
+
+  GeoPoint? _parseGeoPoint(Map<String, dynamic> data) {
+    final locationField = data['location'];
+    if (locationField is GeoPoint) {
+      return locationField;
+    }
+    if (locationField is Map) {
+      final latitude =
+          _parseCoordinate(locationField['latitude'] ?? locationField['lat']);
+      final longitude = _parseCoordinate(
+        locationField['longitude'] ??
+            locationField['lng'] ??
+            locationField['lon'],
+      );
+      if (latitude != null && longitude != null) {
+        return GeoPoint(latitude, longitude);
+      }
+    }
+
+    final latitude = _parseCoordinate(data['latitude'] ?? data['lat']);
+    final longitude = _parseCoordinate(
+      data['longitude'] ?? data['lng'] ?? data['lon'],
+    );
+    if (latitude == null || longitude == null) return null;
+    return GeoPoint(latitude, longitude);
+  }
+
+  double? _parseCoordinate(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
   }
 
   int _summaryWaitMinutes(Map<String, dynamic> data) {
@@ -292,7 +362,7 @@ class UserHomeProvider extends ChangeNotifier {
       );
       return salon.copyWith(distanceMeters: distance);
     }).where((salon) =>
-        salon.distanceMeters == null || salon.distanceMeters! <= radiusMeters);
+        salon.distanceMeters != null && salon.distanceMeters! <= radiusMeters);
 
     if (query.isNotEmpty) {
       list = list.where((salon) {
@@ -325,11 +395,14 @@ class UserHomeProvider extends ChangeNotifier {
 }
 
 class UserSalon {
+  static const Object _distanceUnchanged = Object();
+
   final String id;
   final String name;
   final String address;
   final String contact;
   final bool isOpenNow;
+  final bool isTemporarilyUnavailable;
   final int waitMinutes;
   final List<String> topServices;
   final bool isFavorite;
@@ -343,6 +416,7 @@ class UserSalon {
     required this.address,
     required this.contact,
     required this.isOpenNow,
+    required this.isTemporarilyUnavailable,
     required this.waitMinutes,
     required this.topServices,
     required this.isFavorite,
@@ -353,7 +427,7 @@ class UserSalon {
 
   UserSalon copyWith({
     bool? isFavorite,
-    double? distanceMeters,
+    Object? distanceMeters = _distanceUnchanged,
   }) {
     return UserSalon(
       id: id,
@@ -361,11 +435,14 @@ class UserSalon {
       address: address,
       contact: contact,
       isOpenNow: isOpenNow,
+      isTemporarilyUnavailable: isTemporarilyUnavailable,
       waitMinutes: waitMinutes,
       topServices: topServices,
       isFavorite: isFavorite ?? this.isFavorite,
       geoPoint: geoPoint,
-      distanceMeters: distanceMeters,
+      distanceMeters: identical(distanceMeters, _distanceUnchanged)
+          ? this.distanceMeters
+          : distanceMeters as double?,
       coverImageUrl: coverImageUrl,
     );
   }
@@ -380,11 +457,11 @@ class UserSalon {
 
   String get distanceLabel {
     final meters = distanceMeters;
-    if (meters == null) return 'nearby';
-    final km = meters / 1000.0;
-    if (km < 1) {
-      return '${km.toStringAsFixed(1)} km';
+    if (meters == null) return '';
+    if (meters < 1000) {
+      return '${meters.round()} m';
     }
+    final km = meters / 1000.0;
     if (km < 10) {
       return '${km.toStringAsFixed(1)} km';
     }
