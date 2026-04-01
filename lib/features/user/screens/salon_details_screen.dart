@@ -46,7 +46,7 @@ class SalonDetailsScreen extends StatelessWidget {
             onFavoriteToggle: provider.toggleFavorite,
           ),
           body: _buildContent(context, provider, details),
-          floatingActionButton: details == null
+          floatingActionButton: details == null || details.isRestricted
               ? null
               : BookNowFab(
                   salonId: details.id,
@@ -85,11 +85,14 @@ class SalonDetailsScreen extends StatelessWidget {
                     style: const TextStyle(color: Colors.red)),
               ),
             if (details != null) ...[
+              if (details.isRestricted) const _TemporarilyUnavailableBanner(),
               SalonInfoSection(details: details),
               _smallGap,
               WorkingHoursCard(
                 hours: details.workingHours,
                 isOpen: details.isOpen,
+                statusOverride:
+                    details.isRestricted ? 'Temporarily unavailable' : null,
               ),
               _mediumGap,
               BarberListSection(barbers: provider.barbers),
@@ -98,27 +101,30 @@ class SalonDetailsScreen extends StatelessWidget {
                 salonName: details.name,
                 photos: details.galleryPhotos,
               ),
-              _mediumGap,
-              ComboOfferCard(
-                salonId: details.id,
-                salonName: details.name,
-                combo: details.combos.isNotEmpty ? details.combos.first : null,
-              ),
-              _mediumGap,
-              ServicesSection(
-                salonId: details.id,
-                salonName: details.name,
-                services: details.services,
-                topServices: details.topServices,
-              ),
-              _mediumGap,
-              LiveQueueSection(
-                waitMinutes: details.waitMinutes,
-                queue: details.queue,
-                salonId: details.id,
-                isLoading: provider.isQueueLoading,
-                onLoadQueue: provider.loadQueue,
-              ),
+              if (!details.isRestricted) ...[
+                _mediumGap,
+                ComboOfferCard(
+                  salonId: details.id,
+                  salonName: details.name,
+                  combo:
+                      details.combos.isNotEmpty ? details.combos.first : null,
+                ),
+                _mediumGap,
+                ServicesSection(
+                  salonId: details.id,
+                  salonName: details.name,
+                  services: details.services,
+                  topServices: details.topServices,
+                ),
+                _mediumGap,
+                LiveQueueSection(
+                  waitMinutes: details.waitMinutes,
+                  queue: details.queue,
+                  salonId: details.id,
+                  isLoading: provider.isQueueLoading,
+                  onLoadQueue: provider.loadQueue,
+                ),
+              ],
             ] else ...[
               const SizedBox(height: 30),
             ],
@@ -360,18 +366,21 @@ class SalonInfoSection extends StatelessWidget {
 class WorkingHoursCard extends StatelessWidget {
   final List<SalonWorkingHour> hours;
   final bool isOpen;
+  final String? statusOverride;
 
   const WorkingHoursCard({
     super.key,
     required this.hours,
     required this.isOpen,
+    this.statusOverride,
   });
 
   @override
   Widget build(BuildContext context) {
     final displayHours = hours.isNotEmpty ? hours : <SalonWorkingHour>[];
     final closingLabel = _closingLabel(displayHours);
-    final statusText = isOpen ? closingLabel : 'Closed now';
+    final statusText = statusOverride ?? (isOpen ? closingLabel : 'Closed now');
+    final isOverride = statusOverride != null;
     return Padding(
       padding: CutlineSpacing.section,
       child: Container(
@@ -414,21 +423,38 @@ class WorkingHoursCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: isOpen
-                    ? Colors.green.withValues(alpha: 0.1)
-                    : Colors.red.withValues(alpha: 0.1),
+                color: isOverride
+                    ? Colors.orange.withValues(alpha: 0.12)
+                    : isOpen
+                        ? Colors.green.withValues(alpha: 0.1)
+                        : Colors.red.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(isOpen ? Icons.check_circle : Icons.schedule,
-                      color: isOpen ? Colors.green : Colors.red, size: 18),
+                  Icon(
+                    isOverride
+                        ? Icons.info_outline
+                        : isOpen
+                            ? Icons.check_circle
+                            : Icons.schedule,
+                    color: isOverride
+                        ? Colors.orange.shade800
+                        : isOpen
+                            ? Colors.green
+                            : Colors.red,
+                    size: 18,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     statusText,
                     style: TextStyle(
-                      color: isOpen ? Colors.green : Colors.red,
+                      color: isOverride
+                          ? Colors.orange.shade800
+                          : isOpen
+                              ? Colors.green
+                              : Colors.red,
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
                     ),
@@ -473,6 +499,43 @@ class WorkingHoursCard extends StatelessWidget {
     final minute = time.minute.toString().padLeft(2, '0');
     final suffix = time.period == DayPeriod.am ? 'AM' : 'PM';
     return '$hour:$minute $suffix';
+  }
+}
+
+class _TemporarilyUnavailableBanner extends StatelessWidget {
+  const _TemporarilyUnavailableBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: CutlineSpacing.section.copyWith(bottom: 0),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF4E5),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFF5C47A)),
+        ),
+        child: const Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline, color: Color(0xFFB45309)),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'This salon is temporarily unavailable right now. You can browse details, but booking is currently disabled.',
+                style: TextStyle(
+                  color: Color(0xFF9A3412),
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

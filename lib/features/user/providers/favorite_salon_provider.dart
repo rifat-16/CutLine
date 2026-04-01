@@ -62,14 +62,31 @@ class FavoriteSalonProvider extends ChangeNotifier {
           _firestore.collection('salons_summary').doc(salonId));
       final data = doc.data();
       if (data == null) return null;
+      final verificationStatus =
+          ((data['verificationStatus'] as String?) ?? 'verified')
+              .trim()
+              .toLowerCase();
+      if (verificationStatus.isNotEmpty && verificationStatus != 'verified') {
+        return null;
+      }
+      final supplement = await _fetchSalonSupplement(
+        salonId,
+        needsSupplement:
+            !data.containsKey('isRestricted') || !data.containsKey('isOpen'),
+      );
       final waitMinutes = _summaryWaitMinutes(data);
       final isOpenFlag = data['isOpen'];
-      final bool isOpenNow = isOpenFlag is bool ? isOpenFlag : false;
+      final bool isOpenNow = isOpenFlag is bool
+          ? isOpenFlag
+          : (supplement?['isOpen'] as bool?) ?? false;
+      final bool isRestricted =
+          data['isRestricted'] == true || supplement?['isRestricted'] == true;
       return FavoriteSalon(
         id: salonId,
         name: (data['name'] as String?) ?? 'Salon',
         address: (data['address'] as String?) ?? 'Address unavailable',
         isOpen: isOpenNow,
+        isTemporarilyUnavailable: isRestricted,
         waitMinutes: waitMinutes,
         rating: (data['rating'] as num?)?.toDouble() ?? 4.6,
         reviews: (data['reviews'] as num?)?.toInt() ?? 120,
@@ -77,6 +94,21 @@ class FavoriteSalonProvider extends ChangeNotifier {
         coverImageUrl: (data['coverImageUrl'] as String?) ??
             (data['coverPhoto'] as String?),
       );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _fetchSalonSupplement(
+    String salonId, {
+    required bool needsSupplement,
+  }) async {
+    if (!needsSupplement) return null;
+    try {
+      final doc = await FirestoreCache.getDocCacheFirst(
+        _firestore.collection('salons').doc(salonId),
+      );
+      return doc.data();
     } catch (_) {
       return null;
     }
@@ -117,6 +149,7 @@ class FavoriteSalon {
   final String name;
   final String address;
   final bool isOpen;
+  final bool isTemporarilyUnavailable;
   final int waitMinutes;
   final double rating;
   final int reviews;
@@ -128,6 +161,7 @@ class FavoriteSalon {
     required this.name,
     required this.address,
     required this.isOpen,
+    required this.isTemporarilyUnavailable,
     required this.waitMinutes,
     required this.rating,
     required this.reviews,
@@ -138,6 +172,7 @@ class FavoriteSalon {
   String get waitLabel =>
       waitMinutes <= 0 ? 'No wait' : '$waitMinutes min wait';
 
-  String get servicesLabel =>
-      topServices.isEmpty ? 'Popular services will appear here' : topServices.join(', ');
+  String get servicesLabel => topServices.isEmpty
+      ? 'Popular services will appear here'
+      : topServices.join(', ');
 }

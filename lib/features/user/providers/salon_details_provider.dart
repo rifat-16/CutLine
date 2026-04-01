@@ -145,31 +145,44 @@ class SalonDetailsProvider extends ChangeNotifier {
   }
 
   Future<DocumentSnapshot<Map<String, dynamic>>?> _fetchSalonDoc() async {
-    try {
-      DocumentSnapshot<Map<String, dynamic>>? doc;
-      if (salonId.isNotEmpty) {
+    DocumentSnapshot<Map<String, dynamic>>? doc;
+    if (salonId.isNotEmpty) {
+      try {
         doc = await FirestoreCache.getDocCacheFirst(
-            _firestore.collection('salons').doc(salonId));
-        if (doc.exists) {
-          return doc;
-        } else {}
+          _firestore.collection('salons').doc(salonId),
+        );
+      } on FirebaseException catch (e) {
+        if (e.code == 'permission-denied' || e.code == 'unavailable') {
+          rethrow;
+        }
+      } catch (_) {
+        // Fall back to name-based lookup below.
       }
-      if (salonName.isNotEmpty) {
-        try {
-          final query = await FirestoreCache.getQueryCacheFirst(_firestore
+      if (doc != null && doc.exists) {
+        return doc;
+      }
+    }
+    if (salonName.isNotEmpty) {
+      try {
+        final query = await FirestoreCache.getQueryCacheFirst(
+          _firestore
               .collection('salons')
               .where('name', isEqualTo: salonName)
               .where('verificationStatus', isEqualTo: 'verified')
-              .limit(1));
-          if (query.docs.isNotEmpty) {
-            return query.docs.first;
-          } else {}
-        } catch (e) {}
+              .limit(1),
+        );
+        if (query.docs.isNotEmpty) {
+          return query.docs.first;
+        }
+      } on FirebaseException catch (e) {
+        if (e.code == 'permission-denied' || e.code == 'unavailable') {
+          rethrow;
+        }
+      } catch (_) {
+        // Treat as not found when all lookup strategies fail.
       }
-      return null;
-    } catch (e, stackTrace) {
-      return null;
     }
+    return null;
   }
 
   Future<Map<String, dynamic>?> _fetchSalonSummary(String salonId) async {
@@ -222,6 +235,7 @@ class SalonDetailsProvider extends ChangeNotifier {
       rating: (data['rating'] as num?)?.toDouble() ?? 4.6,
       reviews: (data['reviews'] as num?)?.toInt() ?? 120,
       isOpen: (data['isOpen'] as bool?) ?? false,
+      isRestricted: data['isRestricted'] == true,
       waitMinutes: waitMinutes,
       coverImageUrl:
           (data['coverImageUrl'] as String?) ?? (data['coverPhoto'] as String?),
@@ -1189,6 +1203,7 @@ class SalonDetailsData {
   final double rating;
   final int reviews;
   final bool isOpen;
+  final bool isRestricted;
   final int waitMinutes;
   final String? coverImageUrl;
   final List<String> galleryPhotos;
@@ -1210,6 +1225,7 @@ class SalonDetailsData {
     required this.rating,
     required this.reviews,
     required this.isOpen,
+    required this.isRestricted,
     required this.waitMinutes,
     required this.coverImageUrl,
     required this.galleryPhotos,
@@ -1240,6 +1256,7 @@ class SalonDetailsData {
     double? rating,
     int? reviews,
     bool? isOpen,
+    bool? isRestricted,
     int? waitMinutes,
     String? coverImageUrl,
     List<String>? galleryPhotos,
@@ -1261,6 +1278,7 @@ class SalonDetailsData {
       rating: rating ?? this.rating,
       reviews: reviews ?? this.reviews,
       isOpen: isOpen ?? this.isOpen,
+      isRestricted: isRestricted ?? this.isRestricted,
       waitMinutes: waitMinutes ?? this.waitMinutes,
       coverImageUrl: coverImageUrl ?? this.coverImageUrl,
       galleryPhotos: galleryPhotos ?? this.galleryPhotos,

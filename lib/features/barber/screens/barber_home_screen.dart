@@ -36,7 +36,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
 
         return Scaffold(
           appBar: _buildAppBar(context, provider),
-          floatingActionButton: provider.isSalonOpen
+          floatingActionButton: provider.canOperate
               ? FloatingActionButton.extended(
                   onPressed: () => _openManualEntrySheet(context, provider),
                   icon: const Icon(Icons.person_add_alt_1_outlined),
@@ -49,7 +49,33 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
               padding: const EdgeInsets.all(16),
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
-                if (!provider.isSalonOpen)
+                if (provider.isRestricted)
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.orange.withValues(alpha: 0.28),
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Icon(Icons.info_outline, color: Colors.orange),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'This salon is temporarily unavailable right now. Queue actions are blocked until the owner resolves it.',
+                            style:
+                                TextStyle(color: Colors.orange, fontSize: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (!provider.isSalonOpen)
                   Container(
                     padding: const EdgeInsets.all(14),
                     margin: const EdgeInsets.only(bottom: 16),
@@ -91,7 +117,31 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                       style: const TextStyle(color: Colors.red),
                     ),
                   ),
-                if (!provider.isSalonOpen)
+                if (provider.isRestricted)
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.orange.shade200,
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      children: const [
+                        Icon(Icons.lock_outline,
+                            size: 40, color: Colors.orange),
+                        SizedBox(height: 10),
+                        Text(
+                          "Salon is temporarily unavailable. Actions will be enabled again once the owner resolves it.",
+                          style: TextStyle(fontSize: 15, color: Colors.black54),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  )
+                else if (!provider.isSalonOpen)
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -148,30 +198,34 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                         padding: const EdgeInsets.only(bottom: 14),
                         child: _QueueCard(
                           item: item,
-                          onStartServing: isCurrentTurn
+                          onStartServing: isCurrentTurn && provider.canOperate
                               ? () => provider.updateStatus(
                                     item.id,
                                     BarberQueueStatus.serving,
                                   )
                               : null,
-                          onCancel: isCurrentTurn
+                          onCancel: isCurrentTurn && provider.canOperate
                               ? () => provider.updateStatus(
                                     item.id,
                                     BarberQueueStatus.cancelled,
                                   )
                               : null,
-                          onMarkDone: item.status == BarberQueueStatus.serving
-                              ? () => provider.updateStatus(
-                                    item.id,
-                                    BarberQueueStatus.done,
-                                  )
-                              : null,
-                          onUndoStart: item.status == BarberQueueStatus.serving
-                              ? () => provider.updateStatus(
-                                    item.id,
-                                    BarberQueueStatus.waiting,
-                                  )
-                              : null,
+                          onMarkDone:
+                              item.status == BarberQueueStatus.serving &&
+                                      provider.canOperate
+                                  ? () => provider.updateStatus(
+                                        item.id,
+                                        BarberQueueStatus.done,
+                                      )
+                                  : null,
+                          onUndoStart:
+                              item.status == BarberQueueStatus.serving &&
+                                      provider.canOperate
+                                  ? () => provider.updateStatus(
+                                        item.id,
+                                        BarberQueueStatus.waiting,
+                                      )
+                                  : null,
                         ),
                       );
                     },
@@ -531,22 +585,32 @@ class _AvailabilitySwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isAvailable = provider.isAvailable;
+    final isRestricted = provider.isRestricted;
+    final isAvailable = isRestricted ? false : provider.isAvailable;
+    final label = isRestricted
+        ? 'Temporarily unavailable'
+        : (isAvailable ? 'Available' : 'Unavailable');
+    final labelColor = isRestricted
+        ? Colors.orange.shade800
+        : (isAvailable ? Colors.green : Colors.redAccent);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _statusDot(isAvailable),
+        _statusDot(
+          isAvailable,
+          isRestricted: isRestricted,
+        ),
         const SizedBox(width: 6),
         Text(
-          isAvailable ? 'Available' : 'Unavailable',
+          label,
           style: TextStyle(
-            color: isAvailable ? Colors.green : Colors.redAccent,
+            color: labelColor,
             fontWeight: FontWeight.w600,
           ),
         ),
         Switch.adaptive(
           value: isAvailable,
-          onChanged: provider.isUpdatingAvailability
+          onChanged: provider.isUpdatingAvailability || isRestricted
               ? null
               : (value) => provider.setAvailability(value),
           activeThumbColor: Colors.green,
@@ -556,12 +620,14 @@ class _AvailabilitySwitch extends StatelessWidget {
     );
   }
 
-  Widget _statusDot(bool isAvailable) {
+  Widget _statusDot(bool isAvailable, {required bool isRestricted}) {
     return Container(
       width: 10,
       height: 10,
       decoration: BoxDecoration(
-        color: isAvailable ? Colors.green : Colors.redAccent,
+        color: isRestricted
+            ? Colors.orange.shade700
+            : (isAvailable ? Colors.green : Colors.redAccent),
         shape: BoxShape.circle,
       ),
     );

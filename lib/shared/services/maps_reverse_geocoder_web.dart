@@ -73,7 +73,8 @@ class MapsReverseGeocoder {
       });
 
       js_util.callMethod(geocoder, 'geocode', [request, callback]);
-      return completer.future.timeout(const Duration(seconds: 3), onTimeout: () {
+      return completer.future.timeout(const Duration(seconds: 3),
+          onTimeout: () {
         _lastError ??= 'TIMEOUT';
         completeOnce('');
         return '';

@@ -31,12 +31,14 @@ class ContactSupportProvider extends ChangeNotifier {
       await _firestore.collection('supportRequests').add({
         'ownerId': user?.uid,
         'ownerEmail': user?.email,
+        'ownerName': _authProvider.profile?.name ?? user?.displayName,
         'contact': contact,
         'category': category,
         'subject': subject,
         'message': message,
         'status': 'open',
         'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
       return true;
     } catch (e) {

@@ -1,6 +1,4 @@
 import 'dart:convert';
-import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:cutline/features/user/providers/user_location_provider.dart';
@@ -33,19 +31,23 @@ class SalonMapScreen extends StatefulWidget {
 }
 
 class _SalonMapScreenState extends State<SalonMapScreen> {
+  late final Future<void> _mapsReadyFuture;
   GoogleMapController? _controller;
-  bool _myLocationEnabled = false;
   BitmapDescriptor? _salonMarkerIcon;
   BitmapDescriptor? _userMarkerIcon;
+  bool _isLoadingMarkerIcons = false;
+  bool _isFetchingRoute = false;
   Set<Polyline> _routePolylines = {};
   LatLng? _lastRouteOrigin;
+  String? _routeDistanceLabel;
+  String? _routeDurationLabel;
 
   LatLng get _salonLatLng => LatLng(widget.salonLat, widget.salonLng);
 
   @override
   void initState() {
     super.initState();
-    _initMyLocation();
+    _mapsReadyFuture = GoogleMapsJsLoader.ensureLoaded();
   }
 
   @override
@@ -60,38 +62,128 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
     super.dispose();
   }
 
-  Future<void> _initMyLocation() async {
+  Future<void> _ensureMarkerIcons() async {
+    if ((_salonMarkerIcon != null && _userMarkerIcon != null) ||
+        _isLoadingMarkerIcons) {
+      return;
+    }
+
+    _isLoadingMarkerIcons = true;
+    final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
     try {
-      final enabled = await Geolocator.isLocationServiceEnabled();
-      if (!enabled) return;
-      final permission = await Geolocator.checkPermission();
-      final allowed = permission == LocationPermission.always ||
-          permission == LocationPermission.whileInUse;
+      final salonIcon = await _buildLabeledPinMarker(
+        label: widget.salonName,
+        pinColor: const Color(0xFFE11D48),
+        labelBorderColor: const Color(0xFFFBCFE8),
+        devicePixelRatio: devicePixelRatio,
+      );
+      final userIcon = await _buildLabeledPinMarker(
+        label: 'You',
+        pinColor: Colors.blueAccent,
+        labelBorderColor: const Color(0xFFBFDBFE),
+        devicePixelRatio: devicePixelRatio,
+      );
       if (!mounted) return;
-      setState(() => _myLocationEnabled = allowed);
-    } catch (_) {
-      // Ignore, map still works without user location.
+      setState(() {
+        _salonMarkerIcon = salonIcon;
+        _userMarkerIcon = userIcon;
+      });
+    } finally {
+      _isLoadingMarkerIcons = false;
     }
   }
 
-  Future<void> _ensureMarkerIcons() async {
-    if (_salonMarkerIcon != null && _userMarkerIcon != null) return;
-    final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
-    final salonIcon = await _buildLabeledMarker(
-      label: widget.salonName,
-      accentColor: Colors.redAccent,
-      devicePixelRatio: devicePixelRatio,
+  Future<BitmapDescriptor> _buildLabeledPinMarker({
+    required String label,
+    required Color pinColor,
+    required Color labelBorderColor,
+    required double devicePixelRatio,
+  }) async {
+    final scale = devicePixelRatio.clamp(1.0, 3.0);
+    final maxTextWidth = 74.0 * scale;
+    final horizontalPadding = 6.0 * scale;
+    final labelHeight = 18.0 * scale;
+    final pinSize = 18.0 * scale;
+    final gap = 2.0 * scale;
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: TextStyle(
+          color: const Color(0xFF111827),
+          fontSize: 8.6 * scale,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(maxWidth: maxTextWidth);
+    final labelWidth = textPainter.width + horizontalPadding * 2;
+    final width = labelWidth > pinSize ? labelWidth : pinSize;
+    final height = labelHeight + gap + pinSize;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final labelRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH((width - labelWidth) / 2, 0, labelWidth, labelHeight),
+      Radius.circular(999 * scale),
     );
-    final userIcon = await _buildLabeledMarker(
-      label: 'You',
-      accentColor: Colors.blueAccent,
-      devicePixelRatio: devicePixelRatio,
+
+    canvas.drawRRect(
+      labelRect.shift(Offset(0, 2.0 * scale)),
+      Paint()..color = Colors.black.withValues(alpha: 0.10),
     );
-    if (!mounted) return;
-    setState(() {
-      _salonMarkerIcon = salonIcon;
-      _userMarkerIcon = userIcon;
-    });
+    canvas.drawRRect(labelRect, Paint()..color = Colors.white);
+    canvas.drawRRect(
+      labelRect,
+      Paint()
+        ..color = labelBorderColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.9 * scale,
+    );
+
+    textPainter.paint(
+      canvas,
+      Offset(
+        (width - textPainter.width) / 2,
+        (labelHeight - textPainter.height) / 2,
+      ),
+    );
+
+    final pinPainter = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(Icons.location_on_rounded.codePoint),
+        style: TextStyle(
+          fontSize: pinSize,
+          fontFamily: Icons.location_on_rounded.fontFamily,
+          package: Icons.location_on_rounded.fontPackage,
+          color: pinColor,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    pinPainter.paint(
+      canvas,
+      Offset(
+        (width - pinPainter.width) / 2,
+        labelHeight + gap,
+      ),
+    );
+
+    canvas.drawCircle(
+      Offset(width / 2, labelHeight + gap + pinSize * 0.34),
+      pinSize * 0.13,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.18)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.6 * scale,
+    );
+
+    final image = await recorder
+        .endRecording()
+        .toImage(width.ceil(), height.ceil());
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    final data = bytes?.buffer.asUint8List() ?? Uint8List(0);
+    return BitmapDescriptor.bytes(data);
   }
 
   Future<void> _fitToMarkers(UserLocationProvider locationProvider) async {
@@ -142,10 +234,18 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
   void _maybeUpdateRoute(UserLocationProvider locationProvider) {
     final user = locationProvider.location;
     if (user == null) {
-      if (_routePolylines.isNotEmpty) {
+      if (_routePolylines.isNotEmpty ||
+          _routeDistanceLabel != null ||
+          _routeDurationLabel != null ||
+          _isFetchingRoute) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          setState(() => _routePolylines = {});
+          setState(() {
+            _isFetchingRoute = false;
+            _routePolylines = {};
+            _routeDistanceLabel = null;
+            _routeDurationLabel = null;
+          });
         });
       }
       return;
@@ -167,18 +267,28 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
   }
 
   Future<void> _fetchAndSetRoute(LatLng origin, LatLng destination) async {
-    final points = await _fetchRoutePoints(origin, destination);
+    if (mounted && !_isFetchingRoute) {
+      setState(() => _isFetchingRoute = true);
+    }
+    final route = await _fetchRoutePreview(origin, destination);
     if (!mounted) return;
     setState(() {
-      _routePolylines = {
-        Polyline(
-          polylineId: const PolylineId('route'),
-          points: points,
-          color: CutlineColors.primary,
-          width: 5,
-          geodesic: points.length == 2,
-        ),
-      };
+      _isFetchingRoute = false;
+      _routeDistanceLabel = route.distanceLabel;
+      _routeDurationLabel = route.durationLabel;
+      _routePolylines = route.points.length < 2
+          ? {}
+          : {
+              Polyline(
+                polylineId: const PolylineId('route'),
+                points: route.points,
+                color: CutlineColors.primary.withValues(alpha: 0.72),
+                width: 6,
+                startCap: Cap.roundCap,
+                endCap: Cap.roundCap,
+                jointType: JointType.round,
+              ),
+            };
     });
   }
 
@@ -222,13 +332,13 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
     }
   }
 
-  Future<List<LatLng>> _fetchRoutePoints(
+  Future<_RoutePreview> _fetchRoutePreview(
     LatLng origin,
     LatLng destination,
   ) async {
     final apiKey = const String.fromEnvironment('MAPS_API_KEY').trim();
     if (apiKey.isEmpty) {
-      return [origin, destination];
+      return const _RoutePreview.empty();
     }
     try {
       final uri = Uri.https(
@@ -245,22 +355,39 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
           .get(uri)
           .timeout(const Duration(seconds: 12));
       if (response.statusCode != 200) {
-        return [origin, destination];
+        return const _RoutePreview.empty();
       }
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       final routes = data['routes'] as List<dynamic>?;
       if (routes == null || routes.isEmpty) {
-        return [origin, destination];
+        return const _RoutePreview.empty();
       }
-      final overview = routes.first['overview_polyline'] as Map<String, dynamic>?;
+      final firstRoute = routes.first as Map<String, dynamic>;
+      final legs = firstRoute['legs'] as List<dynamic>?;
+      final firstLeg = legs != null && legs.isNotEmpty
+          ? legs.first as Map<String, dynamic>
+          : null;
+      final distance = (firstLeg?['distance'] as Map<String, dynamic>?)?['text']
+          as String?;
+      final duration = (firstLeg?['duration'] as Map<String, dynamic>?)?['text']
+          as String?;
+      final overview = firstRoute['overview_polyline'] as Map<String, dynamic>?;
       final encoded = overview?['points'] as String?;
       if (encoded == null || encoded.isEmpty) {
-        return [origin, destination];
+        return _RoutePreview(
+          points: const <LatLng>[],
+          distanceLabel: distance,
+          durationLabel: duration,
+        );
       }
       final decoded = _decodePolyline(encoded);
-      return decoded.isNotEmpty ? decoded : [origin, destination];
+      return _RoutePreview(
+        points: decoded,
+        distanceLabel: distance,
+        durationLabel: duration,
+      );
     } catch (_) {
-      return [origin, destination];
+      return const _RoutePreview.empty();
     }
   }
 
@@ -297,91 +424,46 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
     return points;
   }
 
-  Future<BitmapDescriptor> _buildLabeledMarker({
-    required String label,
-    required Color accentColor,
-    required double devicePixelRatio,
-  }) async {
-    final scale = devicePixelRatio.clamp(1.0, 3.0);
-    final paddingX = 10.0 * scale;
-    final paddingY = 6.0 * scale;
-    final fontSize = 13.0 * scale;
-    final dotRadius = 6.0 * scale;
-    final gap = 4.0 * scale;
-    final borderRadius = 10.0 * scale;
-
-    final textPainter = TextPainter(
-      text: TextSpan(
-        text: label,
-        style: TextStyle(
-          color: Colors.black87,
-          fontSize: fontSize,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      ellipsis: '…',
-    )..layout(maxWidth: 200 * scale);
-
-    final labelWidth = textPainter.width + paddingX * 2;
-    final labelHeight = textPainter.height + paddingY * 2;
-    final width = math.max(labelWidth, dotRadius * 2 + 4 * scale);
-    final height = labelHeight + gap + dotRadius * 2;
-
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-
-    final labelRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, 0, width, labelHeight),
-      Radius.circular(borderRadius),
+  String? _distanceLabel(UserLocationProvider locationProvider) {
+    if (_routeDistanceLabel != null && _routeDistanceLabel!.trim().isNotEmpty) {
+      return _routeDistanceLabel;
+    }
+    final user = locationProvider.location;
+    if (user == null) return null;
+    final meters = Geolocator.distanceBetween(
+      user.latitude,
+      user.longitude,
+      widget.salonLat,
+      widget.salonLng,
     );
-    final bgPaint = Paint()..color = Colors.white;
-    final borderPaint = Paint()
-      ..color = accentColor.withValues(alpha: 0.35)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1 * scale;
+    return 'Approx. ${_formatDistance(meters)}';
+  }
 
-    canvas.drawRRect(labelRect, bgPaint);
-    canvas.drawRRect(labelRect, borderPaint);
-
-    textPainter.paint(
-      canvas,
-      Offset(
-        (width - textPainter.width) / 2,
-        (labelHeight - textPainter.height) / 2,
-      ),
-    );
-
-    final dotCenter = Offset(width / 2, labelHeight + gap + dotRadius);
-    final dotPaint = Paint()..color = accentColor;
-    final dotBorder = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2 * scale;
-    canvas.drawCircle(dotCenter, dotRadius, dotPaint);
-    canvas.drawCircle(dotCenter, dotRadius, dotBorder);
-
-    final image = await recorder
-        .endRecording()
-        .toImage(width.toInt(), height.toInt());
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    final data = bytes?.buffer.asUint8List() ?? Uint8List(0);
-    return BitmapDescriptor.fromBytes(data);
+  String _formatDistance(double meters) {
+    if (meters < 1000) {
+      return '${meters.round()} m';
+    }
+    final km = meters / 1000.0;
+    if (km < 10) {
+      return '${km.toStringAsFixed(1)} km';
+    }
+    return '${km.toStringAsFixed(0)} km';
   }
 
   @override
   Widget build(BuildContext context) {
     final locationProvider = context.watch<UserLocationProvider>();
-    final user = locationProvider.location;
     _maybeUpdateRoute(locationProvider);
-    final showUserMarker = user != null;
+    final user = locationProvider.location;
 
     final markers = <Marker>{
       Marker(
         markerId: const MarkerId('salon'),
         position: _salonLatLng,
-        infoWindow: InfoWindow(title: widget.salonName),
+        infoWindow: InfoWindow(
+          title: widget.salonName,
+          snippet: 'Salon location',
+        ),
         icon: _salonMarkerIcon ??
             BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         anchor: const Offset(0.5, 1.0),
@@ -390,7 +472,10 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
         Marker(
           markerId: const MarkerId('user'),
           position: LatLng(user.latitude, user.longitude),
-          infoWindow: const InfoWindow(title: 'You'),
+          infoWindow: const InfoWindow(
+            title: 'Your location',
+            snippet: 'Current position',
+          ),
           icon: _userMarkerIcon ??
               BitmapDescriptor.defaultMarkerWithHue(
                 BitmapDescriptor.hueAzure,
@@ -398,6 +483,8 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
           anchor: const Offset(0.5, 1.0),
         ),
     };
+
+    final distanceLabel = _distanceLabel(locationProvider);
 
     return Scaffold(
       backgroundColor: CutlineColors.background,
@@ -410,7 +497,7 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
       body: Stack(
         children: [
           FutureBuilder<void>(
-            future: GoogleMapsJsLoader.ensureLoaded(),
+            future: _mapsReadyFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState != ConnectionState.done) {
                 return const Center(child: CircularProgressIndicator());
@@ -427,8 +514,9 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
                 },
                 markers: markers,
                 polylines: _routePolylines,
-                myLocationEnabled: _myLocationEnabled && !showUserMarker,
-                myLocationButtonEnabled: _myLocationEnabled && !showUserMarker,
+                padding: const EdgeInsets.fromLTRB(16, 96, 16, 220),
+                myLocationEnabled: false,
+                myLocationButtonEnabled: false,
                 zoomControlsEnabled: false,
               );
             },
@@ -437,50 +525,195 @@ class _SalonMapScreenState extends State<SalonMapScreen> {
             left: 16,
             right: 16,
             bottom: 16,
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: CutlineDecorations.card(
-                solidColor: Colors.white,
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.place_outlined,
-                      color: CutlineColors.primary),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+            child: SafeArea(
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.96),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.10),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Text(widget.salonName,
-                            style: CutlineTextStyles.title),
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.address,
-                          style: CutlineTextStyles.subtitle,
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: CutlineColors.primary.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(
+                            Icons.storefront_rounded,
+                            color: CutlineColors.primary,
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        TextButton.icon(
-                          onPressed: () => _openInGoogleMaps(locationProvider),
-                          icon: const Icon(Icons.directions, size: 18),
-                          label: const Text('Open in Google Maps'),
-                          style: TextButton.styleFrom(
-                            foregroundColor: CutlineColors.primary,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(widget.salonName, style: CutlineTextStyles.title),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Salon location',
+                                style: CutlineTextStyles.caption,
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Fit to markers',
+                          onPressed: () => _fitToMarkers(locationProvider),
+                          icon: const Icon(
+                            Icons.center_focus_strong,
+                            color: CutlineColors.primary,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  IconButton(
-                    tooltip: 'Fit to markers',
-                    onPressed: () => _fitToMarkers(locationProvider),
-                    icon: const Icon(Icons.center_focus_strong,
-                        color: CutlineColors.primary),
-                  ),
-                ],
+                    if (distanceLabel != null ||
+                        _routeDurationLabel != null ||
+                        _isFetchingRoute) ...[
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          if (distanceLabel != null)
+                            _MapInfoPill(
+                              icon: Icons.near_me_rounded,
+                              label: distanceLabel,
+                            ),
+                          if (_routeDurationLabel != null &&
+                              _routeDurationLabel!.trim().isNotEmpty)
+                            _MapInfoPill(
+                              icon: Icons.schedule_rounded,
+                              label: _routeDurationLabel!,
+                            ),
+                          if (_isFetchingRoute)
+                            const _MapInfoPill(
+                              icon: Icons.route_rounded,
+                              label: 'Loading route...',
+                            ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Text(
+                      widget.address,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: CutlineTextStyles.subtitle,
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: () => _openInGoogleMaps(locationProvider),
+                            icon: const Icon(Icons.navigation_rounded),
+                            label: const Text('Open in Google Maps'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: CutlineColors.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        OutlinedButton.icon(
+                          onPressed: () => _fitToMarkers(locationProvider),
+                          icon: const Icon(Icons.my_location_rounded),
+                          label: const Text('Center'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: CutlineColors.primary,
+                            side: BorderSide(
+                              color: CutlineColors.primary.withValues(alpha: 0.25),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 14,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_routePolylines.isEmpty && !_isFetchingRoute) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        'If live route is unavailable, Google Maps will open full directions.',
+                        style: CutlineTextStyles.caption,
+                      ),
+                    ],
+                  ],
+                ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoutePreview {
+  const _RoutePreview({
+    required this.points,
+    this.distanceLabel,
+    this.durationLabel,
+  });
+
+  const _RoutePreview.empty() : this(points: const <LatLng>[]);
+
+  final List<LatLng> points;
+  final String? distanceLabel;
+  final String? durationLabel;
+}
+
+class _MapInfoPill extends StatelessWidget {
+  const _MapInfoPill({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: CutlineColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: CutlineColors.primary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: CutlineTextStyles.caption.copyWith(
+              color: CutlineColors.primary,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],

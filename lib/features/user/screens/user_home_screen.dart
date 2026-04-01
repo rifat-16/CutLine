@@ -167,6 +167,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                                       distanceLabel: salon.distanceLabel,
                                       waitMinutes: salon.waitMinutes,
                                       isOpen: salon.isOpenNow,
+                                      isTemporarilyUnavailable:
+                                          salon.isTemporarilyUnavailable,
                                       isFavorite: salon.isFavorite,
                                       topServices: salon.topServices,
                                       coverImageUrl: salon.coverImageUrl,

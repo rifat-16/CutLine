@@ -88,7 +88,11 @@ class _FavoriteSalonCard extends StatelessWidget {
                 children: [
                   _LocationRow(address: salon.address),
                   const SizedBox(height: 6),
-                  _WaitTimeRow(waitLabel: salon.waitLabel, isOpen: salon.isOpen),
+                  _WaitTimeRow(
+                    waitLabel: salon.waitLabel,
+                    isOpen: salon.isOpen,
+                    isTemporarilyUnavailable: salon.isTemporarilyUnavailable,
+                  ),
                   const SizedBox(height: 6),
                   Text('Top Services: ${salon.servicesLabel}',
                       style: CutlineTextStyles.subtitle),
@@ -176,20 +180,41 @@ class _LocationRow extends StatelessWidget {
 class _WaitTimeRow extends StatelessWidget {
   final String waitLabel;
   final bool isOpen;
+  final bool isTemporarilyUnavailable;
 
-  const _WaitTimeRow({required this.waitLabel, required this.isOpen});
+  const _WaitTimeRow({
+    required this.waitLabel,
+    required this.isOpen,
+    required this.isTemporarilyUnavailable,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.access_time, size: 16, color: Colors.grey),
-        const SizedBox(width: 4),
-        Text('Wait time: $waitLabel  •  ', style: CutlineTextStyles.body),
-        Text(
-          isOpen ? 'Open Now' : 'Closed',
-          style: CutlineTextStyles.subtitleBold.copyWith(color: isOpen ? Colors.green : Colors.redAccent),
+        Icon(
+          isTemporarilyUnavailable ? Icons.info_outline : Icons.access_time,
+          size: 16,
+          color: isTemporarilyUnavailable ? Colors.orange.shade700 : Colors.grey,
         ),
+        const SizedBox(width: 4),
+        if (isTemporarilyUnavailable)
+          Expanded(
+            child: Text(
+              'Temporarily unavailable',
+              style: CutlineTextStyles.subtitleBold.copyWith(
+                color: Colors.orange.shade800,
+              ),
+            ),
+          )
+        else ...[
+          Text('Wait time: $waitLabel  •  ', style: CutlineTextStyles.body),
+          Text(
+            isOpen ? 'Open Now' : 'Closed',
+            style: CutlineTextStyles.subtitleBold
+                .copyWith(color: isOpen ? Colors.green : Colors.redAccent),
+          ),
+        ],
       ],
     );
   }

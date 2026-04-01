@@ -65,6 +65,10 @@ class SalonService {
       {
         'name': name.trim(),
         'address': typedAddress.trim(),
+        'location': location,
+        if (isNewSalon)
+          'verificationStatus': SalonVerificationStatus.pending.firestoreValue,
+        if (isNewSalon) 'isRestricted': false,
         if (coverPhotoUrl != null && coverPhotoUrl.isNotEmpty)
           'coverImageUrl': coverPhotoUrl,
         'topServices': _topServices(services),

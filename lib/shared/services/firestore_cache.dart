@@ -19,6 +19,10 @@ class FirestoreCache {
     }
   }
 
+  static bool _shouldRethrow(FirebaseException error) {
+    return error.code == 'permission-denied' || error.code == 'unauthenticated';
+  }
+
   static Future<DocumentSnapshot<Map<String, dynamic>>> getDoc(
     DocumentReference<Map<String, dynamic>> ref,
   ) async {
@@ -26,7 +30,8 @@ class FirestoreCache {
       docReads++;
       _log('FirestoreCache.getDoc server: ${ref.path}');
       return await ref.get(const GetOptions(source: Source.server));
-    } catch (_) {
+    } on FirebaseException catch (e) {
+      if (_shouldRethrow(e)) rethrow;
       _log('FirestoreCache.getDoc cache fallback: ${ref.path}');
       return ref.get(const GetOptions(source: Source.cache));
     }
@@ -39,7 +44,8 @@ class FirestoreCache {
       queryReads++;
       _log('FirestoreCache.getQuery server');
       return await query.get(const GetOptions(source: Source.server));
-    } catch (_) {
+    } on FirebaseException catch (e) {
+      if (_shouldRethrow(e)) rethrow;
       _log('FirestoreCache.getQuery cache fallback');
       return query.get(const GetOptions(source: Source.cache));
     }
@@ -58,7 +64,8 @@ class FirestoreCache {
       docReads++;
       _log('FirestoreCache.getDocCacheFirst server: ${ref.path}');
       return await ref.get(const GetOptions(source: Source.server));
-    } catch (_) {
+    } on FirebaseException catch (e) {
+      if (_shouldRethrow(e)) rethrow;
       _log('FirestoreCache.getDocCacheFirst cache fallback: ${ref.path}');
       return ref.get(const GetOptions(source: Source.cache));
     }
@@ -77,7 +84,8 @@ class FirestoreCache {
       queryReads++;
       _log('FirestoreCache.getQueryCacheFirst server');
       return await query.get(const GetOptions(source: Source.server));
-    } catch (_) {
+    } on FirebaseException catch (e) {
+      if (_shouldRethrow(e)) rethrow;
       _log('FirestoreCache.getQueryCacheFirst cache fallback');
       return query.get(const GetOptions(source: Source.cache));
     }

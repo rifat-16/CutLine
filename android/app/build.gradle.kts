@@ -65,8 +65,16 @@ val mapsApiKeyDev = resolveMapKey("MAPS_API_KEY_DEV").ifEmpty { mapsApiKeyDefaul
 val mapsApiKeyStaging = resolveMapKey("MAPS_API_KEY_STAGING").ifEmpty { mapsApiKeyDefault }
 val mapsApiKeyProd = resolveMapKey("MAPS_API_KEY_PROD").ifEmpty { mapsApiKeyDefault }
 
-val requestedFlavors = listOf("dev", "staging", "prod").filter { flavor ->
-    gradle.startParameter.taskNames.any { name -> name.contains(flavor, ignoreCase = true) }
+val firebaseConfigFlavors = listOf("admindev", "staging", "admin", "prod", "dev")
+val requestedFlavors = buildSet {
+    gradle.startParameter.taskNames.forEach { taskName ->
+        val lowerTaskName = taskName.lowercase()
+        firebaseConfigFlavors.firstOrNull { flavor ->
+            lowerTaskName.contains(flavor)
+        }?.let { matchedFlavor ->
+            add(matchedFlavor)
+        }
+    }
 }
 
 requestedFlavors.forEach { flavor ->
@@ -154,6 +162,20 @@ android {
             resValue("string", "app_name", "CutLine")
             manifestPlaceholders["MAPS_API_KEY"] = mapsApiKeyProd
         }
+        create("admin") {
+            dimension = "env"
+            applicationId = "com.cutline.admin"
+            versionNameSuffix = "-admin"
+            resValue("string", "app_name", "CutLine Admin")
+            manifestPlaceholders["MAPS_API_KEY"] = mapsApiKeyProd
+        }
+        create("admindev") {
+            dimension = "env"
+            applicationId = "com.cutline.admin_dev"
+            versionNameSuffix = "-admin-dev"
+            resValue("string", "app_name", "CutLine Admin Dev")
+            manifestPlaceholders["MAPS_API_KEY"] = mapsApiKeyDev
+        }
     }
 
     buildTypes {
@@ -171,4 +193,5 @@ flutter {
 dependencies {
     // Add this line for desugaring support
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    implementation("com.google.android.gms:play-services-location:21.2.0")
 }

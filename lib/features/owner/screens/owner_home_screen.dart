@@ -9,6 +9,7 @@ import 'package:cutline/features/owner/screens/manage_services_screen.dart';
 import 'package:cutline/features/owner/screens/notifications_screen.dart';
 import 'package:cutline/features/owner/screens/owner_chats_screen.dart';
 import 'package:cutline/features/owner/screens/owner_profile_screen.dart';
+import 'package:cutline/features/owner/screens/platform_fee_report_screen.dart';
 import 'package:cutline/features/owner/screens/settings_screen.dart';
 import 'package:cutline/features/owner/screens/working_hours_screen.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
@@ -135,7 +136,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                       color: const Color(0xFF6366F1),
                       badgeCount: pendingRequests,
                       onTap: () async {
-                        await _guardVerification(
+                        await _guardOperationalAccess(
                           provider,
                           onAllowed: () async =>
                               _openScreen(const BookingRequestsScreen()),
@@ -147,7 +148,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                       icon: Icons.queue_play_next_outlined,
                       color: const Color(0xFF0EA5E9),
                       onTap: () async {
-                        await _guardVerification(
+                        await _guardOperationalAccess(
                           provider,
                           onAllowed: () async =>
                               _openScreen(const ManageQueueScreen()),
@@ -159,7 +160,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                       icon: Icons.design_services_outlined,
                       color: const Color(0xFF10B981),
                       onTap: () async {
-                        await _guardVerification(
+                        await _guardOperationalAccess(
                           provider,
                           onAllowed: () async =>
                               _openScreen(const ManageServicesScreen()),
@@ -171,7 +172,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                       icon: Icons.schedule_outlined,
                       color: const Color(0xFFF97316),
                       onTap: () async {
-                        await _guardVerification(
+                        await _guardOperationalAccess(
                           provider,
                           onAllowed: () async =>
                               _openScreen(const WorkingHoursScreen()),
@@ -183,7 +184,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                       icon: Icons.people_outline,
                       color: const Color(0xFF2563EB),
                       onTap: () async {
-                        await _guardVerification(
+                        await _guardOperationalAccess(
                           provider,
                           onAllowed: () async =>
                               _openScreen(const OwnerBarbersScreen()),
@@ -195,7 +196,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                       icon: Icons.dashboard_customize_outlined,
                       color: const Color(0xFF2563EB),
                       onTap: () async {
-                        await _guardVerification(
+                        await _guardOperationalAccess(
                           provider,
                           onAllowed: () async =>
                               _openScreen(const OwnerDashboardScreen()),
@@ -205,6 +206,14 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                   ],
                 ),
                 const SizedBox(height: 28),
+                if (provider.isRestricted) ...[
+                  _RestrictionNoticeCard(
+                    reason: provider.restrictionReason,
+                    onViewFees: () =>
+                        _openScreen(const PlatformFeeReportScreen()),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 // Only show error if it's a real error, not just empty data
                 if (provider.error != null && provider.error!.isNotEmpty)
                   Padding(
@@ -282,12 +291,12 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                   onFilterChange: (value) {
                     setState(() => _queueFilter = value);
                   },
-                  onStatusChange: (id, status) => _guardVerification(
+                  onStatusChange: (id, status) => _guardOperationalAccess(
                     provider,
                     onAllowed: () => _handleStatusChange(context, id, status),
                   ),
                   onViewAll: () async {
-                    await _guardVerification(
+                    await _guardOperationalAccess(
                       provider,
                       onAllowed: () async =>
                           _openScreen(const ManageQueueScreen()),
@@ -481,7 +490,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
   Future<void> _handleNavTap(OwnerHomeProvider provider, int index) async {
     switch (index) {
       case 1:
-        await _guardVerification(
+        await _guardOperationalAccess(
           provider,
           onAllowed: () async {
             setState(() => _selectedIndex = index);
@@ -490,7 +499,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
         );
         break;
       case 2:
-        await _guardVerification(
+        await _guardOperationalAccess(
           provider,
           onAllowed: () async {
             setState(() => _selectedIndex = index);
@@ -540,7 +549,7 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
           value: provider.isOpen,
           activeColor: const Color(0xFF2563EB),
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          onChanged: provider.isUpdatingStatus || !provider.isVerified
+          onChanged: provider.isUpdatingStatus || !provider.canOperate
               ? null
               : (value) => provider.setSalonOpen(value),
         ),
@@ -556,22 +565,88 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
     );
   }
 
-  Future<void> _guardVerification(
+  Future<void> _guardOperationalAccess(
     OwnerHomeProvider provider, {
     required Future<void> Function() onAllowed,
   }) async {
-    if (provider.isVerified) {
+    if (provider.canOperate) {
       await onAllowed();
       return;
     }
 
-    final message = provider.verificationStatus ==
-            SalonVerificationStatus.rejected
-        ? 'Your salon verification was rejected. Please review the note and try again.'
-        : 'Your salon is under verification. You will get full access after approval.';
+    final message = provider.isRestricted
+        ? (provider.restrictionReason?.trim().isNotEmpty == true
+            ? 'Salon is restricted: ${provider.restrictionReason!.trim()}'
+            : 'Salon is restricted until your pending platform fee is cleared.')
+        : provider.verificationStatus == SalonVerificationStatus.rejected
+            ? 'Your salon verification was rejected. Please review the note and try again.'
+            : 'Your salon is under verification. You will get full access after approval.';
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+}
+
+class _RestrictionNoticeCard extends StatelessWidget {
+  const _RestrictionNoticeCard({
+    this.reason,
+    required this.onViewFees,
+  });
+
+  final String? reason;
+  final VoidCallback onViewFees;
+
+  @override
+  Widget build(BuildContext context) {
+    final note = reason?.trim();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEE2E2),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFFCA5A5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.lock_outline, color: Color(0xFF991B1B)),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Salon restricted',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF991B1B),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            note != null && note.isNotEmpty
+                ? note
+                : 'Your salon operations are blocked until the pending platform fee is cleared.',
+            style: const TextStyle(
+              color: Color(0xFF7F1D1D),
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              onPressed: onViewFees,
+              icon: const Icon(Icons.account_balance_wallet_outlined),
+              label: const Text('View platform fee'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
