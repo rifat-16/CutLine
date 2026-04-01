@@ -50,54 +50,22 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 if (provider.isRestricted)
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: Colors.orange.withValues(alpha: 0.28),
-                      ),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Icon(Icons.info_outline, color: Colors.orange),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'This salon is temporarily unavailable right now. Queue actions are blocked until the owner resolves it.',
-                            style:
-                                TextStyle(color: Colors.orange, fontSize: 14),
-                          ),
-                        ),
-                      ],
-                    ),
+                  const _QueueNoticeCard(
+                    icon: Icons.info_outline,
+                    accentColor: Color(0xFFD97706),
+                    backgroundColor: Color(0xFFFFF4E5),
+                    borderColor: Color(0xFFF5C47A),
+                    message:
+                        'This salon is temporarily unavailable right now. You can still check the queue, but actions are blocked until the owner resolves it.',
                   )
                 else if (!provider.isSalonOpen)
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(14),
-                      border:
-                          Border.all(color: Colors.red.withValues(alpha: 0.2)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Icon(Icons.info_outline, color: Colors.red),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'The salon is closed right now. Ask the owner to open it to start serving customers.',
-                            style: TextStyle(color: Colors.red, fontSize: 14),
-                          ),
-                        ),
-                      ],
-                    ),
+                  const _QueueNoticeCard(
+                    icon: Icons.info_outline,
+                    accentColor: Colors.red,
+                    backgroundColor: Color(0xFFFFF3F3),
+                    borderColor: Color(0xFFF3B1B1),
+                    message:
+                        'The salon is closed right now. Ask the owner to open it to start serving customers.',
                   ),
                 const SizedBox(height: 8),
                 const Text(
@@ -117,31 +85,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                       style: const TextStyle(color: Colors.red),
                     ),
                   ),
-                if (provider.isRestricted)
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: Colors.orange.shade200,
-                        width: 1,
-                      ),
-                    ),
-                    child: Column(
-                      children: const [
-                        Icon(Icons.lock_outline,
-                            size: 40, color: Colors.orange),
-                        SizedBox(height: 10),
-                        Text(
-                          "Salon is temporarily unavailable. Actions will be enabled again once the owner resolves it.",
-                          style: TextStyle(fontSize: 15, color: Colors.black54),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  )
-                else if (!provider.isSalonOpen)
+                if (!provider.isRestricted && !provider.isSalonOpen)
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -559,21 +503,33 @@ class _AvailabilityToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (provider.isLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 4.0),
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Center(
+            child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (provider.isRestricted) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 4.0),
+        child: _RestrictedStatusChip(),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4.0),
-      child: provider.isLoading
-          ? const SizedBox(
-              width: 36,
-              height: 36,
-              child: Center(
-                child: SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            )
-          : _AvailabilitySwitch(provider: provider),
+      child: _AvailabilitySwitch(provider: provider),
     );
   }
 }
@@ -585,32 +541,22 @@ class _AvailabilitySwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isRestricted = provider.isRestricted;
-    final isAvailable = isRestricted ? false : provider.isAvailable;
-    final label = isRestricted
-        ? 'Temporarily unavailable'
-        : (isAvailable ? 'Available' : 'Unavailable');
-    final labelColor = isRestricted
-        ? Colors.orange.shade800
-        : (isAvailable ? Colors.green : Colors.redAccent);
+    final isAvailable = provider.isAvailable;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _statusDot(
-          isAvailable,
-          isRestricted: isRestricted,
-        ),
+        _statusDot(isAvailable),
         const SizedBox(width: 6),
         Text(
-          label,
+          isAvailable ? 'Available' : 'Unavailable',
           style: TextStyle(
-            color: labelColor,
+            color: isAvailable ? Colors.green : Colors.redAccent,
             fontWeight: FontWeight.w600,
           ),
         ),
         Switch.adaptive(
           value: isAvailable,
-          onChanged: provider.isUpdatingAvailability || isRestricted
+          onChanged: provider.isUpdatingAvailability
               ? null
               : (value) => provider.setAvailability(value),
           activeThumbColor: Colors.green,
@@ -620,15 +566,92 @@ class _AvailabilitySwitch extends StatelessWidget {
     );
   }
 
-  Widget _statusDot(bool isAvailable, {required bool isRestricted}) {
+  Widget _statusDot(bool isAvailable) {
     return Container(
       width: 10,
       height: 10,
       decoration: BoxDecoration(
-        color: isRestricted
-            ? Colors.orange.shade700
-            : (isAvailable ? Colors.green : Colors.redAccent),
+        color: isAvailable ? Colors.green : Colors.redAccent,
         shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+class _RestrictedStatusChip extends StatelessWidget {
+  const _RestrictedStatusChip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Salon temporarily unavailable',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF4E5),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0xFFF5C47A)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(
+              Icons.pause_circle_outline,
+              size: 18,
+              color: Color(0xFFD97706),
+            ),
+            SizedBox(width: 6),
+            Text(
+              'Paused',
+              style: TextStyle(
+                color: Color(0xFFB45309),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QueueNoticeCard extends StatelessWidget {
+  const _QueueNoticeCard({
+    required this.icon,
+    required this.accentColor,
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.message,
+  });
+
+  final IconData icon;
+  final Color accentColor;
+  final Color backgroundColor;
+  final Color borderColor;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: accentColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(color: accentColor, fontSize: 14),
+            ),
+          ),
+        ],
       ),
     );
   }
