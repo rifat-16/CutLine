@@ -1,6 +1,6 @@
 {
   "projects": {
-    "default": "cutline-526aa",
+    "default": "cutline-prod-a55b9",
     "staging": "cutline-526aa",
     "dev": "cutline-dev",
     "prod": "cutline-prod-a55b9"
