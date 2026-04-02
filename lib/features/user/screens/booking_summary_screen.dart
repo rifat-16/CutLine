@@ -77,8 +77,6 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
         final isNextFree = widget.bookingMode == 'next_free';
         final bookingTypeLabel =
             isNextFree ? 'Next Free Slot' : 'Custom Date & Time';
-        final effectiveSerial =
-            provider.lastCreatedSerialNo ?? widget.predictedSerialNo;
         final effectiveEta = widget.predictedStartAt;
         return Scaffold(
           backgroundColor: CutlineColors.secondaryBackground,
@@ -107,9 +105,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                           dateLabel: provider.formattedDate,
                           timeLabel: widget.time,
                           bookingTypeLabel: bookingTypeLabel,
-                          serialLabel: effectiveSerial != null
-                              ? '#$effectiveSerial'
-                              : null,
+                          serialLabel: null,
                           estimatedStartLabel: effectiveEta != null
                               ? provider.formatDateTime(effectiveEta)
                               : null,
@@ -125,7 +121,7 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
                           serviceCharge: provider.serviceCharge,
                           isSaving: provider.isSaving,
                           buttonLabel:
-                              isNextFree ? 'Join Queue' : 'Confirm Booking',
+                              isNextFree ? 'Send Request' : 'Confirm Booking',
                         ),
                       ),
                     ],
@@ -150,19 +146,18 @@ class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
       return;
     }
     final isNextFree = widget.bookingMode == 'next_free';
-    final resolvedSerial =
-        provider.lastCreatedSerialNo ?? widget.predictedSerialNo;
     final successText = isNextFree
-        ? (resolvedSerial != null
-            ? 'You joined the queue. Serial #$resolvedSerial.'
-            : 'You joined the queue successfully.')
+        ? 'Your next free slot request has been sent.'
         : 'Your booking has been successfully submitted.';
 
     showDialog<void>(
       context: navigator.context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Booking Confirmed!', style: CutlineTextStyles.title),
+        title: Text(
+          isNextFree ? 'Request Sent' : 'Booking Confirmed!',
+          style: CutlineTextStyles.title,
+        ),
         content: Text(successText),
         actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
         actions: [

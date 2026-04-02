@@ -226,24 +226,15 @@ class BookingSummaryProvider extends ChangeNotifier {
     required String resolvedCustomerUid,
   }) async {
     final placement = await _computeNextFreePlacement();
-    final now = DateTime.now();
     final estimatedStart = placement.estimatedStart;
     final date = DateFormat('yyyy-MM-dd').format(estimatedStart);
     final time = DateFormat('h:mm a').format(estimatedStart);
-    final serialDate = DateFormat('yyyy-MM-dd').format(now);
-    final serialBarberKey = _serialBarberKey();
     final totalWithTip = total + tipAmount;
-    final serviceLabel = _serviceLabel();
     final bookingRef = _firestore
         .collection('salons')
         .doc(salonId)
         .collection('bookings')
         .doc();
-    final queueRef = _firestore
-        .collection('salons')
-        .doc(salonId)
-        .collection('queue')
-        .doc(bookingRef.id);
 
     final bookingPayload = {
       ..._baseBookingPayload(
@@ -255,58 +246,18 @@ class BookingSummaryProvider extends ChangeNotifier {
       'date': date,
       'time': time,
       'dateTime': Timestamp.fromDate(estimatedStart),
-      'status': 'waiting',
+      'status': 'pending',
       'waitMinutes': totalDurationMinutes,
       'entrySource': 'app',
       'bookingMode': 'next_free',
       'createdByUid': resolvedCustomerUid,
       'createdByRole': 'customer',
-      'serialNo': placement.nextSerial,
-      'serialDate': serialDate,
-      'serialBarberKey': serialBarberKey,
-      'slotLabel': '#${placement.nextSerial}',
-    };
-
-    final queuePayload = {
-      'salonId': salonId,
-      'customerUid': resolvedCustomerUid,
-      'customerName': customerName,
-      'customerPhone': customerPhone,
-      'customerEmail': customerEmail,
-      if (_customerAvatar != null && _customerAvatar!.isNotEmpty)
-        'customerAvatar': _customerAvatar,
-      'barberName': selectedBarber,
-      if (selectedBarberId.trim().isNotEmpty) 'barberId': selectedBarberId,
-      if (selectedBarberAvatar != null &&
-          selectedBarberAvatar!.trim().isNotEmpty)
-        'barberAvatar': selectedBarberAvatar,
-      'services': _serviceEntries(),
-      'service': serviceLabel,
-      'price': serviceTotal,
-      'total': totalWithTip,
-      'tipAmount': tipAmount,
-      'serviceCharge': serviceCharge,
-      'waitMinutes': totalDurationMinutes,
-      'durationMinutes': totalDurationMinutes,
-      'date': date,
-      'time': time,
-      'dateTime': Timestamp.fromDate(estimatedStart),
-      'slotLabel': '#${placement.nextSerial}',
-      'status': 'waiting',
-      'entrySource': 'app',
-      'bookingMode': 'next_free',
-      'createdByUid': resolvedCustomerUid,
-      'createdByRole': 'customer',
-      'serialNo': placement.nextSerial,
-      'serialDate': serialDate,
-      'serialBarberKey': serialBarberKey,
-      'updatedAt': FieldValue.serverTimestamp(),
-      'createdAt': FieldValue.serverTimestamp(),
+      'predictedSerialNo': placement.nextSerial,
+      'predictedStartAt': Timestamp.fromDate(estimatedStart),
     };
 
     final batch = _firestore.batch();
     batch.set(bookingRef, bookingPayload, SetOptions(merge: true));
-    batch.set(queueRef, queuePayload, SetOptions(merge: true));
     if (resolvedCustomerUid.isNotEmpty) {
       final userRef = _firestore.collection('users').doc(resolvedCustomerUid);
       batch.set(
@@ -332,12 +283,11 @@ class BookingSummaryProvider extends ChangeNotifier {
           'date': date,
           'time': time,
           'dateTime': Timestamp.fromDate(estimatedStart),
-          'status': 'waiting',
+          'status': 'pending',
           'bookingMode': 'next_free',
           'entrySource': 'app',
-          'serialNo': placement.nextSerial,
-          'serialDate': serialDate,
-          'serialBarberKey': serialBarberKey,
+          'predictedSerialNo': placement.nextSerial,
+          'predictedStartAt': Timestamp.fromDate(estimatedStart),
           'customerUid': resolvedCustomerUid,
           'customerEmail': customerEmail,
           'customerPhone': customerPhone,
@@ -352,7 +302,7 @@ class BookingSummaryProvider extends ChangeNotifier {
       );
     }
     await batch.commit();
-    _lastCreatedSerialNo = placement.nextSerial;
+    _lastCreatedSerialNo = null;
     return true;
   }
 
@@ -410,12 +360,6 @@ class BookingSummaryProvider extends ChangeNotifier {
         .map((s) => s.name.trim())
         .where((name) => name.isNotEmpty)
         .toList();
-  }
-
-  String _serviceLabel() {
-    final names = _serviceNames();
-    if (names.isEmpty) return 'Service';
-    return names.join(', ');
   }
 
   Future<void> _writeUserBookingMirror({
@@ -530,18 +474,6 @@ class BookingSummaryProvider extends ChangeNotifier {
             .trim()
             .toLowerCase();
     return targetBarberName.isNotEmpty && bookingBarberName == targetBarberName;
-  }
-
-  String _serialBarberKey() {
-    final raw =
-        selectedBarberId.trim().isNotEmpty ? selectedBarberId : selectedBarber;
-    final normalized = raw
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
-        .replaceAll(RegExp(r'_+'), '_')
-        .replaceAll(RegExp(r'^_|_$'), '');
-    return normalized.isNotEmpty ? normalized : 'unassigned';
   }
 
   Future<bool> _bookingExists() async {
