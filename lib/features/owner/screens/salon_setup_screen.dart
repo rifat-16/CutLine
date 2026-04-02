@@ -343,8 +343,8 @@ class _SalonSetupScreenState extends State<SalonSetupScreen> {
   Future<void> _openAddressPicker() async {
     final current = _pickedLocation;
     final result = await Navigator.of(context).push<PickedLocation>(
-      MaterialPageRoute(
-        builder: (_) => AddressPickerScreen(
+      buildAddressPickerRoute(
+        AddressPickerScreen(
           initialAddress: _addressController.text.trim(),
           initialLocation: current == null
               ? null

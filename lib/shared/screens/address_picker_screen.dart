@@ -10,6 +10,32 @@ import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+Route<PickedLocation> buildAddressPickerRoute(AddressPickerScreen screen) {
+  return PageRouteBuilder<PickedLocation>(
+    pageBuilder: (context, animation, secondaryAnimation) => screen,
+    transitionDuration: const Duration(milliseconds: 260),
+    reverseTransitionDuration: const Duration(milliseconds: 220),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInOutCubic,
+      );
+      final offsetAnimation = Tween<Offset>(
+        begin: const Offset(0, 0.04),
+        end: Offset.zero,
+      ).animate(curved);
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: offsetAnimation,
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
 class AddressPickerScreen extends StatefulWidget {
   const AddressPickerScreen({
     super.key,
@@ -35,7 +61,6 @@ enum _BusyAction { none, searching, locating }
 
 class _AddressPickerScreenState extends State<AddressPickerScreen> {
   static const _defaultLocation = LatLng(23.8103, 90.4125); // Dhaka
-  static const _latLngDecimals = 6;
   static const _liveLocationAccuracyMeters = 120.0;
   static const _bootstrapLocationAccuracyMeters = 150.0;
   static const _addressRefreshThresholdMeters = 18.0;
@@ -50,6 +75,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
   bool _isResolvingAddress = false;
   bool _isLocating = false;
   bool _myLocationEnabled = false;
+  bool _suppressAutoCameraSelection = false;
   int _selectionVersion = 0;
   int _mapInteractionVersion = 0;
   String? _error;
@@ -64,11 +90,19 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
   void initState() {
     super.initState();
     final useCurrentLocationOnly = widget.selectCurrentLocationOnOpen;
+    final hasInitialLocation = widget.initialLocation != null;
+    final hasInitialAddress = widget.initialAddress?.trim().isNotEmpty ?? false;
+    final startWithoutSelection =
+        useCurrentLocationOnly || (!hasInitialLocation && !hasInitialAddress);
     _mapsReadyFuture = GoogleMapsJsLoader.ensureLoaded();
     _searchController = TextEditingController(
-      text: useCurrentLocationOnly ? '' : widget.initialAddress,
+      text: startWithoutSelection ? '' : widget.initialAddress,
     );
-    _selected = useCurrentLocationOnly ? null : widget.initialLocation;
+    _selected = startWithoutSelection ? null : widget.initialLocation;
+    _suppressAutoCameraSelection = startWithoutSelection;
+    if (startWithoutSelection) {
+      _searchController.clear();
+    }
     _bootstrapLocationState();
   }
 
@@ -165,7 +199,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
                     );
                   },
                 ),
-                _CenterPinOverlay(isAdjusting: _isDraggingPin),
+                if (selected != null) _CenterPinOverlay(isAdjusting: _isDraggingPin),
                 if (statusMessage != null)
                   Positioned(
                     top: 12,
@@ -188,7 +222,12 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed:
-                      selected == null || _isBusy || _isLocating ? null : _confirm,
+                      selected == null ||
+                              _isBusy ||
+                              _isLocating ||
+                              _isResolvingAddress
+                          ? null
+                          : _confirm,
                   icon: const Icon(Icons.check_circle_outline),
                   label: Text(widget.confirmLabel ?? 'Confirm location'),
                   style: ElevatedButton.styleFrom(
@@ -312,6 +351,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
 
   Future<void> _useCurrentLocation() async {
     final interactionVersion = _mapInteractionVersion;
+    _suppressAutoCameraSelection = false;
     _clearSelectedLocation();
     setState(() {
       _error = null;
@@ -353,6 +393,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
 
   void _handleMapTap(LatLng pos) {
     _markUserMapInteraction();
+    _suppressAutoCameraSelection = false;
     _setSelected(pos, reverseGeocode: _shouldRefreshAddressFor(pos));
     _moveCamera(pos);
   }
@@ -360,6 +401,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
   void _handleCameraMoveStarted() {
     _reverseGeocodeDebounce?.cancel();
     _markUserMapInteraction();
+    _suppressAutoCameraSelection = false;
     if (_isDraggingPin && !_isResolvingAddress) return;
     setState(() {
       _isDraggingPin = true;
@@ -383,6 +425,12 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
     }
 
     _cameraTarget = null;
+    if (_suppressAutoCameraSelection && _selected == null) {
+      if (_isDraggingPin) {
+        setState(() => _isDraggingPin = false);
+      }
+      return;
+    }
     if (_sameLatLng(_selected, target)) {
       if (_isDraggingPin) {
         setState(() => _isDraggingPin = false);
@@ -401,6 +449,9 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
       _error = null;
       _locationAction = null;
       _isResolvingAddress = reverseGeocode;
+      if (reverseGeocode) {
+        _searchController.clear();
+      }
     });
     if (!reverseGeocode) return;
 
@@ -408,47 +459,128 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
     _reverseGeocodeDebounce = Timer(_reverseGeocodeDebounceDuration, () async {
       final current = pos;
       try {
-        final address = await MapsReverseGeocoder.reverseGeocode(
-          latitude: current.latitude,
-          longitude: current.longitude,
-        );
+        final fallbackAddress = await _resolveAddressLabel(current);
         if (!mounted) return;
         if (!_isLatestSelection(selectionVersion, current)) return;
         _finishAddressResolution(current);
-        if (address.isNotEmpty) {
-          _searchController.text = address;
+        if (fallbackAddress.isNotEmpty) {
+          _searchController.text = fallbackAddress;
         } else if (MapsReverseGeocoder.lastError == 'REQUEST_DENIED') {
           setState(() {
             _error =
                 'Web geocoding not enabled. Enable Google "Geocoding API" for this API key.';
           });
         } else if (_searchController.text.trim().isEmpty) {
-          _searchController.text = _formatLatLng(current);
+          setState(() {
+            _error = 'Could not detect this location name. Move map a bit and try again.';
+          });
         }
       } catch (_) {
+        final fallbackAddress = await _resolveAddressLabel(current);
         if (!mounted) return;
         if (!_isLatestSelection(selectionVersion, current)) return;
         _finishAddressResolution(current);
-        if (_searchController.text.trim().isEmpty) {
-          _searchController.text = _formatLatLng(current);
+        if (fallbackAddress.isNotEmpty) {
+          _searchController.text = fallbackAddress;
+        } else if (_searchController.text.trim().isEmpty) {
+          setState(() {
+            _error = 'Could not detect this location name. Move map a bit and try again.';
+          });
         }
       }
     });
   }
 
-  String _formatLatLng(LatLng latLng) {
-    final lat = latLng.latitude.toStringAsFixed(_latLngDecimals);
-    final lng = latLng.longitude.toStringAsFixed(_latLngDecimals);
-    return '$lat, $lng';
+  Future<String> _resolveAddressLabel(LatLng latLng) async {
+    try {
+      final mapsAddress = await MapsReverseGeocoder.reverseGeocode(
+        latitude: latLng.latitude,
+        longitude: latLng.longitude,
+      );
+      if (mapsAddress.trim().isNotEmpty) {
+        return mapsAddress.trim();
+      }
+    } catch (_) {
+      // Fall through to native geocoding below.
+    }
+    return _reverseGeocodeFallback(latLng);
+  }
+
+  Future<String> _reverseGeocodeFallback(LatLng latLng) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(
+        latLng.latitude,
+        latLng.longitude,
+      );
+      if (placemarks.isEmpty) return '';
+      for (final place in placemarks) {
+        final label = _buildPlacemarkLabel(place);
+        if (label.isNotEmpty) return label;
+      }
+      return '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  String _buildPlacemarkLabel(Placemark place) {
+    final primary = _joinPlacemarkParts([
+      place.street,
+      place.thoroughfare,
+      place.subThoroughfare,
+      place.name,
+    ], maxParts: 2);
+    final area = _joinPlacemarkParts([
+      place.subLocality,
+      place.locality,
+      place.subAdministrativeArea,
+      place.administrativeArea,
+    ], maxParts: 3);
+
+    if (primary.isNotEmpty && area.isNotEmpty) {
+      return '$primary, $area';
+    }
+    if (primary.isNotEmpty) return primary;
+    return area;
+  }
+
+  String _joinPlacemarkParts(List<String?> parts, {required int maxParts}) {
+    final unique = <String>[];
+    for (final part in parts) {
+      final normalized = part?.trim() ?? '';
+      if (normalized.isEmpty) continue;
+      final lower = normalized.toLowerCase();
+      if (unique.any((existing) => existing.toLowerCase() == lower)) {
+        continue;
+      }
+      unique.add(normalized);
+      if (unique.length >= maxParts) break;
+    }
+    return unique.join(', ');
   }
 
   Future<void> _confirm() async {
     final selected = _selected;
     if (selected == null) return;
 
-    final address = _searchController.text.trim().isEmpty
-        ? _formatLatLng(selected)
-        : _searchController.text.trim();
+    var address = _searchController.text.trim();
+    if (address.isEmpty) {
+      setState(() {
+        _isResolvingAddress = true;
+        _error = null;
+      });
+      final resolved = await _resolveAddressLabel(selected);
+      if (!mounted) return;
+      setState(() => _isResolvingAddress = false);
+      if (resolved.isEmpty) {
+        setState(() {
+          _error = 'Could not detect this location name. Move map a bit and try again.';
+        });
+        return;
+      }
+      address = resolved;
+      _searchController.text = resolved;
+    }
 
     Navigator.pop(
       context,
@@ -461,21 +593,27 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
   }
 
   Future<void> _bootstrapLocationState() async {
+    if (widget.selectCurrentLocationOnOpen ||
+        (widget.initialLocation == null &&
+            !(widget.initialAddress?.trim().isNotEmpty ?? false))) {
+      _clearSelectedLocation();
+    }
     await _syncMyLocationAvailability();
 
     if (widget.selectCurrentLocationOnOpen) {
       final interactionVersion = _mapInteractionVersion;
       final latLng = await _runLocationRequest(() {
         return _resolveCurrentLocation(
-        requestPermission: true,
-        showErrors: false,
-        allowLastKnownFallback: false,
-        maxAcceptedAge: const Duration(seconds: 45),
-        maxAcceptedAccuracyMeters: _bootstrapLocationAccuracyMeters,
-      );
+          requestPermission: true,
+          showErrors: false,
+          allowLastKnownFallback: false,
+          maxAcceptedAge: const Duration(seconds: 45),
+          maxAcceptedAccuracyMeters: _bootstrapLocationAccuracyMeters,
+        );
       });
       if (latLng == null) return;
       if (!mounted || interactionVersion != _mapInteractionVersion) return;
+      _suppressAutoCameraSelection = false;
       _setSelected(latLng, reverseGeocode: true);
       await _moveCamera(latLng);
       return;
@@ -499,6 +637,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
     });
     if (latLng == null) return;
     if (!mounted || interactionVersion != _mapInteractionVersion) return;
+    _suppressAutoCameraSelection = false;
     _setSelected(latLng, reverseGeocode: true);
     await _moveCamera(latLng);
   }
