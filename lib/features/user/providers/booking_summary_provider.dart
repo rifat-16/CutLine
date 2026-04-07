@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cutline/shared/services/firestore_cache.dart';
-import 'package:cutline/shared/services/local_ttl_cache.dart';
+import 'package:cutline/shared/services/platform_fee_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class BookingSummaryProvider extends ChangeNotifier {
@@ -23,7 +23,9 @@ class BookingSummaryProvider extends ChangeNotifier {
     this.predictedSerialNo,
     this.predictedStartAt,
     FirebaseFirestore? firestore,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance;
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _platformFeeService = PlatformFeeService(
+            firestore: firestore ?? FirebaseFirestore.instance);
 
   final String salonId;
   final String salonName;
@@ -41,6 +43,7 @@ class BookingSummaryProvider extends ChangeNotifier {
   final int? predictedSerialNo;
   final DateTime? predictedStartAt;
   final FirebaseFirestore _firestore;
+  final PlatformFeeService _platformFeeService;
 
   bool _isLoading = false;
   bool _isSaving = false;
@@ -546,72 +549,7 @@ class BookingSummaryProvider extends ChangeNotifier {
 
   Future<int> _loadPlatformFee() async {
     try {
-      final cached = await LocalTtlCache.get<int>('platform_fee_v1');
-      if (cached != null) return cached;
-      final snap = await FirestoreCache.getQueryCacheFirst(
-        _firestore.collection('platform_fee').limit(1),
-      );
-      if (snap.docs.isEmpty) {
-        await LocalTtlCache.set(
-          'platform_fee_v1',
-          0,
-          const Duration(hours: 24),
-        );
-        return 0;
-      }
-      final data = snap.docs.first.data();
-      final raw = data['fee'];
-      if (raw == null) {
-        await LocalTtlCache.set(
-          'platform_fee_v1',
-          0,
-          const Duration(hours: 24),
-        );
-        return 0;
-      }
-      if (raw is num) {
-        final fee = raw.toInt();
-        await LocalTtlCache.set(
-          'platform_fee_v1',
-          fee,
-          const Duration(hours: 24),
-        );
-        return fee;
-      }
-      if (raw is String) {
-        final normalized = raw.trim().toLowerCase();
-        if (normalized.isEmpty || normalized == 'free') {
-          await LocalTtlCache.set(
-            'platform_fee_v1',
-            0,
-            const Duration(hours: 24),
-          );
-          return 0;
-        }
-        final parsed = int.tryParse(normalized);
-        if (parsed != null) {
-          await LocalTtlCache.set(
-            'platform_fee_v1',
-            parsed,
-            const Duration(hours: 24),
-          );
-          return parsed;
-        }
-        final digits = RegExp(r'\d+').stringMatch(normalized);
-        final parsedDigits = digits != null ? int.tryParse(digits) ?? 0 : 0;
-        await LocalTtlCache.set(
-          'platform_fee_v1',
-          parsedDigits,
-          const Duration(hours: 24),
-        );
-        return parsedDigits;
-      }
-      await LocalTtlCache.set(
-        'platform_fee_v1',
-        0,
-        const Duration(hours: 24),
-      );
-      return 0;
+      return await _platformFeeService.loadEffectiveAmount();
     } catch (_) {
       return 0;
     }

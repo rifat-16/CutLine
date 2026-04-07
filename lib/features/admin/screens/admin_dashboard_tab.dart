@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cutline/features/admin/models/admin_models.dart';
 import 'package:cutline/features/admin/services/admin_service.dart';
 import 'package:cutline/features/admin/widgets/admin_ui.dart';
+import 'package:cutline/features/admin/widgets/platform_fee_control_panel.dart';
 import 'package:cutline/routes/admin_router.dart';
 
 class AdminDashboardTab extends StatefulWidget {
@@ -32,20 +33,26 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
       _service.loadDashboardStats(),
       _service.loadRecentPendingSalons(),
       _service.loadRecentRestrictedSalons(),
+      _service.loadRecentPendingPlatformFeePayments(),
     ]);
     return _DashboardData(
       stats: results[0] as AdminDashboardStats,
       pendingSalons: results[1] as List<AdminSalonSummary>,
       restrictedSalons: results[2] as List<AdminSalonSummary>,
+      pendingPlatformFeePayments: results[3] as List<AdminPaymentItem>,
     );
+  }
+
+  Future<void> _reload() async {
+    setState(() => _future = _load());
+    await _future;
   }
 
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
       onRefresh: () async {
-        setState(() => _future = _load());
-        await _future;
+        await _reload();
       },
       child: FutureBuilder<_DashboardData>(
         future: _future,
@@ -72,7 +79,7 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
             builder: (context, constraints) {
               const spacing = 12.0;
               final columns = constraints.maxWidth >= 920 ? 4 : 2;
-              final metricCardHeight = columns == 2 ? 214.0 : 196.0;
+              final metricCardHeight = columns == 2 ? 232.0 : 208.0;
 
               return ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -80,8 +87,9 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
                 children: [
                   _OverviewHero(
                     stats: data.stats,
-                    onPendingTap: () => widget.onNavigate(1),
-                    onSalonTap: () => widget.onNavigate(2),
+                    onPaymentsTap: () => widget.onNavigate(1),
+                    onPendingTap: () => widget.onNavigate(2),
+                    onSalonTap: () => widget.onNavigate(3),
                   ),
                   const SizedBox(height: 24),
                   const AdminSectionHeading(
@@ -102,19 +110,21 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
                     physics: const NeverScrollableScrollPhysics(),
                     children: [
                       _MetricCard(
+                        title: 'Pending payments',
+                        value: data.stats.pendingPlatformFeePaymentCount
+                            .toString(),
+                        subtitle:
+                            '${formatAdminCurrency(data.stats.pendingPlatformFeePaymentAmount)} waiting for review',
+                        icon: Icons.payments_outlined,
+                        accent: const Color(0xFF1D4ED8),
+                        onTap: () => widget.onNavigate(1),
+                      ),
+                      _MetricCard(
                         title: 'Pending salons',
                         value: data.stats.pendingSalonCount.toString(),
                         subtitle: 'Waiting for your verification',
                         icon: Icons.fact_check_outlined,
                         accent: const Color(0xFF0F766E),
-                        onTap: () => widget.onNavigate(1),
-                      ),
-                      _MetricCard(
-                        title: 'Total salons',
-                        value: data.stats.totalSalons.toString(),
-                        subtitle: 'All salons on the platform',
-                        icon: Icons.storefront_outlined,
-                        accent: const Color(0xFF1D4ED8),
                         onTap: () => widget.onNavigate(2),
                       ),
                       _MetricCard(
@@ -123,7 +133,7 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
                         subtitle: 'Blocked until dues are cleared',
                         icon: Icons.lock_outline_rounded,
                         accent: const Color(0xFFB45309),
-                        onTap: () => widget.onNavigate(2),
+                        onTap: () => widget.onNavigate(3),
                       ),
                       _MetricCard(
                         title: 'Outstanding due',
@@ -133,18 +143,41 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
                         subtitle: 'Remaining platform fee amount',
                         icon: Icons.account_balance_wallet_outlined,
                         accent: const Color(0xFF7C3AED),
-                        onTap: () => widget.onNavigate(2),
+                        onTap: () => widget.onNavigate(1),
                       ),
                     ],
                   ),
                   const SizedBox(height: 24),
+                  const AdminSectionHeading(
+                    eyebrow: 'Controls',
+                    title: 'Platform fee',
+                    subtitle:
+                        'Switch between free mode and a custom amount for all new bookings.',
+                  ),
+                  const SizedBox(height: 14),
+                  const PlatformFeeControlPanel(),
+                  const SizedBox(height: 24),
+                  _OverviewListPanel(
+                    eyebrow: 'Payment Queue',
+                    title: 'Pending fee payments',
+                    subtitle:
+                        'Dashboard keeps a short preview here. Open the Payments tab for full review actions.',
+                    actionLabel: 'Open payments',
+                    onActionTap: () => widget.onNavigate(1),
+                    child: _PaymentQueuePreview(
+                      stats: data.stats,
+                      payments: data.pendingPlatformFeePayments,
+                      onOpenPayments: () => widget.onNavigate(1),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   _OverviewListPanel(
                     eyebrow: 'Action Queue',
                     title: 'Pending verification',
                     subtitle:
                         'New salons stay here until you approve or reject them.',
                     actionLabel: 'View all',
-                    onActionTap: () => widget.onNavigate(1),
+                    onActionTap: () => widget.onNavigate(2),
                     child: data.pendingSalons.isEmpty
                         ? const AdminEmptyState(
                             icon: Icons.verified_outlined,
@@ -175,7 +208,7 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
                     subtitle:
                         'Use restrictions when platform fees remain unpaid for too long.',
                     actionLabel: 'Open salons',
-                    onActionTap: () => widget.onNavigate(2),
+                    onActionTap: () => widget.onNavigate(3),
                     child: data.restrictedSalons.isEmpty
                         ? const AdminEmptyState(
                             icon: Icons.lock_open_rounded,
@@ -214,21 +247,25 @@ class _DashboardData {
     required this.stats,
     required this.pendingSalons,
     required this.restrictedSalons,
+    required this.pendingPlatformFeePayments,
   });
 
   final AdminDashboardStats stats;
   final List<AdminSalonSummary> pendingSalons;
   final List<AdminSalonSummary> restrictedSalons;
+  final List<AdminPaymentItem> pendingPlatformFeePayments;
 }
 
 class _OverviewHero extends StatelessWidget {
   const _OverviewHero({
     required this.stats,
+    required this.onPaymentsTap,
     required this.onPendingTap,
     required this.onSalonTap,
   });
 
   final AdminDashboardStats stats;
+  final VoidCallback onPaymentsTap;
   final VoidCallback onPendingTap;
   final VoidCallback onSalonTap;
 
@@ -324,6 +361,11 @@ class _OverviewHero extends StatelessWidget {
                   icon: Icons.storefront_outlined,
                 ),
                 _HeroInfoPill(
+                  label:
+                      '${stats.pendingPlatformFeePaymentCount} payments waiting',
+                  icon: Icons.payments_outlined,
+                ),
+                _HeroInfoPill(
                   label: '${stats.pendingSalonCount} waiting review',
                   icon: Icons.fact_check_outlined,
                 ),
@@ -343,6 +385,15 @@ class _OverviewHero extends StatelessWidget {
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: const Color(0xFF0F4F49),
+                  ),
+                  onPressed: onPaymentsTap,
+                  icon: const Icon(Icons.payments_rounded),
+                  label: const Text('Review payments'),
+                ),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white.withValues(alpha: 0.14),
+                    foregroundColor: Colors.white,
                   ),
                   onPressed: onPendingTap,
                   icon: const Icon(Icons.fact_check_rounded),
@@ -469,12 +520,14 @@ class _MetricCard extends StatelessWidget {
               const SizedBox(height: 18),
               Text(
                 title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: const Color(0xFF5D6F68),
                       fontWeight: FontWeight.w700,
                     ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Text(
                 value,
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
@@ -482,9 +535,11 @@ class _MetricCard extends StatelessWidget {
                       color: const Color(0xFF10261D),
                     ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 subtitle,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: const Color(0xFF73817B),
                       height: 1.35,
@@ -503,16 +558,16 @@ class _OverviewListPanel extends StatelessWidget {
     required this.eyebrow,
     required this.title,
     required this.subtitle,
-    required this.actionLabel,
-    required this.onActionTap,
     required this.child,
+    this.actionLabel,
+    this.onActionTap,
   });
 
   final String eyebrow;
   final String title;
   final String subtitle;
-  final String actionLabel;
-  final VoidCallback onActionTap;
+  final String? actionLabel;
+  final VoidCallback? onActionTap;
   final Widget child;
 
   @override
@@ -531,6 +586,198 @@ class _OverviewListPanel extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           child,
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentQueuePreview extends StatelessWidget {
+  const _PaymentQueuePreview({
+    required this.stats,
+    required this.payments,
+    required this.onOpenPayments,
+  });
+
+  final AdminDashboardStats stats;
+  final List<AdminPaymentItem> payments;
+  final VoidCallback onOpenPayments;
+
+  @override
+  Widget build(BuildContext context) {
+    if (payments.isEmpty) {
+      return const AdminEmptyState(
+        icon: Icons.receipt_long_outlined,
+        title: 'No pending fee payment',
+        message: 'New owner fee submissions will appear here automatically.',
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6FAF8),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFDDE6E0)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _QueueKpiChip(
+                  icon: Icons.schedule_rounded,
+                  label:
+                      '${stats.pendingPlatformFeePaymentCount} waiting review',
+                ),
+                _QueueKpiChip(
+                  icon: Icons.account_balance_wallet_outlined,
+                  label: formatAdminCurrency(
+                    stats.pendingPlatformFeePaymentAmount,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            ...payments.take(3).map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _PaymentPreviewRow(item: item),
+                  ),
+                ),
+            if (payments.length > 3)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  '${payments.length - 3} more payment submissions are waiting in the Payments tab.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF73817B),
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
+            const SizedBox(height: 6),
+            FilledButton.icon(
+              onPressed: onOpenPayments,
+              icon: const Icon(Icons.arrow_forward_rounded),
+              label: const Text('Open Payments tab'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QueueKpiChip extends StatelessWidget {
+  const _QueueKpiChip({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFDDE6E0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: const Color(0xFF425A53)),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: const Color(0xFF213630),
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentPreviewRow extends StatelessWidget {
+  const _PaymentPreviewRow({
+    required this.item,
+  });
+
+  final AdminPaymentItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final salonLabel = item.salonName.isEmpty ? item.salonId : item.salonName;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE1E9E4)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8EEF9),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.payments_outlined,
+              color: Color(0xFF1D4ED8),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  salonLabel,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF10261D),
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${formatAdminCurrency(item.amount)} • ${item.paymentMethod}',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF425A53),
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  item.transactionId.isEmpty
+                      ? formatAdminDateTime(item.date)
+                      : 'TrxID: ${item.transactionId} • ${formatAdminDateTime(item.date)}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF73817B),
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          const AdminStatusBadge(
+            label: 'Pending',
+            backgroundColor: Color(0xFFE6F2EE),
+            foregroundColor: Color(0xFF0C5C51),
+          ),
         ],
       ),
     );

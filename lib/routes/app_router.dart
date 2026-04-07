@@ -9,6 +9,7 @@ import 'package:cutline/features/barber/screens/barber_home_screen.dart';
 import 'package:cutline/features/barber/screens/barber_notification_screen.dart';
 import 'package:cutline/features/barber/screens/barber_profile_screen.dart';
 import 'package:cutline/features/barber/screens/barber_edit_profile_screen.dart';
+import 'package:cutline/features/barber/screens/barber_change_password_screen.dart';
 import 'package:cutline/features/barber/screens/work_history_screen.dart';
 import 'package:cutline/features/owner/screens/barbers_screen.dart';
 import 'package:cutline/features/owner/screens/booking_detail_screen.dart'
@@ -97,6 +98,7 @@ class AppRoutes {
   static const barberWorkHistory = '/barber-work-history';
   static const barberEditProfile = '/barber-edit-profile';
   static const barberProfile = '/barber-profile';
+  static const barberPasswordSetup = '/barber-password-setup';
 }
 
 class AppRouter {
@@ -177,6 +179,8 @@ class AppRouter {
         return _page(const OwnerHomeScreen(), settings);
       case AppRoutes.barberHome:
         return _page(const BarberHomeScreen(), settings);
+      case AppRoutes.barberPasswordSetup:
+        return _page(const BarberChangePasswordScreen(), settings);
 
       case AppRoutes.salonDetails:
         final args = settings.arguments;

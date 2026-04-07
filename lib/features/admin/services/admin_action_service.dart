@@ -46,4 +46,28 @@ class AdminActionService {
       'reason': reason.trim(),
     });
   }
+
+  Future<void> updatePlatformFeeConfig({
+    required bool isFree,
+    required int amount,
+  }) async {
+    final callable = _functions.httpsCallable('updatePlatformFeeConfig');
+    await callable.call(<String, dynamic>{
+      'isFree': isFree,
+      'amount': amount,
+    });
+  }
+
+  Future<void> reviewPlatformFeePayment({
+    required String paymentId,
+    required String decision,
+    String reviewNote = '',
+  }) async {
+    final callable = _functions.httpsCallable('reviewPlatformFeePayment');
+    await callable.call(<String, dynamic>{
+      'paymentId': paymentId,
+      'decision': decision,
+      'reviewNote': reviewNote.trim(),
+    });
+  }
 }

@@ -65,6 +65,108 @@ async function writeAdminAuditLog({
 }
 
 /**
+ * Normalize a platform fee config document into a stable audit shape.
+ * @param {Object} data
+ * @return {{fee: number, isFree: boolean, mode: string}}
+ */
+function normalizePlatformFeeConfig(data) {
+  const raw = data && data.fee;
+  let fee = 0;
+
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    fee = Math.max(0, Math.trunc(raw));
+  } else if (typeof raw === "string") {
+    const normalized = raw.trim().toLowerCase();
+    if (normalized && normalized !== "free") {
+      const parsed = Number.parseInt(normalized, 10);
+      if (Number.isFinite(parsed)) {
+        fee = Math.max(0, parsed);
+      } else {
+        const digits = normalized.match(/\d+/);
+        if (digits) {
+          fee = Math.max(0, Number.parseInt(digits[0], 10) || 0);
+        }
+      }
+    }
+  }
+
+  const mode = (data && data.mode ? data.mode : "")
+      .toString()
+      .trim()
+      .toLowerCase();
+  const isFree =
+    (data && data.isFree === true) ||
+    mode === "free" ||
+    (fee <= 0 && mode !== "custom");
+
+  return {
+    fee: isFree ? 0 : fee,
+    isFree,
+    mode: isFree ? "free" : "custom",
+  };
+}
+
+/**
+ * Parse an integer money-like value safely.
+ * @param {*} value
+ * @return {number}
+ */
+function parseMoneyInt(value) {
+  const parsed = Number.parseInt((value || 0).toString(), 10);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+/**
+ * Normalize a platform fee allocation entry.
+ * @param {Object} data
+ * @return {{ledgerId: string, bookingId: string, amount: number}}
+ */
+function normalizePlatformFeeAllocation(data) {
+  const source = data || {};
+  return {
+    ledgerId: (source.ledgerId || "").toString().trim(),
+    bookingId: (source.bookingId || "").toString().trim(),
+    amount: parseMoneyInt(source.amount),
+  };
+}
+
+/**
+ * Resolve the persisted ledger status from fee and paid amounts.
+ * @param {number} feeAmount
+ * @param {number} paidAmount
+ * @return {string}
+ */
+function resolvePlatformFeeLedgerStatus(feeAmount, paidAmount) {
+  if (paidAmount >= feeAmount && feeAmount > 0) {
+    return "paid";
+  }
+  if (paidAmount > 0) {
+    return "partial";
+  }
+  return "unpaid";
+}
+
+/**
+ * Determine whether a restriction reason is platform-fee related.
+ * @param {string} reason
+ * @return {boolean}
+ */
+function isPlatformFeeRestrictionReason(reason) {
+  const normalized = (reason || "").toString().trim().toLowerCase();
+  if (!normalized) return false;
+
+  const tokens = [
+    "platform fee",
+    "pending platform fee",
+    "outstanding platform fee",
+    "unpaid platform fee",
+    "platform due",
+    "unpaid due",
+  ];
+  return tokens.some((token) => normalized.includes(token));
+}
+
+/**
  * Enforce unique ownership of FCM tokens across user documents.
  *
  * If the same device token is present on multiple users (e.g. shared phone,
@@ -609,6 +711,393 @@ exports.setSalonRestriction = onCall(async (request) => {
   });
 
   return {ok: true};
+});
+
+exports.updatePlatformFeeConfig = onCall(async (request) => {
+  assertSuperadmin(request.auth);
+
+  const data = request.data || {};
+  const isFree = data.isFree === true;
+  const parsedAmount = Number.parseInt((data.amount || 0).toString(), 10);
+  const amount = Number.isFinite(parsedAmount) ? Math.max(0, parsedAmount) : 0;
+
+  if (!isFree && amount <= 0) {
+    throw new HttpsError(
+        "invalid-argument",
+        "A positive amount is required when platform fee is not free.",
+    );
+  }
+
+  const firestore = admin.firestore();
+  const collectionRef = firestore.collection("platform_fee");
+  const existingSnap = await collectionRef.get();
+  const defaultDoc =
+    existingSnap.docs.find((doc) => doc.id === "default") || null;
+  const before = normalizePlatformFeeConfig(
+      defaultDoc ?
+        defaultDoc.data() :
+        (existingSnap.docs.length > 0 ? existingSnap.docs[0].data() : {}),
+  );
+
+  const nextConfig = {
+    fee: isFree ? 0 : amount,
+    isFree,
+    mode: isFree ? "free" : "custom",
+    updatedBy: request.auth.uid,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  const docIds = new Set(existingSnap.docs.map((doc) => doc.id));
+  docIds.add("default");
+
+  const batch = firestore.batch();
+  for (const docId of docIds) {
+    batch.set(collectionRef.doc(docId), nextConfig, {merge: true});
+  }
+  await batch.commit();
+
+  await writeAdminAuditLog({
+    actorUid: request.auth.uid,
+    actorEmail: request.auth.token.email || "",
+    action: "platform_fee_updated",
+    targetType: "platformFee",
+    targetId: "default",
+    before,
+    after: {
+      fee: nextConfig.fee,
+      isFree: nextConfig.isFree,
+      mode: nextConfig.mode,
+    },
+  });
+
+  return {
+    ok: true,
+    config: {
+      fee: nextConfig.fee,
+      isFree: nextConfig.isFree,
+      mode: nextConfig.mode,
+    },
+  };
+});
+
+exports.reviewPlatformFeePayment = onCall(async (request) => {
+  assertSuperadmin(request.auth);
+
+  const data = request.data || {};
+  const paymentId = (data.paymentId || "").toString().trim();
+  const decision = (data.decision || "").toString().trim().toLowerCase();
+  const reviewNote = (data.reviewNote || "").toString().trim();
+
+  if (!paymentId) {
+    throw new HttpsError("invalid-argument", "paymentId is required.");
+  }
+  if (!["confirmed", "rejected"].includes(decision)) {
+    throw new HttpsError(
+        "invalid-argument",
+        "decision must be confirmed or rejected.",
+    );
+  }
+  if (decision === "rejected" && !reviewNote) {
+    throw new HttpsError(
+        "invalid-argument",
+        "reviewNote is required for rejection.",
+    );
+  }
+
+  const firestore = admin.firestore();
+  const paymentRef = firestore
+      .collection("platform_fee_payments")
+      .doc(paymentId);
+  const paymentTs = admin.firestore.FieldValue.serverTimestamp();
+
+  let salonId = "";
+  let salonName = "";
+  let paymentAmount = 0;
+  let transactionId = "";
+  let beforeStatus = "pending";
+  let autoUnrestricted = false;
+  let outstandingAfter = 0;
+
+  await firestore.runTransaction(async (transaction) => {
+    const paymentSnap = await transaction.get(paymentRef);
+    if (!paymentSnap.exists) {
+      throw new HttpsError("not-found", "Platform fee payment not found.");
+    }
+
+    const paymentData = paymentSnap.data() || {};
+    beforeStatus = (paymentData.status || "pending")
+        .toString()
+        .trim()
+        .toLowerCase();
+    if (beforeStatus !== "pending") {
+      throw new HttpsError(
+          "failed-precondition",
+          "This payment has already been reviewed.",
+      );
+    }
+
+    salonId = (paymentData.salonId || "").toString().trim();
+    salonName = (paymentData.salonName || "").toString().trim();
+    paymentAmount = parseMoneyInt(paymentData.amount);
+    transactionId = (paymentData.transactionId || "").toString().trim();
+
+    if (!salonId) {
+      throw new HttpsError(
+          "failed-precondition",
+          "Payment is missing salon information.",
+      );
+    }
+
+    if (decision === "rejected") {
+      transaction.update(paymentRef, {
+        status: "rejected",
+        reviewNote,
+        reviewedBy: request.auth.uid,
+        reviewedAt: paymentTs,
+        updatedAt: paymentTs,
+      });
+      return;
+    }
+
+    const rawAllocations = Array.isArray(paymentData.allocations) ?
+      paymentData.allocations :
+      [];
+    const allocations = rawAllocations
+        .map((item) => normalizePlatformFeeAllocation(item))
+        .filter((item) => item.ledgerId && item.amount > 0);
+
+    const hasStructuredAllocations = allocations.length > 0;
+    if (!hasStructuredAllocations && decision === "rejected") {
+      throw new HttpsError(
+          "failed-precondition",
+          "Legacy pending payments without allocations " +
+          "cannot be auto-rejected.",
+      );
+    }
+
+    const allocationByLedgerId = new Map();
+    for (const allocation of allocations) {
+      const current = allocationByLedgerId.get(allocation.ledgerId) || {
+        bookingId: allocation.bookingId,
+        amount: 0,
+      };
+      allocationByLedgerId.set(allocation.ledgerId, {
+        bookingId: current.bookingId || allocation.bookingId,
+        amount: current.amount + allocation.amount,
+      });
+    }
+
+    const totalAllocated = Array.from(allocationByLedgerId.values())
+        .reduce((sum, item) => sum + parseMoneyInt(item.amount), 0);
+    if (hasStructuredAllocations &&
+        paymentAmount > 0 &&
+        totalAllocated !== paymentAmount) {
+      throw new HttpsError(
+          "failed-precondition",
+          "Payment amount does not match its ledger allocations.",
+      );
+    }
+    if (!hasStructuredAllocations && totalAllocated <= 0) {
+      const legacyLedgerSnap = await transaction.get(
+          firestore
+              .collection("platform_fee_ledger")
+              .where("paymentId", "==", paymentId),
+      );
+      if (legacyLedgerSnap.empty) {
+        throw new HttpsError(
+            "failed-precondition",
+            "Payment has no allocations to confirm.",
+        );
+      }
+
+      for (const doc of legacyLedgerSnap.docs) {
+        const ledgerData = doc.data() || {};
+        const ledgerSalonId = (ledgerData.salonId || "").toString().trim();
+        if (ledgerSalonId !== salonId) {
+          throw new HttpsError(
+              "failed-precondition",
+              "Legacy payment rows do not belong to this salon.",
+          );
+        }
+        allocationByLedgerId.set(doc.id, {
+          bookingId: (ledgerData.bookingId || "").toString().trim(),
+          amount: parseMoneyInt(ledgerData.paidAmount),
+        });
+      }
+    }
+
+    const normalizedAllocated = Array.from(allocationByLedgerId.values())
+        .reduce((sum, item) => sum + parseMoneyInt(item.amount), 0);
+    if (normalizedAllocated <= 0) {
+      throw new HttpsError(
+          "failed-precondition",
+          "Payment has no allocations to confirm.",
+      );
+    }
+
+    const salonRef = firestore.collection("salons").doc(salonId);
+    const salonSummaryRef = firestore
+        .collection("salons_summary")
+        .doc(salonId);
+    const salonSnap = await transaction.get(salonRef);
+    const salonData = salonSnap.exists ? (salonSnap.data() || {}) : {};
+
+    const nextPaidByLedgerId = new Map();
+    const ledgerUpdates = [];
+    for (const [ledgerId, allocation] of allocationByLedgerId.entries()) {
+      const ledgerRef = firestore
+          .collection("platform_fee_ledger")
+          .doc(ledgerId);
+      const ledgerSnap = await transaction.get(ledgerRef);
+      if (!ledgerSnap.exists) {
+        throw new HttpsError(
+            "failed-precondition",
+            `Ledger entry ${ledgerId} no longer exists.`,
+        );
+      }
+
+      const ledgerData = ledgerSnap.data() || {};
+      const ledgerSalonId = (ledgerData.salonId || "").toString().trim();
+      if (ledgerSalonId !== salonId) {
+        throw new HttpsError(
+            "failed-precondition",
+            "Ledger allocation does not belong to this salon.",
+        );
+      }
+
+      const feeAmount = parseMoneyInt(ledgerData.feeAmount);
+      const currentPaid = parseMoneyInt(ledgerData.paidAmount);
+      const appliedAmount = parseMoneyInt(allocation.amount);
+      const nextPaid = hasStructuredAllocations ?
+        currentPaid + appliedAmount :
+        currentPaid;
+      if (nextPaid > feeAmount) {
+        throw new HttpsError(
+            "failed-precondition",
+            "Payment exceeds the remaining amount on at least one ledger row.",
+        );
+      }
+
+      nextPaidByLedgerId.set(ledgerId, nextPaid);
+      ledgerUpdates.push({
+        ledgerRef,
+        update: {
+          paidAmount: nextPaid,
+          status: resolvePlatformFeeLedgerStatus(feeAmount, nextPaid),
+          paymentId,
+          confirmedAt: paymentTs,
+          updatedAt: paymentTs,
+        },
+      });
+    }
+
+    const salonLedgerSnap = await transaction.get(
+        firestore
+            .collection("platform_fee_ledger")
+            .where("salonId", "==", salonId),
+    );
+    outstandingAfter = 0;
+    for (const doc of salonLedgerSnap.docs) {
+      const ledgerData = doc.data() || {};
+      const feeAmount = parseMoneyInt(ledgerData.feeAmount);
+      const paidAmount = nextPaidByLedgerId.has(doc.id) ?
+        nextPaidByLedgerId.get(doc.id) :
+        parseMoneyInt(ledgerData.paidAmount);
+      outstandingAfter += Math.max(0, feeAmount - paidAmount);
+    }
+
+    const restrictionReason = (salonData.restrictionReason || "")
+        .toString()
+        .trim();
+    autoUnrestricted =
+      salonData.isRestricted === true &&
+      outstandingAfter === 0 &&
+      isPlatformFeeRestrictionReason(restrictionReason);
+
+    for (const ledgerUpdate of ledgerUpdates) {
+      transaction.update(ledgerUpdate.ledgerRef, ledgerUpdate.update);
+    }
+
+    if (autoUnrestricted) {
+      transaction.set(salonRef, {
+        isRestricted: false,
+        restrictionReason: admin.firestore.FieldValue.delete(),
+        unrestrictedAt: paymentTs,
+        unrestrictedBy: request.auth.uid,
+        updatedAt: paymentTs,
+      }, {merge: true});
+      transaction.set(salonSummaryRef, {
+        isRestricted: false,
+        updatedAt: paymentTs,
+      }, {merge: true});
+    }
+
+    transaction.update(paymentRef, {
+      status: "confirmed",
+      reviewNote,
+      reviewedBy: request.auth.uid,
+      reviewedAt: paymentTs,
+      confirmedAt: paymentTs,
+      updatedAt: paymentTs,
+    });
+  });
+
+  await writeAdminAuditLog({
+    actorUid: request.auth.uid,
+    actorEmail: request.auth.token.email || "",
+    action:
+      decision === "confirmed" ?
+        "platform_fee_payment_confirmed" :
+        "platform_fee_payment_rejected",
+    targetType: "platformFeePayment",
+    targetId: paymentId,
+    before: {
+      status: beforeStatus,
+      salonId,
+      amount: paymentAmount,
+      transactionId,
+      reviewNote: "",
+    },
+    after: {
+      status: decision,
+      salonId,
+      amount: paymentAmount,
+      transactionId,
+      reviewNote,
+      outstandingAfter,
+      autoUnrestricted,
+    },
+  });
+
+  const title = decision === "confirmed" ?
+    "Platform Fee Confirmed" :
+    "Platform Fee Rejected";
+  const body = decision === "confirmed" ?
+    `${salonName || "Your salon"} ` +
+      `payment of Tk ${paymentAmount} was confirmed.` +
+      (autoUnrestricted ? " Your salon restriction has been removed." : "") :
+    `${salonName || "Your salon"} ` +
+      `payment of Tk ${paymentAmount} was rejected.` +
+      (reviewNote ? ` ${reviewNote}` : "");
+
+  await firestore.collection("notifications").add({
+    userId: salonId,
+    type: "platform_fee_payment",
+    title,
+    body,
+    salonId,
+    paymentId,
+    isRead: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return {
+    ok: true,
+    paymentId,
+    status: decision,
+    autoUnrestricted,
+    outstandingAfter,
+  };
 });
 
 exports.updateSupportRequest = onCall(async (request) => {

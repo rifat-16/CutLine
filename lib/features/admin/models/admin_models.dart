@@ -16,12 +16,16 @@ int _intValue(Map<String, dynamic> data, String key) {
 class AdminDashboardStats {
   const AdminDashboardStats({
     required this.pendingSalonCount,
+    required this.pendingPlatformFeePaymentCount,
+    required this.pendingPlatformFeePaymentAmount,
     required this.totalSalons,
     required this.restrictedSalonCount,
     required this.totalOutstandingFee,
   });
 
   final int pendingSalonCount;
+  final int pendingPlatformFeePaymentCount;
+  final int pendingPlatformFeePaymentAmount;
   final int totalSalons;
   final int restrictedSalonCount;
   final int totalOutstandingFee;
@@ -331,7 +335,15 @@ class AdminPaymentItem {
     required this.amount,
     required this.status,
     required this.paymentMethod,
+    required this.transactionId,
+    required this.proofImageUrl,
+    required this.proofStoragePath,
     required this.note,
+    required this.reviewNote,
+    required this.reviewedBy,
+    required this.reviewedAt,
+    required this.rangeStart,
+    required this.rangeEnd,
     required this.date,
   });
 
@@ -342,8 +354,20 @@ class AdminPaymentItem {
   final int amount;
   final String status;
   final String paymentMethod;
+  final String transactionId;
+  final String proofImageUrl;
+  final String proofStoragePath;
   final String note;
+  final String reviewNote;
+  final String reviewedBy;
+  final DateTime? reviewedAt;
+  final DateTime? rangeStart;
+  final DateTime? rangeEnd;
   final DateTime? date;
+
+  bool get isPending => status == 'pending';
+  bool get isConfirmed => status == 'confirmed' || status == 'paid';
+  bool get isRejected => status == 'rejected';
 }
 
 class AdminFinanceSnapshot {

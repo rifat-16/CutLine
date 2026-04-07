@@ -1,6 +1,7 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/barber/providers/barber_home_provider.dart';
 import 'package:cutline/features/owner/screens/booking_requests_screen.dart';
+import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/services/queue_serial_service.dart';
 import 'package:cutline/shared/widgets/notification_badge_icon.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +21,26 @@ class BarberHomeScreen extends StatefulWidget {
 
 class _BarberHomeScreenState extends State<BarberHomeScreen> {
   BarberQueueStatus? _selectedStatus = BarberQueueStatus.waiting;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _enforcePasswordSetup();
+    });
+  }
+
+  Future<void> _enforcePasswordSetup() async {
+    final auth = context.read<AuthProvider>();
+    final uid = auth.currentUser?.uid;
+    if (uid == null) return;
+
+    final profile = await auth.fetchUserProfile(uid);
+    if (!mounted) return;
+    if (profile?['mustChangePassword'] == true) {
+      Navigator.pushReplacementNamed(context, AppRoutes.barberPasswordSetup);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -217,6 +238,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
           padding: const EdgeInsets.only(right: 12.0),
           child: InkWell(
             onTap: () async {
+              final homeProvider = context.read<BarberHomeProvider>();
               final updated = await Navigator.push<bool>(
                 context,
                 MaterialPageRoute(
@@ -224,7 +246,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
               );
               if (!mounted) return;
               if (updated == true) {
-                context.read<BarberHomeProvider>().load();
+                homeProvider.load();
               }
             },
             child: CircleAvatar(
@@ -290,12 +312,13 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
     BuildContext context,
     BarberHomeProvider provider,
   ) async {
+    final messenger = ScaffoldMessenger.of(context);
     if (provider.services.isEmpty) {
       await provider.load();
-      if (!mounted) return;
+      if (!context.mounted) return;
     }
     if (provider.services.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(content: Text('No services found for this salon.')),
       );
       return;
@@ -390,8 +413,9 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                                 );
                                 if (!mounted) return;
                                 if (ok) {
+                                  if (!sheetContext.mounted) return;
                                   Navigator.of(sheetContext).pop();
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                  messenger.showSnackBar(
                                     const SnackBar(
                                       content: Text('Manual customer added.'),
                                     ),
@@ -399,7 +423,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                                   return;
                                 }
                                 setModalState(() => isSubmitting = false);
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                messenger.showSnackBar(
                                   SnackBar(
                                     content: Text(
                                       provider.error ??

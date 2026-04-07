@@ -73,7 +73,8 @@ class _SplashScreenState extends State<SplashScreen> {
       // Best-effort refresh (do not block startup if network/Play services
       // are slow or restricted on some OEM devices).
       try {
-        await auth.refreshCurrentUser()
+        await auth
+            .refreshCurrentUser()
             .timeout(const Duration(seconds: 12), onTimeout: () => null);
       } catch (_) {
         // Ignore.
@@ -91,8 +92,10 @@ class _SplashScreenState extends State<SplashScreen> {
           if (lastUid != null) {
             banner ??=
                 'Session was cleared on this device. If you are on Xiaomi/Redmi, set Battery saver for CutLine to "No restrictions" and enable Autostart, then try again.';
-            SessionDebug.log('currentUser is null but last uid exists: $lastUid');
-            SessionDebug.snack(context, 'Auth session missing; last uid: $lastUid');
+            SessionDebug.log(
+                'currentUser is null but last uid exists: $lastUid');
+            SessionDebug.snack(
+                context, 'Auth session missing; last uid: $lastUid');
           }
         } catch (e, st) {
           SessionDebug.log('Failed reading last signed-in uid',
@@ -189,6 +192,7 @@ class _SplashScreenState extends State<SplashScreen> {
       final role =
           roleKey != null ? UserRoleKey.fromKey(roleKey) : UserRole.customer;
       final profileComplete = profile['profileComplete'] == true;
+      final mustChangePassword = profile['mustChangePassword'] == true;
 
       String target;
       switch (role) {
@@ -206,7 +210,9 @@ class _SplashScreenState extends State<SplashScreen> {
               : AppRoutes.ownerSalonSetup;
           break;
         case UserRole.barber:
-          target = AppRoutes.barberHome;
+          target = mustChangePassword
+              ? AppRoutes.barberPasswordSetup
+              : AppRoutes.barberHome;
           break;
         default:
           target = AppRoutes.userHome;
@@ -226,7 +232,11 @@ class _SplashScreenState extends State<SplashScreen> {
       final creds = await AuthSessionStorage().getRememberedCredentials();
       if (creds == null) return false;
 
-      const transientCodes = {'network-request-failed', 'internal-error', 'unknown'};
+      const transientCodes = {
+        'network-request-failed',
+        'internal-error',
+        'unknown'
+      };
       for (var attempt = 0; attempt < 2; attempt++) {
         final ok = await auth
             .signIn(email: creds.email, password: creds.password)

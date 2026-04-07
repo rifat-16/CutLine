@@ -44,10 +44,12 @@ class BarbersProvider extends ChangeNotifier {
             .collection('barbers')
             .where('ownerId', isEqualTo: ownerId)
             .get();
-        _barbers = snap.docs.map((doc) => _mapBarber(doc.data(), ownerId)).toList();
+        _barbers =
+            snap.docs.map((doc) => _mapBarber(doc.data(), ownerId)).toList();
       }
       await _hydrateBarberAvatars(ownerId);
       await _updateBarberAvailability(ownerId);
+      await _hydrateCredentialState(ownerId);
       await _calculateServedToday(ownerId);
       await _updateNextClient(ownerId);
     } catch (e) {
@@ -60,6 +62,7 @@ class BarbersProvider extends ChangeNotifier {
   Future<void> addBarber(BarberInput input, {String? barberUid}) async {
     final ownerId = _authProvider.currentUser?.uid;
     if (ownerId == null) return;
+    final previousBarbers = List<OwnerBarber>.from(_barbers);
     final resolvedUid = (barberUid ?? '').trim().isNotEmpty
         ? barberUid!.trim()
         : DateTime.now().millisecondsSinceEpoch.toString();
@@ -78,6 +81,8 @@ class BarbersProvider extends ChangeNotifier {
       photoUrl: '',
       uid: resolvedUid,
       isAvailable: true,
+      mustChangePassword: true,
+      passwordVisibleToOwner: true,
     );
     final existingIndex =
         _barbers.indexWhere((b) => b.uid == resolvedUid || b.id == resolvedUid);
@@ -118,6 +123,17 @@ class BarbersProvider extends ChangeNotifier {
         'available': barber.isAvailable,
         'updatedAt': FieldValue.serverTimestamp(),
       };
+      final privateCredentialEntry = {
+        'uid': resolvedUid,
+        'ownerId': ownerId,
+        'name': barber.name,
+        'email': barber.email,
+        'temporaryPassword': input.password,
+        'passwordVisibleToOwner': true,
+        'mustChangePassword': true,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
 
       final batch = _firestore.batch();
       final salonRef = _firestore.collection('salons').doc(ownerId);
@@ -135,16 +151,17 @@ class BarbersProvider extends ChangeNotifier {
         SetOptions(merge: true),
       );
       batch.set(
-        _firestore.collection('users').doc(resolvedUid),
-        {
-          'ownerId': ownerId,
-          'role': 'barber',
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
+        salonRef.collection('barber_credentials').doc(resolvedUid),
+        privateCredentialEntry,
         SetOptions(merge: true),
       );
       await batch.commit();
-    } catch (_) {
+      _setError(null);
+    } catch (e, st) {
+      _barbers = previousBarbers;
+      notifyListeners();
+      debugPrint('addBarber commit failed: $e');
+      debugPrintStack(stackTrace: st);
       _setError('Failed to save barber. Please refresh and try again.');
     }
   }
@@ -170,6 +187,7 @@ class BarbersProvider extends ChangeNotifier {
       photoUrl: (data['photoUrl'] as String?) ?? '',
       uid: barberId,
       isAvailable: isAvailable,
+      mustChangePassword: data['mustChangePassword'] == true,
     );
   }
 
@@ -185,9 +203,8 @@ class BarbersProvider extends ChangeNotifier {
   }
 
   Future<void> _hydrateBarberAvatars(String ownerId) async {
-    final barbersNeedingAvatars = _barbers
-        .where((b) => b.photoUrl.isEmpty && b.uid.isNotEmpty)
-        .toList();
+    final barbersNeedingAvatars =
+        _barbers.where((b) => b.photoUrl.isEmpty && b.uid.isNotEmpty).toList();
     if (barbersNeedingAvatars.isEmpty) return;
 
     final batchSize = 10;
@@ -216,21 +233,7 @@ class BarbersProvider extends ChangeNotifier {
           if (avatar != null && avatar.isNotEmpty) {
             final index = _barbers.indexWhere((b) => b.id == barber.id);
             if (index != -1) {
-              _barbers[index] = OwnerBarber(
-                id: _barbers[index].id,
-                name: _barbers[index].name,
-                email: _barbers[index].email,
-                phone: _barbers[index].phone,
-                password: _barbers[index].password,
-                specialization: _barbers[index].specialization,
-                rating: _barbers[index].rating,
-                servedToday: _barbers[index].servedToday,
-                status: _barbers[index].status,
-                nextClient: _barbers[index].nextClient,
-                photoUrl: avatar,
-                uid: _barbers[index].uid,
-                isAvailable: _barbers[index].isAvailable,
-              );
+              _barbers[index] = _barbers[index].copyWith(photoUrl: avatar);
             }
           }
         }
@@ -239,6 +242,60 @@ class BarbersProvider extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  Future<void> _hydrateCredentialState(String ownerId) async {
+    try {
+      final snap = await _firestore
+          .collection('salons')
+          .doc(ownerId)
+          .collection('barber_credentials')
+          .get();
+
+      if (snap.docs.isEmpty) return;
+
+      final credentialsById = <String, Map<String, dynamic>>{
+        for (final doc in snap.docs) doc.id: doc.data(),
+      };
+
+      var didChange = false;
+      for (int i = 0; i < _barbers.length; i++) {
+        final barber = _barbers[i];
+        final credentials =
+            credentialsById[barber.uid] ?? credentialsById[barber.id];
+        if (credentials == null) continue;
+
+        final temporaryPassword =
+            (credentials['temporaryPassword'] as String?)?.trim() ?? '';
+        final canShowPassword = credentials['passwordVisibleToOwner'] == true &&
+            temporaryPassword.isNotEmpty;
+        final changedAt = _asDateTime(credentials['passwordChangedAt']);
+
+        _barbers[i] = barber.copyWith(
+          email: barber.email.isNotEmpty
+              ? barber.email
+              : ((credentials['email'] as String?) ?? ''),
+          password: canShowPassword ? temporaryPassword : '',
+          mustChangePassword: credentials['mustChangePassword'] == true,
+          passwordVisibleToOwner: canShowPassword,
+          passwordChangedAt: changedAt,
+          clearPasswordChangedAt:
+              changedAt == null && credentials.containsKey('passwordChangedAt'),
+        );
+        didChange = true;
+      }
+
+      if (didChange) {
+        notifyListeners();
+      }
+    } catch (_) {
+      // Ignore credential hydration errors
+    }
+  }
+
+  DateTime? _asDateTime(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    return null;
   }
 
   Future<void> _updateBarberAvailability(String ownerId) async {
@@ -261,19 +318,8 @@ class BarbersProvider extends ChangeNotifier {
         final barber = _barbers[i];
         final isAvailable = availabilityMap[barber.uid] ?? barber.isAvailable;
         if (isAvailable != barber.isAvailable) {
-          _barbers[i] = OwnerBarber(
-            id: barber.id,
-            name: barber.name,
-            email: barber.email,
-            phone: barber.phone,
-            password: barber.password,
-            specialization: barber.specialization,
-            rating: barber.rating,
-            servedToday: barber.servedToday,
+          _barbers[i] = barber.copyWith(
             status: isAvailable ? barber.status : OwnerBarberStatus.offDuty,
-            nextClient: barber.nextClient,
-            photoUrl: barber.photoUrl,
-            uid: barber.uid,
             isAvailable: isAvailable,
           );
         }
@@ -291,7 +337,8 @@ class BarbersProvider extends ChangeNotifier {
     // Exact match
     if (barberLower == targetLower) return true;
     // Partial match - check if one contains the other
-    if (barberLower.contains(targetLower) || targetLower.contains(barberLower)) {
+    if (barberLower.contains(targetLower) ||
+        targetLower.contains(barberLower)) {
       return true;
     }
     return false;
@@ -299,26 +346,13 @@ class BarbersProvider extends ChangeNotifier {
 
   Future<void> _calculateServedToday(String ownerId) async {
     final today = DateTime.now();
-    final todayStr = "${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
+    final todayStr =
+        "${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
     final processedBookingIds = <String>{};
-    
+
     // Reset servedToday counts first
     for (int i = 0; i < _barbers.length; i++) {
-      _barbers[i] = OwnerBarber(
-        id: _barbers[i].id,
-        name: _barbers[i].name,
-        email: _barbers[i].email,
-        phone: _barbers[i].phone,
-        password: _barbers[i].password,
-        specialization: _barbers[i].specialization,
-        rating: _barbers[i].rating,
-        servedToday: 0,
-        status: _barbers[i].status,
-        nextClient: _barbers[i].nextClient,
-        photoUrl: _barbers[i].photoUrl,
-        uid: _barbers[i].uid,
-        isAvailable: _barbers[i].isAvailable,
-      );
+      _barbers[i] = _barbers[i].copyWith(servedToday: 0);
     }
 
     // Check bookings collection
@@ -333,10 +367,10 @@ class BarbersProvider extends ChangeNotifier {
       for (final doc in bookingsSnap.docs) {
         final data = doc.data();
         final rootStatus = (data['status'] as String?) ?? '';
-        
+
         // Check root level status
         bool isCompleted = rootStatus == 'completed' || rootStatus == 'done';
-        
+
         // Also check services array for completed status
         if (!isCompleted) {
           final services = data['services'] as List?;
@@ -352,12 +386,12 @@ class BarbersProvider extends ChangeNotifier {
             }
           }
         }
-        
+
         if (isCompleted) {
           processedBookingIds.add(doc.id);
           // First try to get barberId from root level
-          final barberId = (data['barberId'] as String?) ?? 
-                          (data['barberUid'] as String?);
+          final barberId =
+              (data['barberId'] as String?) ?? (data['barberUid'] as String?);
           // Also check services array for barberId
           String? serviceBarberId;
           final services = data['services'] as List?;
@@ -365,10 +399,10 @@ class BarbersProvider extends ChangeNotifier {
             final firstService = services[0];
             if (firstService is Map) {
               serviceBarberId = (firstService['barberId'] as String?) ??
-                               (firstService['barberUid'] as String?);
+                  (firstService['barberUid'] as String?);
             }
           }
-          
+
           final finalBarberId = barberId ?? serviceBarberId;
           final barberName = (data['barberName'] as String?) ?? '';
 
@@ -376,42 +410,16 @@ class BarbersProvider extends ChangeNotifier {
             final barber = _barbers[i];
             // Primary: Match by UID (most reliable)
             if (finalBarberId != null && finalBarberId == barber.uid) {
-              _barbers[i] = OwnerBarber(
-                id: barber.id,
-                name: barber.name,
-                email: barber.email,
-                phone: barber.phone,
-                password: barber.password,
-                specialization: barber.specialization,
-                rating: barber.rating,
-                servedToday: _barbers[i].servedToday + 1,
-                status: barber.status,
-                nextClient: barber.nextClient,
-                photoUrl: barber.photoUrl,
-                uid: barber.uid,
-                isAvailable: barber.isAvailable,
-              );
+              _barbers[i] =
+                  barber.copyWith(servedToday: _barbers[i].servedToday + 1);
               break;
             }
             // Fallback: Match by name (only if UID not found)
-            else if (finalBarberId == null && 
-                     barberName.isNotEmpty &&
-                     _matchesBarberName(barberName, barber.name)) {
-              _barbers[i] = OwnerBarber(
-                id: barber.id,
-                name: barber.name,
-                email: barber.email,
-                phone: barber.phone,
-                password: barber.password,
-                specialization: barber.specialization,
-                rating: barber.rating,
-                servedToday: _barbers[i].servedToday + 1,
-                status: barber.status,
-                nextClient: barber.nextClient,
-                photoUrl: barber.photoUrl,
-                uid: barber.uid,
-                isAvailable: barber.isAvailable,
-              );
+            else if (finalBarberId == null &&
+                barberName.isNotEmpty &&
+                _matchesBarberName(barberName, barber.name)) {
+              _barbers[i] =
+                  barber.copyWith(servedToday: _barbers[i].servedToday + 1);
               break;
             }
           }
@@ -455,50 +463,24 @@ class BarbersProvider extends ChangeNotifier {
           }
 
           if (isToday) {
-            final barberId = (data['barberId'] as String?) ?? 
-                            (data['barberUid'] as String?);
+            final barberId =
+                (data['barberId'] as String?) ?? (data['barberUid'] as String?);
             final barberName = (data['barberName'] as String?) ?? '';
 
             for (int i = 0; i < _barbers.length; i++) {
               final barber = _barbers[i];
               // Primary: Match by UID (most reliable)
               if (barberId != null && barberId == barber.uid) {
-                _barbers[i] = OwnerBarber(
-                  id: barber.id,
-                  name: barber.name,
-                  email: barber.email,
-                  phone: barber.phone,
-                  password: barber.password,
-                  specialization: barber.specialization,
-                  rating: barber.rating,
-                  servedToday: _barbers[i].servedToday + 1,
-                  status: barber.status,
-                  nextClient: barber.nextClient,
-                  photoUrl: barber.photoUrl,
-                  uid: barber.uid,
-                  isAvailable: barber.isAvailable,
-                );
+                _barbers[i] =
+                    barber.copyWith(servedToday: _barbers[i].servedToday + 1);
                 break;
               }
               // Fallback: Match by name (only if UID not found)
-              else if (barberId == null && 
-                       barberName.isNotEmpty &&
-                       _matchesBarberName(barberName, barber.name)) {
-                _barbers[i] = OwnerBarber(
-                  id: barber.id,
-                  name: barber.name,
-                  email: barber.email,
-                  phone: barber.phone,
-                  password: barber.password,
-                  specialization: barber.specialization,
-                  rating: barber.rating,
-                  servedToday: _barbers[i].servedToday + 1,
-                  status: barber.status,
-                  nextClient: barber.nextClient,
-                  photoUrl: barber.photoUrl,
-                  uid: barber.uid,
-                  isAvailable: barber.isAvailable,
-                );
+              else if (barberId == null &&
+                  barberName.isNotEmpty &&
+                  _matchesBarberName(barberName, barber.name)) {
+                _barbers[i] =
+                    barber.copyWith(servedToday: _barbers[i].servedToday + 1);
                 break;
               }
             }
@@ -523,8 +505,8 @@ class BarbersProvider extends ChangeNotifier {
       final waitingCountMap = <String, int>{};
       for (final doc in queueSnap.docs) {
         final data = doc.data();
-        final barberId = (data['barberId'] as String?) ?? 
-                        (data['barberUid'] as String?);
+        final barberId =
+            (data['barberId'] as String?) ?? (data['barberUid'] as String?);
         final barberName = (data['barberName'] as String?) ?? '';
 
         for (final barber in _barbers) {
@@ -534,9 +516,9 @@ class BarbersProvider extends ChangeNotifier {
             break;
           }
           // Fallback: Match by name (only if UID not found)
-          else if (barberId == null && 
-                   barberName.isNotEmpty &&
-                   _matchesBarberName(barberName, barber.name)) {
+          else if (barberId == null &&
+              barberName.isNotEmpty &&
+              _matchesBarberName(barberName, barber.name)) {
             waitingCountMap[barber.id] = (waitingCountMap[barber.id] ?? 0) + 1;
             break;
           }
@@ -556,21 +538,7 @@ class BarbersProvider extends ChangeNotifier {
         }
 
         if (nextClient != barber.nextClient) {
-          _barbers[i] = OwnerBarber(
-            id: barber.id,
-            name: barber.name,
-            email: barber.email,
-            phone: barber.phone,
-            password: barber.password,
-            specialization: barber.specialization,
-            rating: barber.rating,
-            servedToday: barber.servedToday,
-            status: barber.status,
-            nextClient: nextClient,
-            photoUrl: barber.photoUrl,
-            uid: barber.uid,
-            isAvailable: barber.isAvailable,
-          );
+          _barbers[i] = barber.copyWith(nextClient: nextClient);
         }
       }
       notifyListeners();

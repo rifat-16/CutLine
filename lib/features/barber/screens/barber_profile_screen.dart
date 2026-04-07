@@ -1,13 +1,12 @@
-import 'dart:io';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/barber/providers/barber_profile_provider.dart';
 import 'package:cutline/features/barber/screens/work_history_screen.dart';
 import 'package:cutline/features/barber/screens/barber_tips_screen.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import 'barber_change_password_screen.dart';
 import 'barber_edit_profile_screen.dart';
 
 class BarberProfileScreen extends StatefulWidget {
@@ -18,21 +17,7 @@ class BarberProfileScreen extends StatefulWidget {
 }
 
 class _BarberProfileScreenState extends State<BarberProfileScreen> {
-  File? _imageFile;
   bool _profileUpdated = false;
-
-  Future<void> _pickImage() async {
-    final ImagePicker picker = ImagePicker();
-
-    final XFile? pickedFile =
-        await picker.pickImage(source: ImageSource.gallery);
-
-    if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,10 +39,11 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
         final phone =
             profile?.phone.isNotEmpty == true ? profile!.phone : 'Not added';
 
-        return WillPopScope(
-          onWillPop: () async {
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) return;
             Navigator.of(context).pop(_profileUpdated);
-            return false;
           },
           child: Scaffold(
             appBar: AppBar(
@@ -66,120 +52,135 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
               elevation: 0,
             ),
             body: provider.isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      if (provider.error != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            provider.error!,
-                            style: const TextStyle(color: Colors.red),
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        if (provider.error != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              provider.error!,
+                              style: const TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        // PROFILE HEADER
+                        Center(
+                          child: Stack(
+                            alignment: Alignment.bottomRight,
+                            children: [
+                              Builder(
+                                builder: (context) {
+                                  ImageProvider? imageProvider;
+                                  if (provider.profile?.photoUrl != null &&
+                                      provider.profile!.photoUrl.isNotEmpty) {
+                                    imageProvider = NetworkImage(
+                                        provider.profile!.photoUrl);
+                                  }
+                                  return CircleAvatar(
+                                    radius: 50,
+                                    backgroundColor: Colors.grey.shade300,
+                                    backgroundImage: imageProvider,
+                                    child: imageProvider == null
+                                        ? const Icon(Icons.person,
+                                            size: 60, color: Colors.white)
+                                        : null,
+                                  );
+                                },
+                              ),
+                            ],
                           ),
                         ),
-                      // PROFILE HEADER
-                      Center(
-                        child: Stack(
-                          alignment: Alignment.bottomRight,
-                          children: [
-                            Builder(
-                              builder: (context) {
-                                ImageProvider? imageProvider;
-                                if (_imageFile != null) {
-                                  imageProvider = FileImage(_imageFile!);
-                                } else if (provider.profile?.photoUrl != null &&
-                                    provider.profile!.photoUrl.isNotEmpty) {
-                                  imageProvider =
-                                      NetworkImage(provider.profile!.photoUrl);
-                                }
-                                return CircleAvatar(
-                                  radius: 50,
-                                  backgroundColor: Colors.grey.shade300,
-                                  backgroundImage: imageProvider,
-                                  child: imageProvider == null
-                                      ? const Icon(Icons.person,
-                                          size: 60, color: Colors.white)
-                                      : null,
-                                );
-                              },
-                            ),
-                          ],
+
+                        const SizedBox(height: 15),
+                        Text(
+                          name,
+                          style: const TextStyle(
+                              fontSize: 22, fontWeight: FontWeight.bold),
                         ),
-                      ),
+                        Text(
+                          title,
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          phone,
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
 
-                      const SizedBox(height: 15),
-                      Text(
-                        name,
-                        style: const TextStyle(
-                            fontSize: 22, fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        title,
-                        style: TextStyle(color: Colors.grey.shade600),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        phone,
-                        style: TextStyle(color: Colors.grey.shade600),
-                      ),
+                        const SizedBox(height: 30),
 
-                      const SizedBox(height: 30),
-
-                      // SETTINGS
-                      _settingTile(
-                        icon: Icons.edit,
-                        title: "Edit Profile",
-                        onTap: () async {
-                          final updated = await Navigator.push<bool>(
-                            context,
-                            MaterialPageRoute(
+                        // SETTINGS
+                        _settingTile(
+                          icon: Icons.edit,
+                          title: "Edit Profile",
+                          onTap: () async {
+                            final profileProvider =
+                                context.read<BarberProfileProvider>();
+                            final updated = await Navigator.push<bool>(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      const EditProfileScreen()),
+                            );
+                            if (!mounted) return;
+                            if (updated == true) {
+                              setState(() {
+                                _profileUpdated = true;
+                              });
+                              profileProvider.load();
+                            }
+                          },
+                        ),
+                        _settingTile(
+                          icon: Icons.lock_reset_outlined,
+                          title: "Change Password",
+                          onTap: () async {
+                            await Navigator.push<bool>(
+                              context,
+                              MaterialPageRoute(
                                 builder: (context) =>
-                                    const EditProfileScreen()),
-                          );
-                          if (!mounted) return;
-                          if (updated == true) {
-                            setState(() {
-                              _profileUpdated = true;
-                            });
-                            context.read<BarberProfileProvider>().load();
-                          }
-                        },
-                      ),
-                      _settingTile(
-                        icon: Icons.history,
-                        title: "Work History",
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) =>
-                                    const WorkHistoryScreen()),
-                          );
-                        },
-                      ),
-                      _settingTile(
-                        icon: Icons.payments_outlined,
-                        title: "My Tips",
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) =>
-                                    const BarberTipsScreen()),
-                          );
-                        },
-                      ),
-                      _settingTile(
-                        icon: Icons.logout,
-                        title: "Logout",
-                        color: Colors.red,
-                        onTap: () => _confirmLogout(context),
-                      ),
-                    ],
+                                    const BarberChangePasswordScreen(
+                                  isRequired: false,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        _settingTile(
+                          icon: Icons.history,
+                          title: "Work History",
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      const WorkHistoryScreen()),
+                            );
+                          },
+                        ),
+                        _settingTile(
+                          icon: Icons.payments_outlined,
+                          title: "My Tips",
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      const BarberTipsScreen()),
+                            );
+                          },
+                        ),
+                        _settingTile(
+                          icon: Icons.logout,
+                          title: "Logout",
+                          color: Colors.red,
+                          onTap: () => _confirmLogout(context),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
           ),
         );
       },
@@ -222,6 +223,7 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
 
   void _confirmLogout(BuildContext context) {
     final auth = context.read<AuthProvider>();
+    final navigator = Navigator.of(context);
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -242,8 +244,7 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
               Navigator.of(dialogContext).pop();
               await auth.signOut();
               if (!mounted) return;
-              Navigator.pushNamedAndRemoveUntil(
-                context,
+              navigator.pushNamedAndRemoveUntil(
                 AppRoutes.barberLogin,
                 (_) => false,
               );

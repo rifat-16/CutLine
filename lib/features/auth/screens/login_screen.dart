@@ -392,11 +392,11 @@ class _LoginScreenState extends State<LoginScreen> {
         .timeout(const Duration(seconds: 12), onTimeout: () => false);
     if (!mounted) return;
 
-    final resolvedRole = roleKey != null
-        ? UserRoleKey.fromKey(roleKey)
-        : widget.role;
+    final resolvedRole =
+        roleKey != null ? UserRoleKey.fromKey(roleKey) : widget.role;
     final profileComplete =
         profile?['profileComplete'] == true || (profile == null && hasSalon);
+    final mustChangePassword = profile?['mustChangePassword'] == true;
 
     String target;
     switch (resolvedRole) {
@@ -415,7 +415,9 @@ class _LoginScreenState extends State<LoginScreen> {
             : AppRoutes.ownerSalonSetup;
         break;
       case UserRole.barber:
-        target = widget.successRoute;
+        target = mustChangePassword
+            ? AppRoutes.barberPasswordSetup
+            : widget.successRoute;
         break;
       default:
         target = widget.successRoute;

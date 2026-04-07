@@ -1,7 +1,6 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/providers/add_barber_provider.dart';
 import 'package:cutline/features/owner/providers/barbers_provider.dart';
-import 'package:cutline/features/owner/providers/salon_setup_provider.dart';
 import 'package:cutline/features/owner/services/barber_service.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:cutline/features/owner/screens/add_barber_screen.dart';
@@ -316,13 +315,57 @@ class _BarberDetailSheet extends StatelessWidget {
                   label: 'Phone',
                   value: barber.phone),
               const SizedBox(height: 12),
+              if (barber.canShowPasswordToOwner) ...[
+                _DetailInfoRow(
+                    icon: Icons.lock_outline,
+                    label: 'Temporary password',
+                    value: barber.password),
+                const SizedBox(height: 8),
+                Text(
+                  barber.mustChangePassword
+                      ? 'Share this email and temporary password with the barber. After first login, the barber must change it.'
+                      : 'This temporary password is still visible to the owner.',
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ] else if (barber.passwordChangedAt != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.lock_clock_outlined,
+                          color: Colors.blueGrey, size: 18),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Password is hidden because the barber already changed the temporary password.',
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               _DetailInfoRow(
                   icon: Icons.flag_outlined,
                   label: 'Status',
                   value: _barberStatusLabel(barber.status)),
               const SizedBox(height: 18),
-              Text(
-                  'Served today • ${barber.servedToday}',
+              Text('Served today • ${barber.servedToday}',
                   style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 24),
               SizedBox(

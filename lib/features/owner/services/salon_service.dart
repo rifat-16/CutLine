@@ -20,6 +20,7 @@ class SalonService {
     required Map<String, dynamic> workingHours,
     required List<Map<String, dynamic>> services,
     List<Map<String, dynamic>>? barbers,
+    List<Map<String, dynamic>>? barberCredentials,
     String? coverPhotoUrl,
     List<String>? galleryPhotos,
   }) async {
@@ -59,6 +60,9 @@ class SalonService {
     await _syncServices(salonRef, services);
     if (galleryPhotos != null) {
       await _syncGalleryPhotos(salonRef, galleryPhotos);
+    }
+    if (barberCredentials != null && barberCredentials.isNotEmpty) {
+      await _syncBarberCredentials(salonRef, barberCredentials);
     }
 
     await _firestore.collection('salons_summary').doc(ownerId).set(
@@ -130,6 +134,31 @@ class SalonService {
         'updatedAt': FieldValue.serverTimestamp(),
       });
     }
+    await batch.commit();
+  }
+
+  Future<void> _syncBarberCredentials(
+    DocumentReference<Map<String, dynamic>> salonRef,
+    List<Map<String, dynamic>> barberCredentials,
+  ) async {
+    final collection = salonRef.collection('barber_credentials');
+    final batch = _firestore.batch();
+
+    for (final item in barberCredentials) {
+      final uid = (item['uid'] as String?)?.trim() ?? '';
+      if (uid.isEmpty) continue;
+
+      batch.set(
+        collection.doc(uid),
+        {
+          ...item,
+          'updatedAt': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    }
+
     await batch.commit();
   }
 

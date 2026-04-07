@@ -67,6 +67,7 @@ class BarberService {
             'phone': barber.phone.trim(),
             'role': 'barber',
             'ownerId': ownerId,
+            'mustChangePassword': true,
             'createdAt': FieldValue.serverTimestamp(),
             'updatedAt': FieldValue.serverTimestamp(),
           });

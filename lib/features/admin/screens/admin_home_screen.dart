@@ -5,6 +5,7 @@ import 'package:cutline/features/admin/providers/admin_auth_provider.dart';
 import 'package:cutline/features/admin/screens/admin_dashboard_tab.dart';
 import 'package:cutline/features/admin/screens/directory_tab.dart';
 import 'package:cutline/features/admin/screens/pending_salons_tab.dart';
+import 'package:cutline/features/admin/screens/platform_fee_payments_tab.dart';
 
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({super.key});
@@ -18,12 +19,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
 
   static const _titles = [
     'Overview',
+    'Payments',
     'Pending Salons',
     'All Salons',
   ];
 
   static const _subtitles = [
     'Track verification, restrictions, and platform dues.',
+    'Approve or reject owner platform fee submissions.',
     'Approve or reject new salon registrations.',
     'Monitor every salon and open its finance status.',
   ];
@@ -33,6 +36,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     final theme = Theme.of(context);
     final pages = [
       AdminDashboardTab(onNavigate: _onNavigate),
+      const PlatformFeePaymentsTab(),
       const PendingSalonsTab(),
       const DirectoryTab(),
     ];
@@ -101,6 +105,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                 icon: Icon(Icons.dashboard_outlined),
                 selectedIcon: Icon(Icons.dashboard_rounded),
                 label: 'Dashboard',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.payments_outlined),
+                selectedIcon: Icon(Icons.payments_rounded),
+                label: 'Payments',
               ),
               NavigationDestination(
                 icon: Icon(Icons.fact_check_outlined),

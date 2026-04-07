@@ -173,6 +173,7 @@ service cloud.firestore {
           'gallery',
           'photos',
           'galleryImages',
+          'barbers',
           'updatedAt'
         ];
       }
@@ -290,11 +291,29 @@ service cloud.firestore {
           && (isAdmin() || isOwnerOrBarberOfSalon(salonId) || isSalonVerified(salonId));
 
         allow create, update, delete: if isAuthenticated()
-          && isSalonOperational(salonId)
           && (
             salonId == request.auth.uid ||
-            barberId == request.auth.uid
+            (
+              isSalonOperational(salonId)
+              && barberId == request.auth.uid
+            )
           );
+      }
+
+      // Owner-only / assigned-barber-only credential state.
+      match /barber_credentials/{barberId} {
+        allow read, create, update: if isAuthenticated()
+          && (
+            isAdmin()
+            || salonId == request.auth.uid
+            || (
+              barberId == request.auth.uid
+              && barberOwnerId(request.auth.uid) == salonId
+            )
+          );
+
+        allow delete: if isAuthenticated()
+          && (isAdmin() || salonId == request.auth.uid);
       }
 
       // Nested photos collection (salon gallery)

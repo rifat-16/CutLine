@@ -9,8 +9,17 @@ class AdminService {
   final FirebaseFirestore _firestore;
 
   Future<AdminDashboardStats> loadDashboardStats() async {
-    final salons = await _firestore.collection('salons').get();
-    final feeLedger = await _firestore.collection('platform_fee_ledger').get();
+    final results = await Future.wait([
+      _firestore.collection('salons').get(),
+      _firestore.collection('platform_fee_ledger').get(),
+      _firestore
+          .collection('platform_fee_payments')
+          .where('status', isEqualTo: 'pending')
+          .get(),
+    ]);
+    final salons = results[0];
+    final feeLedger = results[1];
+    final pendingPayments = results[2];
 
     int pendingSalonCount = 0;
     int restrictedSalonCount = 0;
@@ -30,8 +39,16 @@ class AdminService {
           _platformFeeLedgerItemFromDoc(doc.id, doc.data()).remainingAmount;
     }
 
+    int pendingPlatformFeePaymentAmount = 0;
+    for (final doc in pendingPayments.docs) {
+      pendingPlatformFeePaymentAmount +=
+          _platformFeePaymentFromDoc(doc.id, doc.data()).amount;
+    }
+
     return AdminDashboardStats(
       pendingSalonCount: pendingSalonCount,
+      pendingPlatformFeePaymentCount: pendingPayments.size,
+      pendingPlatformFeePaymentAmount: pendingPlatformFeePaymentAmount,
       totalSalons: salons.size,
       restrictedSalonCount: restrictedSalonCount,
       totalOutstandingFee: totalOutstandingFee,
@@ -65,6 +82,26 @@ class AdminService {
         .take(limit)
         .toList();
     return salons;
+  }
+
+  Future<List<AdminPaymentItem>> loadPendingPlatformFeePayments({
+    int limit = 100,
+  }) async {
+    final snapshot = await _firestore
+        .collection('platform_fee_payments')
+        .where('status', isEqualTo: 'pending')
+        .get();
+    final payments = snapshot.docs
+        .map((doc) => _platformFeePaymentFromDoc(doc.id, doc.data()))
+        .toList()
+      ..sort((a, b) => _compareDatesDescending(a.date, b.date));
+    return payments.take(limit).toList();
+  }
+
+  Future<List<AdminPaymentItem>> loadRecentPendingPlatformFeePayments({
+    int limit = 5,
+  }) {
+    return loadPendingPlatformFeePayments(limit: limit);
   }
 
   Stream<List<AdminSalonSummary>> watchPendingSalons() {
@@ -299,7 +336,15 @@ class AdminService {
               status: (doc.data()['status'] as String?)?.trim() ?? 'pending',
               paymentMethod:
                   (doc.data()['paymentMethod'] as String?)?.trim() ?? 'Cash',
+              transactionId: '',
+              proofImageUrl: '',
+              proofStoragePath: '',
               note: (doc.data()['note'] as String?)?.trim() ?? '',
+              reviewNote: '',
+              reviewedBy: '',
+              reviewedAt: null,
+              rangeStart: null,
+              rangeEnd: null,
               date: parseAdminDate(doc.data()['paidAt']),
             ),
           )
@@ -336,8 +381,16 @@ class AdminService {
       salonName: (data['salonName'] as String?)?.trim() ?? '',
       amount: (data['amount'] as num?)?.toInt() ?? 0,
       status: (data['status'] as String?)?.trim() ?? 'pending',
-      paymentMethod: (data['paymentMethod'] as String?)?.trim() ?? 'Cash',
+      paymentMethod: (data['paymentMethod'] as String?)?.trim() ?? 'bKash',
+      transactionId: (data['transactionId'] as String?)?.trim() ?? '',
+      proofImageUrl: (data['proofImageUrl'] as String?)?.trim() ?? '',
+      proofStoragePath: (data['proofStoragePath'] as String?)?.trim() ?? '',
       note: (data['note'] as String?)?.trim() ?? '',
+      reviewNote: (data['reviewNote'] as String?)?.trim() ?? '',
+      reviewedBy: (data['reviewedBy'] as String?)?.trim() ?? '',
+      reviewedAt: parseAdminDate(data['reviewedAt']),
+      rangeStart: parseAdminDate(data['rangeStart']),
+      rangeEnd: parseAdminDate(data['rangeEnd']),
       date: parseAdminDate(data['paidAt']),
     );
   }

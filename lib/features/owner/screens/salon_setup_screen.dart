@@ -228,7 +228,8 @@ class _SalonSetupScreenState extends State<SalonSetupScreen> {
     return _CardSection(
       icon: Icons.people_alt_outlined,
       title: 'Add Barbers',
-      subtitle: 'Barbers use these credentials to access their dashboards.',
+      subtitle:
+          'Barbers use these credentials to access their dashboards, then change the temporary password after first login.',
       child: AddBarberForm(onChanged: provider.updateBarbers),
     );
   }

@@ -1,19 +1,21 @@
-import 'package:cutline/features/auth/providers/auth_provider.dart';
-import 'package:cutline/features/owner/providers/barber_payout_detail_provider.dart';
-import 'package:cutline/shared/theme/cutline_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-class OwnerBarberPayoutDetailScreen extends StatelessWidget {
-  final String barberId;
-  final String barberName;
+import 'package:cutline/features/auth/providers/auth_provider.dart';
+import 'package:cutline/features/owner/providers/barber_payout_detail_provider.dart';
+import 'package:cutline/features/owner/screens/barber_payout_payment_screen.dart';
+import 'package:cutline/shared/models/barber_tip_models.dart';
 
+class OwnerBarberPayoutDetailScreen extends StatelessWidget {
   const OwnerBarberPayoutDetailScreen({
     super.key,
     required this.barberId,
     required this.barberName,
   });
+
+  final String barberId;
+  final String barberName;
 
   @override
   Widget build(BuildContext context) {
@@ -30,136 +32,106 @@ class OwnerBarberPayoutDetailScreen extends StatelessWidget {
       builder: (context, _) {
         final provider = context.watch<BarberPayoutDetailProvider>();
         final currency = NumberFormat.currency(symbol: '৳', decimalDigits: 0);
-        final unpaidCount = provider.unpaidCount;
         final payoutStatusById = {
           for (final item in provider.payouts) item.id: item.status,
         };
 
         return Scaffold(
-          backgroundColor: CutlineColors.secondaryBackground,
+          backgroundColor: Colors.white,
           appBar: AppBar(
-            title: Text(barberName),
+            title: Text(
+              barberName,
+              style: const TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             backgroundColor: Colors.white,
+            surfaceTintColor: Colors.white,
+            foregroundColor: Colors.black,
             elevation: 0,
           ),
           body: provider.isLoading
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(
+                  child: CircularProgressIndicator(color: Colors.black),
+                )
               : RefreshIndicator(
-                  onRefresh: () => provider.load(),
+                  color: Colors.black,
+                  backgroundColor: Colors.white,
+                  onRefresh: provider.load,
                   child: ListView(
-                    padding: CutlineSpacing.section.copyWith(bottom: 32),
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                     children: [
-                      const SizedBox(height: 16),
-                      _SummaryCard(
-                        total: currency.format(provider.summary.totalTips),
-                        paid: currency.format(provider.summary.paidTips),
+                      _PayoutSummaryCard(
                         due: currency.format(provider.summary.dueTips),
-                      ),
-                      if (provider.summary.dueTips > 0) ...[
-                        const SizedBox(height: 12),
-                        ElevatedButton.icon(
-                          style: CutlineButtons.primary(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 14),
-                          ),
-                          onPressed: provider.isSubmitting
-                              ? null
-                              : () => _showPaySheet(
-                                    context,
-                                    provider,
-                                    dueAmount: provider.summary.dueTips,
-                                    unpaidCount: unpaidCount,
-                                  ),
-                          icon: const Icon(Icons.payments_outlined),
-                          label: Text(provider.isSubmitting
-                              ? 'Processing...'
-                              : 'Pay due tips'),
+                        paid: currency.format(provider.summary.paidTips),
+                        pending: currency.format(provider.summary.pendingTips),
+                        ready: currency.format(
+                          provider.summary.readyToPayTips,
                         ),
-                      ],
-                      const SizedBox(height: 16),
-                      _SectionTitle(
-                        title: 'Payout history',
-                        subtitle: provider.payouts.isEmpty
-                            ? 'No payouts yet'
+                        isSubmitting: provider.isSubmitting,
+                        hasReadyToPay: provider.summary.readyToPayTips > 0,
+                        onPayTap: provider.summary.readyToPayTips > 0
+                            ? () => _openPaymentScreen(
+                                  context,
+                                  provider,
+                                  readyAmount: provider.summary.readyToPayTips,
+                                  totalDueAmount: provider.summary.dueTips,
+                                  pendingAmount: provider.summary.pendingTips,
+                                  unpaidCount: provider.unpaidCount,
+                                )
                             : null,
                       ),
-                      const SizedBox(height: 8),
-                      ...provider.payouts.map((item) {
-                        final date =
-                            DateFormat('dd MMM yyyy').format(item.paidAt);
-                        final range = (item.rangeStart != null &&
-                                item.rangeEnd != null)
-                            ? '${DateFormat('dd MMM').format(item.rangeStart!)}'
-                                ' - ${DateFormat('dd MMM').format(item.rangeEnd!)}'
-                            : '—';
-                        final method =
-                            item.method.isNotEmpty ? item.method : '—';
-                        final statusLabel =
-                            item.isConfirmed ? 'Confirmed' : 'Pending';
-                        final statusColor = item.isConfirmed
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFFF59E0B);
-                        return _HistoryTile(
-                          title: currency.format(item.amount),
-                          subtitle: date,
-                          statusLabel: statusLabel,
-                          statusColor: statusColor,
-                          detail: 'Range: $range • $method',
-                        );
-                      }),
-                      const SizedBox(height: 16),
-                      _SectionTitle(
-                        title: 'Tip ledger',
-                        subtitle: provider.ledger.isEmpty
-                            ? 'No ledger entries yet'
-                            : null,
-                      ),
-                      const SizedBox(height: 8),
-                      ...provider.ledger.map((item) {
-                        final date =
-                            DateFormat('dd MMM yyyy').format(item.date);
-                        final payoutStatus = payoutStatusById[item.payoutId];
-                        final effectiveStatus = item.status == 'pending'
-                            ? (payoutStatus == 'confirmed' || payoutStatus == 'paid')
-                                ? (item.paidAmount >= item.tipAmount
-                                    ? 'paid'
-                                    : item.paidAmount > 0
-                                        ? 'partial'
-                                        : 'unpaid')
-                                : 'pending'
-                            : item.status;
-                        final statusLabel = effectiveStatus == 'paid'
-                            ? 'Paid'
-                            : effectiveStatus == 'partial'
-                                ? 'Partial'
-                                : effectiveStatus == 'pending'
-                                    ? 'Pending'
-                                    : 'Unpaid';
-                        final statusColor = effectiveStatus == 'paid'
-                            ? const Color(0xFF10B981)
-                            : effectiveStatus == 'partial'
-                                ? const Color(0xFFF97316)
-                                : effectiveStatus == 'pending'
-                                    ? const Color(0xFFF59E0B)
-                                    : Colors.grey;
-                        final detailText = (effectiveStatus == 'partial' ||
-                                    effectiveStatus == 'pending') &&
-                                item.paidAmount > 0
-                            ? 'Booking: ${item.bookingId} • Paid: ৳${item.paidAmount}'
-                            : 'Booking: ${item.bookingId}';
-                        return _HistoryTile(
-                          title: currency.format(item.tipAmount),
-                          subtitle: date,
-                          statusLabel: statusLabel,
-                          statusColor: statusColor,
-                          detail: detailText,
-                        );
-                      }),
                       if (provider.error != null) ...[
                         const SizedBox(height: 12),
-                        Text(provider.error!,
-                            style: const TextStyle(color: Colors.red)),
+                        _InlineMessageCard(message: provider.error!),
                       ],
+                      const SizedBox(height: 24),
+                      _ExpandableSection(
+                        key: const ValueKey('barber-payout-history'),
+                        title: 'Payout history',
+                        subtitle:
+                            'Recorded payouts and their current status appear here.',
+                        trailing: '${provider.payouts.length}',
+                        child: provider.payouts.isEmpty
+                            ? const _EmptyCard(
+                                title: 'No payout has been recorded yet',
+                                message:
+                                    'Once you record a payout for this barber, it will appear here.',
+                              )
+                            : Column(
+                                children: provider.payouts
+                                    .map(
+                                      (item) => _PayoutHistoryCard(item: item),
+                                    )
+                                    .toList(),
+                              ),
+                      ),
+                      const SizedBox(height: 14),
+                      _ExpandableSection(
+                        key: const ValueKey('barber-tip-ledger'),
+                        title: 'Tip ledger',
+                        subtitle:
+                            'Each tip entry for this barber is tracked here.',
+                        trailing: '${provider.ledger.length}',
+                        child: provider.ledger.isEmpty
+                            ? const _EmptyCard(
+                                title: 'No tip ledger is available yet',
+                                message:
+                                    'Completed bookings with tips will appear here automatically.',
+                              )
+                            : Column(
+                                children: provider.ledger
+                                    .map(
+                                      (item) => _TipLedgerCard(
+                                        item: item,
+                                        statusByPayoutId: payoutStatusById,
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                      ),
                     ],
                   ),
                 ),
@@ -168,109 +140,25 @@ class OwnerBarberPayoutDetailScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _showPaySheet(
+  Future<void> _openPaymentScreen(
     BuildContext context,
     BarberPayoutDetailProvider provider, {
-    required int dueAmount,
+    required int readyAmount,
+    required int totalDueAmount,
+    required int pendingAmount,
     required int unpaidCount,
   }) async {
-    final currency = NumberFormat.currency(symbol: '৳', decimalDigits: 0);
-    final methodController = TextEditingController(text: 'Cash');
-    final noteController = TextEditingController();
-    final amountController =
-        TextEditingController(text: dueAmount.toString());
-    final result = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => BarberPayoutPaymentScreen(
+          provider: provider,
+          barberName: barberName,
+          readyToPayAmount: readyAmount,
+          totalDueAmount: totalDueAmount,
+          pendingAmount: pendingAmount,
+          unpaidCount: unpaidCount,
+        ),
       ),
-      builder: (sheetContext) {
-        bool isSubmitting = false;
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 20,
-          ),
-          child: StatefulBuilder(
-            builder: (context, setState) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Pay barber tips',
-                      style: CutlineTextStyles.subtitleBold),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Due: ${currency.format(dueAmount)} • $unpaidCount items',
-                    style: CutlineTextStyles.caption,
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: amountController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Amount to pay',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: methodController,
-                    decoration: const InputDecoration(
-                      labelText: 'Payment method',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: noteController,
-                    decoration: const InputDecoration(
-                      labelText: 'Note (optional)',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: CutlineButtons.primary(),
-                      onPressed: isSubmitting
-                          ? null
-                          : () async {
-                              setState(() => isSubmitting = true);
-                              final parsedAmount =
-                                  int.tryParse(amountController.text.trim());
-                              if (parsedAmount == null ||
-                                  parsedAmount <= 0 ||
-                                  parsedAmount > dueAmount) {
-                                setState(() => isSubmitting = false);
-                                if (!context.mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('Enter a valid amount.')),
-                                );
-                                return;
-                              }
-                              final success = await provider.recordPayout(
-                                amount: parsedAmount,
-                                paymentMethod: methodController.text.trim(),
-                                note: noteController.text.trim(),
-                              );
-                              if (!context.mounted) return;
-                              Navigator.of(context).pop(success);
-                            },
-                      child: Text(isSubmitting ? 'Processing...' : 'Confirm'),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        );
-      },
     );
 
     if (!context.mounted) return;
@@ -282,123 +170,519 @@ class OwnerBarberPayoutDetailScreen extends StatelessWidget {
   }
 }
 
-class _SummaryCard extends StatelessWidget {
-  final String total;
-  final String paid;
-  final String due;
-
-  const _SummaryCard({
-    required this.total,
-    required this.paid,
+class _PayoutSummaryCard extends StatelessWidget {
+  const _PayoutSummaryCard({
     required this.due,
+    required this.paid,
+    required this.pending,
+    required this.ready,
+    required this.isSubmitting,
+    required this.hasReadyToPay,
+    this.onPayTap,
   });
+
+  final String due;
+  final String paid;
+  final String pending;
+  final String ready;
+  final bool isSubmitting;
+  final bool hasReadyToPay;
+  final VoidCallback? onPayTap;
 
   @override
   Widget build(BuildContext context) {
+    final buttonLabel =
+        hasReadyToPay ? 'Pay due tips' : 'No new payout is needed right now';
+    final helperText = hasReadyToPay
+        ? 'Record the payout after the amount is handed over to the barber.'
+        : 'No new amount is ready to pay. If anything is pending, wait for that payout to clear first.';
+
     return Container(
-      padding: CutlineSpacing.card,
-      decoration: CutlineDecorations.card(solidColor: Colors.white),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      padding: const EdgeInsets.all(24),
+      decoration: _panelDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SummaryItem(label: 'Total', value: total),
-          _SummaryItem(label: 'Paid', value: paid),
-          _SummaryItem(label: 'Due', value: due),
+          const Text(
+            'Outstanding barber payout',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            due,
+            style: const TextStyle(
+              fontSize: 38,
+              height: 1,
+              fontWeight: FontWeight.w800,
+              color: Colors.black,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            helperText,
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.45,
+              color: Color(0xFF4B5563),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: _StatCard(
+                  label: 'Paid',
+                  value: paid,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _StatCard(
+                  label: 'Pending',
+                  value: pending,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _StatCard(
+                  label: 'Ready',
+                  value: ready,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: hasReadyToPay && !isSubmitting ? onPayTap : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.black,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: const Color(0xFFE5E7EB),
+                disabledForegroundColor: const Color(0xFF9CA3AF),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+              child: Text(
+                isSubmitting ? 'Please wait...' : buttonLabel,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _SummaryItem extends StatelessWidget {
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.label,
+    required this.value,
+  });
+
   final String label;
   final String value;
-
-  const _SummaryItem({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: CutlineTextStyles.caption),
-        const SizedBox(height: 6),
-        Text(value,
-            style: CutlineTextStyles.subtitleBold.copyWith(fontSize: 16)),
-      ],
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  final String title;
-  final String? subtitle;
-
-  const _SectionTitle({required this.title, this.subtitle});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(title, style: CutlineTextStyles.subtitleBold),
-        if (subtitle != null) Text(subtitle!, style: CutlineTextStyles.caption),
-      ],
-    );
-  }
-}
-
-class _HistoryTile extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final String detail;
-  final String? statusLabel;
-  final Color? statusColor;
-
-  const _HistoryTile({
-    required this.title,
-    required this.subtitle,
-    required this.detail,
-    this.statusLabel,
-    this.statusColor,
-  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.receipt_long_outlined, color: Colors.blueGrey),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    if (statusLabel != null && statusColor != null)
-                      _StatusChip(
-                        label: statusLabel!,
-                        color: statusColor!,
-                      ),
-                    if (statusLabel != null && statusColor != null)
-                      const SizedBox(width: 8),
-                    Text(subtitle, style: CutlineTextStyles.caption),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(detail, style: CutlineTextStyles.body),
-              ],
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF6B7280),
             ),
           ),
-          Text(title, style: CutlineTextStyles.subtitleBold),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExpandableSection extends StatefulWidget {
+  const _ExpandableSection({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.trailing,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final String trailing;
+  final Widget child;
+
+  @override
+  State<_ExpandableSection> createState() => _ExpandableSectionState();
+}
+
+class _ExpandableSectionState extends State<_ExpandableSection> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      decoration: _panelDecoration(radius: 22),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(22),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.title,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.subtitle,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            height: 1.4,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: const Color(0xFFD1D5DB)),
+                    ),
+                    child: Text(
+                      widget.trailing,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: Colors.black,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 180),
+            firstChild: const SizedBox.shrink(),
+            secondChild: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+              child: Column(
+                children: [
+                  const Divider(height: 1, color: Color(0xFFE5E7EB)),
+                  const SizedBox(height: 16),
+                  widget.child,
+                ],
+              ),
+            ),
+            crossFadeState: _expanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PayoutHistoryCard extends StatelessWidget {
+  const _PayoutHistoryCard({
+    required this.item,
+  });
+
+  final BarberPayoutItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = DateFormat('dd MMM yyyy').format(item.paidAt);
+    final period = (item.rangeStart != null && item.rangeEnd != null)
+        ? '${DateFormat('dd MMM').format(item.rangeStart!)} - ${DateFormat('dd MMM').format(item.rangeEnd!)}'
+        : 'N/A';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '৳${item.amount}',
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$date • ${item.method}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _StatusChip(
+                label: item.isConfirmed ? 'Confirmed' : 'Pending',
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _InfoLine(label: 'Covered period', value: period),
+          if (item.note.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _InfoLine(label: 'Note', value: item.note),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TipLedgerCard extends StatelessWidget {
+  const _TipLedgerCard({
+    required this.item,
+    required this.statusByPayoutId,
+  });
+
+  final BarberTipLedgerItem item;
+  final Map<String, String> statusByPayoutId;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = DateFormat('dd MMM yyyy').format(item.date);
+    final status = _resolveLedgerStatus(item, statusByPayoutId);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Booking ${item.bookingId}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      date,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _StatusChip(label: status.label),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _MiniAmount(
+                  label: 'Tip',
+                  value: '৳${item.tipAmount}',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _MiniAmount(
+                  label: 'Paid',
+                  value: '৳${item.paidAmount}',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _MiniAmount(
+                  label: 'Due',
+                  value: '৳${item.remainingAmount}',
+                ),
+              ),
+            ],
+          ),
+          if (status.pendingAllocated > 0) ...[
+            const SizedBox(height: 10),
+            Text(
+              '৳${status.pendingAllocated} from this entry is still pending.',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF4B5563),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _LedgerStatusPresentation {
+  const _LedgerStatusPresentation({
+    required this.label,
+    required this.pendingAllocated,
+  });
+
+  final String label;
+  final int pendingAllocated;
+}
+
+_LedgerStatusPresentation _resolveLedgerStatus(
+  BarberTipLedgerItem item,
+  Map<String, String> payoutStatusById,
+) {
+  var effectiveStatus = item.status;
+  if (item.status == 'pending') {
+    final payoutStatus = payoutStatusById[item.payoutId];
+    if (payoutStatus == 'confirmed' || payoutStatus == 'paid') {
+      effectiveStatus = item.paidAmount >= item.tipAmount
+          ? 'paid'
+          : item.paidAmount > 0
+              ? 'partial'
+              : 'unpaid';
+    } else {
+      effectiveStatus = 'pending';
+    }
+  }
+
+  final label = switch (effectiveStatus) {
+    'paid' => 'Paid',
+    'partial' => 'Partial',
+    'pending' => 'Pending',
+    _ => 'Unpaid',
+  };
+
+  return _LedgerStatusPresentation(
+    label: label,
+    pendingAllocated: effectiveStatus == 'pending' ? item.paidAmount : 0,
+  );
+}
+
+class _MiniAmount extends StatelessWidget {
+  const _MiniAmount({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+            ),
+          ),
         ],
       ),
     );
@@ -406,41 +690,146 @@ class _HistoryTile extends StatelessWidget {
 }
 
 class _StatusChip extends StatelessWidget {
-  final String label;
-  final Color color;
+  const _StatusChip({
+    required this.label,
+  });
 
-  const _StatusChip({required this.label, required this.color});
+  final String label;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFD1D5DB)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: Colors.black,
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final displayValue = value.isEmpty ? 'N/A' : value;
+
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(
+          fontSize: 13,
+          height: 1.45,
+          color: Color(0xFF4B5563),
+        ),
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
+          TextSpan(
+            text: '$label: ',
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
             ),
           ),
-          const SizedBox(width: 6),
+          TextSpan(text: displayValue),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineMessageCard extends StatelessWidget {
+  const _InlineMessageCard({
+    required this.message,
+  });
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _panelDecoration(radius: 20),
+      child: Text(
+        message,
+        style: const TextStyle(
+          fontSize: 13,
+          height: 1.45,
+          color: Colors.black87,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyCard extends StatelessWidget {
+  const _EmptyCard({
+    required this.title,
+    required this.message,
+  });
+
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Text(
-            label,
-            style: CutlineTextStyles.caption.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
+            title,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            style: const TextStyle(
+              fontSize: 13,
+              height: 1.45,
+              color: Color(0xFF6B7280),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+BoxDecoration _panelDecoration({double radius = 24}) {
+  return BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(radius),
+    border: Border.all(color: const Color(0xFFE5E7EB)),
+    boxShadow: const [
+      BoxShadow(
+        color: Color(0x05000000),
+        blurRadius: 18,
+        offset: Offset(0, 8),
+      ),
+    ],
+  );
 }
