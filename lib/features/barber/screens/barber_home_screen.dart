@@ -11,6 +11,7 @@ import 'dart:async';
 
 import 'barber_notification_screen.dart';
 import 'barber_profile_screen.dart';
+import 'barber_tips_screen.dart';
 
 class BarberHomeScreen extends StatefulWidget {
   const BarberHomeScreen({super.key});
@@ -94,7 +95,17 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 10),
-                _TipSummary(amount: provider.todayTips),
+                _TipSummary(
+                  amount: provider.todayTips,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const BarberTipsScreen(),
+                      ),
+                    );
+                  },
+                ),
                 const SizedBox(height: 12),
                 _buildQueueTabs(),
                 const SizedBox(height: 16),
@@ -209,61 +220,84 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
     return AppBar(
       titleSpacing: 0,
       centerTitle: false,
+      toolbarHeight: 66,
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
+      elevation: 0,
       title: Padding(
-        padding: const EdgeInsets.only(left: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              salonName?.isNotEmpty == true ? salonName! : 'Salon',
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-            ),
-          ],
+        padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+        child: Align(
+          alignment: Alignment.bottomLeft,
+          child: Text(
+            salonName?.isNotEmpty == true ? salonName! : 'Salon',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+          ),
         ),
       ),
-      actions: [
-        _AvailabilityToggle(provider: provider),
-        _BookingRequestIconButton(pendingCount: provider.pendingRequestCount),
-        NotificationBadgeIcon(
-          userId: userId,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => const BarberNotificationScreen()),
-            );
-          },
-        ),
-        Padding(
-          padding: const EdgeInsets.only(right: 12.0),
-          child: InkWell(
-            onTap: () async {
-              final homeProvider = context.read<BarberHomeProvider>();
-              final updated = await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => const BarberProfileScreen()),
-              );
-              if (!mounted) return;
-              if (updated == true) {
-                homeProvider.load();
-              }
-            },
-            child: CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.grey,
-              backgroundImage: provider.profile?.photoUrl != null &&
-                      provider.profile!.photoUrl.isNotEmpty
-                  ? NetworkImage(provider.profile!.photoUrl)
-                  : null,
-              child: provider.profile?.photoUrl == null ||
-                      provider.profile!.photoUrl.isEmpty
-                  ? const Icon(Icons.person, color: Colors.white)
-                  : null,
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(50),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _AvailabilityToggle(provider: provider),
+                const SizedBox(width: 8),
+                _BookingRequestIconButton(
+                  pendingCount: provider.pendingRequestCount,
+                ),
+                const SizedBox(width: 4),
+                NotificationBadgeIcon(
+                  userId: userId,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const BarberNotificationScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () async {
+                    final homeProvider = context.read<BarberHomeProvider>();
+                    final updated = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const BarberProfileScreen(),
+                      ),
+                    );
+                    if (!mounted) return;
+                    if (updated == true) {
+                      homeProvider.load();
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: Colors.grey,
+                      backgroundImage: provider.profile?.photoUrl != null &&
+                              provider.profile!.photoUrl.isNotEmpty
+                          ? NetworkImage(provider.profile!.photoUrl)
+                          : null,
+                      child: provider.profile?.photoUrl == null ||
+                              provider.profile!.photoUrl.isEmpty
+                          ? const Icon(Icons.person, color: Colors.white)
+                          : null,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -683,34 +717,88 @@ class _QueueNoticeCard extends StatelessWidget {
 
 class _TipSummary extends StatelessWidget {
   final int amount;
+  final VoidCallback onTap;
 
-  const _TipSummary({required this.amount});
+  const _TipSummary({
+    required this.amount,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.green.shade50,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.green.shade100),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            "Today's Tips",
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.green.shade50,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.green.shade100),
           ),
-          Text(
-            '৳$amount',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.green,
-            ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: Colors.green,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Today's tips",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Tap to open My Tips',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '৳$amount',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 18,
+                    color: Colors.green,
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
