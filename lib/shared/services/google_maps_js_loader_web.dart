@@ -2,8 +2,7 @@
 
 import 'dart:async';
 import 'dart:html' as html;
-
-import 'dart:js_util' as js_util;
+import 'dart:js' as js;
 
 class GoogleMapsJsLoader {
   static bool _loaded = false;
@@ -60,18 +59,18 @@ class GoogleMapsJsLoader {
 
   static bool _hasGoogleMaps() {
     try {
-      if (!js_util.hasProperty(html.window, 'google')) return false;
-      final google = js_util.getProperty(html.window, 'google');
-      if (google == null) return false;
-      if (!js_util.hasProperty(google, 'maps')) return false;
-      final maps = js_util.getProperty(google, 'maps');
-      if (maps == null) return false;
+      if (!js.context.hasProperty('google')) return false;
+      final google = js.context['google'];
+      if (google is! js.JsObject) return false;
+      if (!google.hasProperty('maps')) return false;
+      final maps = google['maps'];
+      if (maps is! js.JsObject) return false;
 
       // google_maps_flutter_web expects these to exist.
-      if (!js_util.hasProperty(maps, 'MapTypeId')) return false;
-      final mapTypeId = js_util.getProperty(maps, 'MapTypeId');
-      if (mapTypeId == null) return false;
-      if (!js_util.hasProperty(mapTypeId, 'ROADMAP')) return false;
+      if (!maps.hasProperty('MapTypeId')) return false;
+      final mapTypeId = maps['MapTypeId'];
+      if (mapTypeId is! js.JsObject) return false;
+      if (!mapTypeId.hasProperty('ROADMAP')) return false;
 
       return true;
     } catch (_) {

@@ -44,7 +44,18 @@ Future<void> bootstrap({required AppFlavor flavor}) async {
     };
   }
 
-  await notificationService.initialize();
+  try {
+    await notificationService.initialize();
+  } catch (e, st) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: e,
+        stack: st,
+        library: 'bootstrap',
+        context: ErrorDescription('while initializing notifications'),
+      ),
+    );
+  }
 
   runApp(CutLineApp(flavor: flavor));
 }

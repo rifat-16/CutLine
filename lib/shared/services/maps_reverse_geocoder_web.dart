@@ -1,9 +1,7 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
 import 'dart:async';
-import 'dart:html' as html;
-
-import 'dart:js_util' as js_util;
+import 'dart:js' as js;
 
 import 'google_maps_js_loader.dart';
 
@@ -22,23 +20,30 @@ class MapsReverseGeocoder {
 
       final completer = Completer<String>();
 
-      final google = js_util.getProperty(html.window, 'google');
-      final maps = js_util.getProperty(google, 'maps');
-      final geocoderCtor = js_util.getProperty(maps, 'Geocoder');
-      final geocoder = js_util.callConstructor(geocoderCtor, const []);
+      final google = js.context['google'];
+      if (google is! js.JsObject) return '';
+      final maps = google['maps'];
+      if (maps is! js.JsObject) return '';
+      final geocoderCtor = maps['Geocoder'];
+      if (geocoderCtor is! js.JsFunction) return '';
+      final geocoder = js.JsObject(geocoderCtor, const []);
 
-      final location = js_util.newObject();
-      js_util.setProperty(location, 'lat', latitude);
-      js_util.setProperty(location, 'lng', longitude);
-
-      final request = js_util.newObject();
-      js_util.setProperty(request, 'location', location);
+      final request = js.JsObject.jsify({
+        'location': {
+          'lat': latitude,
+          'lng': longitude,
+        },
+      });
 
       void completeOnce(String value) {
         if (!completer.isCompleted) completer.complete(value);
       }
 
-      final callback = js_util.allowInterop((dynamic results, dynamic status) {
+      final callback = js.JsFunction.withThis((
+        _,
+        dynamic results,
+        dynamic status,
+      ) {
         try {
           final statusStr = (status ?? '').toString();
           if (statusStr != 'OK') {
@@ -53,26 +58,25 @@ class MapsReverseGeocoder {
             return;
           }
 
-          final length = js_util.getProperty(results, 'length');
-          if (length is! num || length <= 0) {
+          if (results is! js.JsArray || results.isEmpty) {
             completeOnce('');
             return;
           }
 
-          final first = js_util.getProperty(results, '0');
-          if (first == null) {
+          final first = results[0];
+          if (first is! js.JsObject) {
             completeOnce('');
             return;
           }
 
-          final formatted = js_util.getProperty(first, 'formatted_address');
+          final formatted = first['formatted_address'];
           completeOnce((formatted ?? '').toString());
         } catch (_) {
           completeOnce('');
         }
       });
 
-      js_util.callMethod(geocoder, 'geocode', [request, callback]);
+      geocoder.callMethod('geocode', [request, callback]);
       return completer.future.timeout(const Duration(seconds: 3),
           onTimeout: () {
         _lastError ??= 'TIMEOUT';
@@ -86,13 +90,13 @@ class MapsReverseGeocoder {
 
   static bool _hasGeocoder() {
     try {
-      if (!js_util.hasProperty(html.window, 'google')) return false;
-      final google = js_util.getProperty(html.window, 'google');
-      if (google == null) return false;
-      if (!js_util.hasProperty(google, 'maps')) return false;
-      final maps = js_util.getProperty(google, 'maps');
-      if (maps == null) return false;
-      return js_util.hasProperty(maps, 'Geocoder');
+      if (!js.context.hasProperty('google')) return false;
+      final google = js.context['google'];
+      if (google is! js.JsObject) return false;
+      if (!google.hasProperty('maps')) return false;
+      final maps = google['maps'];
+      if (maps is! js.JsObject) return false;
+      return maps.hasProperty('Geocoder');
     } catch (_) {
       return false;
     }
