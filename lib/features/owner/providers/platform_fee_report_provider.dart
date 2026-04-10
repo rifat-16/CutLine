@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/shared/services/firestore_cache.dart';
+import 'package:cutline/shared/services/storage_upload_service.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -201,11 +200,12 @@ class PlatformFeeReportProvider extends ChangeNotifier {
       final proofRef = _storage.ref().child(proofStoragePath);
       String? uploadedProofUrl;
       try {
-        final uploadTask = proofRef.putFile(
-          File(proofFile.path),
-          SettableMetadata(contentType: _contentTypeFor(proofFile.name)),
+        final snap = await uploadStorageFile(
+          ref: proofRef,
+          file: proofFile,
+          metadata:
+              SettableMetadata(contentType: _contentTypeFor(proofFile.name)),
         );
-        final snap = await uploadTask.whenComplete(() {});
         uploadedProofUrl = await snap.ref.getDownloadURL();
 
         await paymentRef.set({

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
+import 'package:cutline/shared/services/user_booking_mirror_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -9,10 +10,14 @@ class BookingRequestsProvider extends ChangeNotifier {
     required AuthProvider authProvider,
     FirebaseFirestore? firestore,
   })  : _authProvider = authProvider,
-        _firestore = firestore ?? FirebaseFirestore.instance;
+        _firestore = firestore ?? FirebaseFirestore.instance,
+        _mirrorService = UserBookingMirrorService(
+          firestore: firestore ?? FirebaseFirestore.instance,
+        );
 
   final AuthProvider _authProvider;
   final FirebaseFirestore _firestore;
+  final UserBookingMirrorService _mirrorService;
 
   bool _isLoading = false;
   String? _error;
@@ -288,6 +293,16 @@ class BookingRequestsProvider extends ChangeNotifier {
       _processingRequests.remove(id);
       notifyListeners();
       return false;
+    }
+
+    try {
+      await _mirrorService.updateStatus(
+        userId: request.customerUid,
+        bookingId: id,
+        status: statusToSave,
+      );
+    } catch (_) {
+      // Keep the main booking decision even if mirror sync fails.
     }
 
     if (status == OwnerBookingRequestStatus.accepted) {

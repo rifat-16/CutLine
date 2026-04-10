@@ -1,15 +1,19 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
+import 'package:cutline/shared/services/user_booking_mirror_service.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
-import 'package:flutter/foundation.dart';
 
 /// Centralized queue fetching/merging logic shared by owner home and manage queue.
 class OwnerQueueService {
   OwnerQueueService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+      : _firestore = firestore ?? FirebaseFirestore.instance,
+        _mirrorService = UserBookingMirrorService(
+          firestore: firestore ?? FirebaseFirestore.instance,
+        );
 
   final FirebaseFirestore _firestore;
+  final UserBookingMirrorService _mirrorService;
   final StreamController<void> _queueUpdates =
       StreamController<void>.broadcast();
 
@@ -125,13 +129,14 @@ class OwnerQueueService {
         .doc(id);
 
     String? previousStatus;
+    Map<String, dynamic> bookingData = <String, dynamic>{};
     try {
       final queueSnap = await queueRef.get();
       final bookingSnap = await bookingRef.get();
       final queueData = queueSnap.data() != null
           ? Map<String, dynamic>.from(queueSnap.data()!)
           : <String, dynamic>{};
-      final bookingData = bookingSnap.data() != null
+      bookingData = bookingSnap.data() != null
           ? Map<String, dynamic>.from(bookingSnap.data()!)
           : <String, dynamic>{};
 
@@ -201,6 +206,15 @@ class OwnerQueueService {
         .collection('bookings')
         .doc(id)
         .set(bookingUpdateData, SetOptions(merge: true));
+    await _syncUserMirrorStatus(
+      ownerId: ownerId,
+      bookingId: id,
+      bookingData: {...bookingData, ...bookingUpdateData},
+      status: bookingStatus,
+      extraFields: status == OwnerQueueStatus.done
+          ? {'completedAt': FieldValue.serverTimestamp()}
+          : null,
+    );
 
     try {
       await _updateSummaryCounts(
@@ -232,6 +246,44 @@ class OwnerQueueService {
     }
 
     _queueUpdates.add(null);
+  }
+
+  Future<void> _syncUserMirrorStatus({
+    required String ownerId,
+    required String bookingId,
+    required Map<String, dynamic> bookingData,
+    required String status,
+    Map<String, dynamic>? extraFields,
+  }) async {
+    try {
+      var userId = _resolveBookingUserId(bookingData);
+      if (userId.isEmpty) {
+        final latestBooking = await _firestore
+            .collection('salons')
+            .doc(ownerId)
+            .collection('bookings')
+            .doc(bookingId)
+            .get();
+        userId = _resolveBookingUserId(latestBooking.data() ?? bookingData);
+      }
+      if (userId.isEmpty) return;
+
+      await _mirrorService.updateStatus(
+        userId: userId,
+        bookingId: bookingId,
+        status: status,
+        extraFields: extraFields,
+      );
+    } catch (_) {
+      // Ignore mirror sync failures.
+    }
+  }
+
+  String _resolveBookingUserId(Map<String, dynamic> bookingData) {
+    return (bookingData['customerUid'] as String?)?.trim() ??
+        (bookingData['userId'] as String?)?.trim() ??
+        (bookingData['customerId'] as String?)?.trim() ??
+        '';
   }
 
   Future<void> _createLedgersForBooking({

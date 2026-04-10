@@ -1,5 +1,6 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/providers/gallery_provider.dart';
+import 'package:cutline/shared/widgets/web_safe_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -69,7 +70,7 @@ class ManageGalleryScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
-          
+
                 // Gallery grid
                 if (provider.error != null)
                   Padding(
@@ -158,12 +159,12 @@ class _CoverPhotoSection extends StatelessWidget {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(14),
-                        child: Image.network(
-                          provider.coverPhotoUrl!,
+                        child: WebSafeImage(
+                          imageUrl: provider.coverPhotoUrl!,
                           width: double.infinity,
                           height: double.infinity,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _CoverPlaceholder(),
+                          errorWidget: _CoverPlaceholder(),
                         ),
                       ),
                       if (provider.isEditMode)
@@ -213,8 +214,7 @@ class _CoverPhotoSection extends StatelessWidget {
                       : _CoverPlaceholder(),
                 ),
         ),
-        if (provider.coverPhotoUrl == null ||
-            provider.coverPhotoUrl!.isEmpty)
+        if (provider.coverPhotoUrl == null || provider.coverPhotoUrl!.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
@@ -329,12 +329,12 @@ class _GalleryPhotoItem extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child: imageUrl != null
-                ? Image.network(
-                    imageUrl!,
+                ? WebSafeImage(
+                    imageUrl: imageUrl!,
                     width: double.infinity,
                     height: double.infinity,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _PlaceholderPhoto(),
+                    errorWidget: _PlaceholderPhoto(),
                   )
                 : _PlaceholderPhoto(),
           ),
@@ -391,4 +391,3 @@ class _PlaceholderPhoto extends StatelessWidget {
     );
   }
 }
-

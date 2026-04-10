@@ -18,6 +18,7 @@ import 'package:cutline/features/owner/widgets/mini_stats_row.dart';
 import 'package:cutline/features/owner/widgets/quick_action_grid.dart';
 import 'package:cutline/features/owner/widgets/queue_list_section.dart';
 import 'package:cutline/shared/models/salon_verification_status.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -340,13 +341,19 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
                   return CircleAvatar(
                     radius: 18,
                     backgroundColor: const Color(0xFF2563EB),
-                    backgroundImage: photoUrl != null && photoUrl.isNotEmpty
-                        ? NetworkImage(photoUrl)
-                        : null,
-                    child: photoUrl == null || photoUrl.isEmpty
-                        ? const Icon(Icons.person,
-                            color: Colors.white, size: 28)
-                        : null,
+                    child: photoUrl != null && photoUrl.isNotEmpty
+                        ? CachedProfileImage(
+                            imageUrl: photoUrl,
+                            radius: 18,
+                            backgroundColor: const Color(0xFF2563EB),
+                            errorWidget: const Icon(
+                              Icons.person,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                          )
+                        : const Icon(Icons.person,
+                            color: Colors.white, size: 28),
                   );
                 },
               ),

@@ -1,5 +1,4 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// A reusable widget for displaying profile images that works on both mobile and web.
@@ -31,32 +30,48 @@ class CachedProfileImage extends StatelessWidget {
     }
 
     return ClipOval(
-      child: CachedNetworkImage(
-        imageUrl: imageUrl!,
+      child: Image.network(
+        imageUrl!,
         width: radius * 2,
         height: radius * 2,
         fit: BoxFit.cover,
-        httpHeaders: kIsWeb ? {'Access-Control-Allow-Origin': '*'} : null,
-        placeholder: (context, url) {
-          return Container(
-            width: radius * 2,
-            height: radius * 2,
-            color: backgroundColor ?? Colors.grey[300],
-            child: placeholder ??
-                const Center(
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-          );
+        webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return _buildPlaceholder();
         },
-        errorWidget: (context, url, error) {
-          return Container(
+        errorBuilder: (context, error, stackTrace) {
+          return CachedNetworkImage(
+            imageUrl: imageUrl!,
             width: radius * 2,
             height: radius * 2,
-            color: backgroundColor ?? Colors.grey[300],
-            child: errorWidget ?? const Icon(Icons.person, color: Colors.grey),
+            fit: BoxFit.cover,
+            placeholder: (context, url) => _buildPlaceholder(),
+            errorWidget: (context, url, error) => _buildError(),
           );
         },
       ),
+    );
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      color: backgroundColor ?? Colors.grey[300],
+      child: placeholder ??
+          const Center(
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+    );
+  }
+
+  Widget _buildError() {
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      color: backgroundColor ?? Colors.grey[300],
+      child: errorWidget ?? const Icon(Icons.person, color: Colors.grey),
     );
   }
 }

@@ -1,6 +1,7 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/barber/providers/barber_edit_profile_provider.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -13,7 +14,7 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
-  File? _imageFile;
+  Uint8List? _imageBytes;
 
   final TextEditingController nameCtrl = TextEditingController();
   final TextEditingController titleCtrl = TextEditingController();
@@ -86,7 +87,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           alignment: Alignment.bottomRight,
                           children: [
                             _Avatar(
-                              imageFile: _imageFile,
+                              imageBytes: _imageBytes,
                               photoUrl: provider.photoUrl,
                               isUploading: provider.isUploadingPhoto,
                             ),
@@ -211,11 +212,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       maxWidth: 1200,
     );
     if (picked == null) return;
-    final file = File(picked.path);
+    final bytes = await picked.readAsBytes();
     setState(() {
-      _imageFile = file;
+      _imageBytes = bytes;
     });
-    final url = await provider.uploadProfilePhoto(file);
+    final url = await provider.uploadProfilePhoto(picked);
     if (!mounted) return;
     if (url == null && provider.error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -258,33 +259,44 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 }
 
 class _Avatar extends StatelessWidget {
-  final File? imageFile;
+  final Uint8List? imageBytes;
   final String? photoUrl;
   final bool isUploading;
 
   const _Avatar({
-    required this.imageFile,
+    required this.imageBytes,
     required this.photoUrl,
     required this.isUploading,
   });
 
   @override
   Widget build(BuildContext context) {
-    ImageProvider? avatarImage;
-    if (imageFile != null) {
-      avatarImage = FileImage(imageFile!);
-    } else if (photoUrl != null && photoUrl!.isNotEmpty) {
-      avatarImage = NetworkImage(photoUrl!);
-    }
     return Stack(
       children: [
         CircleAvatar(
           radius: 50,
           backgroundColor: Colors.grey.shade300,
-          backgroundImage: avatarImage,
-          child: avatarImage == null
-              ? const Icon(Icons.person, size: 60, color: Colors.white)
-              : null,
+          child: imageBytes != null
+              ? ClipOval(
+                  child: Image.memory(
+                    imageBytes!,
+                    width: 100,
+                    height: 100,
+                    fit: BoxFit.cover,
+                  ),
+                )
+              : (photoUrl != null && photoUrl!.isNotEmpty
+                  ? CachedProfileImage(
+                      imageUrl: photoUrl,
+                      radius: 50,
+                      backgroundColor: Colors.grey.shade300,
+                      errorWidget: const Icon(
+                        Icons.person,
+                        size: 60,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.person, size: 60, color: Colors.white)),
         ),
         if (isUploading)
           Positioned.fill(

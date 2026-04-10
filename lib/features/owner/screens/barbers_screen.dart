@@ -4,6 +4,7 @@ import 'package:cutline/features/owner/providers/barbers_provider.dart';
 import 'package:cutline/features/owner/services/barber_service.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:cutline/features/owner/screens/add_barber_screen.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -130,11 +131,24 @@ class _BarberCard extends StatelessWidget {
               CircleAvatar(
                 radius: 28,
                 backgroundColor: statusColor.withValues(alpha: 0.12),
-                backgroundImage: barber.photoUrl.isNotEmpty
-                    ? NetworkImage(barber.photoUrl)
-                    : null,
-                child: barber.photoUrl.isEmpty
-                    ? Text(
+                child: barber.photoUrl.isNotEmpty
+                    ? CachedProfileImage(
+                        imageUrl: barber.photoUrl,
+                        radius: 28,
+                        backgroundColor: statusColor.withValues(alpha: 0.12),
+                        errorWidget: Text(
+                          barber.name
+                              .split(' ')
+                              .where((part) => part.isNotEmpty)
+                              .map((part) => part[0])
+                              .take(2)
+                              .join()
+                              .toUpperCase(),
+                          style: TextStyle(
+                              color: statusColor, fontWeight: FontWeight.bold),
+                        ),
+                      )
+                    : Text(
                         barber.name
                             .split(' ')
                             .where((part) => part.isNotEmpty)
@@ -144,8 +158,7 @@ class _BarberCard extends StatelessWidget {
                             .toUpperCase(),
                         style: TextStyle(
                             color: statusColor, fontWeight: FontWeight.bold),
-                      )
-                    : null,
+                      ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -279,11 +292,24 @@ class _BarberDetailSheet extends StatelessWidget {
                 child: CircleAvatar(
                   radius: 40,
                   backgroundColor: Colors.grey.shade200,
-                  backgroundImage: barber.photoUrl.isNotEmpty
-                      ? NetworkImage(barber.photoUrl)
-                      : null,
-                  child: barber.photoUrl.isEmpty
-                      ? Text(
+                  child: barber.photoUrl.isNotEmpty
+                      ? CachedProfileImage(
+                          imageUrl: barber.photoUrl,
+                          radius: 40,
+                          backgroundColor: Colors.grey.shade200,
+                          errorWidget: Text(
+                            barber.name
+                                .split(' ')
+                                .where((part) => part.isNotEmpty)
+                                .map((part) => part[0])
+                                .take(2)
+                                .join()
+                                .toUpperCase(),
+                            style: const TextStyle(
+                                fontSize: 24, fontWeight: FontWeight.bold),
+                          ),
+                        )
+                      : Text(
                           barber.name
                               .split(' ')
                               .where((part) => part.isNotEmpty)
@@ -293,8 +319,7 @@ class _BarberDetailSheet extends StatelessWidget {
                               .toUpperCase(),
                           style: const TextStyle(
                               fontSize: 24, fontWeight: FontWeight.bold),
-                        )
-                      : null,
+                        ),
                 ),
               ),
               const SizedBox(height: 12),

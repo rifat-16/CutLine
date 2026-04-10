@@ -113,6 +113,7 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
                                   final item = entry.item!;
                                   return OwnerQueueCard(
                                     item: item,
+                                    displaySerialNo: entry.displaySerialNo,
                                     onStatusChange: (next) =>
                                         provider.updateStatus(item.id, next),
                                     onTap: item.isManual
@@ -150,6 +151,7 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
     if (sorted.isEmpty) return const [];
 
     final entries = <_QueueEntry>[];
+    final visibleSerials = <String, int>{};
     DateTime? lastDay;
     for (final item in sorted) {
       final scheduledAt = item.scheduledAt;
@@ -160,7 +162,18 @@ class _ManageQueueScreenState extends State<ManageQueueScreen>
         entries.add(_QueueEntry.header(_dayLabel(day)));
         lastDay = day;
       }
-      entries.add(_QueueEntry.item(item));
+      final barberKey = _barberSortKey(item);
+      final previousSerial = visibleSerials[barberKey] ?? 0;
+      final fallbackSerial = previousSerial + 1;
+      final displaySerialNo = item.serialNo ?? fallbackSerial;
+      visibleSerials[barberKey] =
+          displaySerialNo > previousSerial ? displaySerialNo : previousSerial;
+      entries.add(
+        _QueueEntry.item(
+          item,
+          displaySerialNo: displaySerialNo,
+        ),
+      );
     }
     return entries;
   }
@@ -553,18 +566,32 @@ class _QueueEntry {
   final bool isHeader;
   final String label;
   final OwnerQueueItem? item;
+  final int? displaySerialNo;
 
   const _QueueEntry._({
     required this.isHeader,
     required this.label,
     required this.item,
+    required this.displaySerialNo,
   });
 
-  factory _QueueEntry.header(String label) =>
-      _QueueEntry._(isHeader: true, label: label, item: null);
+  factory _QueueEntry.header(String label) => _QueueEntry._(
+        isHeader: true,
+        label: label,
+        item: null,
+        displaySerialNo: null,
+      );
 
-  factory _QueueEntry.item(OwnerQueueItem item) =>
-      _QueueEntry._(isHeader: false, label: '', item: item);
+  factory _QueueEntry.item(
+    OwnerQueueItem item, {
+    int? displaySerialNo,
+  }) =>
+      _QueueEntry._(
+        isHeader: false,
+        label: '',
+        item: item,
+        displaySerialNo: displaySerialNo,
+      );
 }
 
 class _DateHeader extends StatelessWidget {

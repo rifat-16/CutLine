@@ -3,6 +3,9 @@ import 'package:cutline/features/barber/providers/barber_profile_provider.dart';
 import 'package:cutline/features/barber/screens/work_history_screen.dart';
 import 'package:cutline/features/barber/screens/barber_tips_screen.dart';
 import 'package:cutline/routes/app_router.dart';
+import 'package:cutline/shared/config/support_links.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
+import 'package:cutline/shared/widgets/support_brand_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -72,20 +75,25 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
                             children: [
                               Builder(
                                 builder: (context) {
-                                  ImageProvider? imageProvider;
-                                  if (provider.profile?.photoUrl != null &&
-                                      provider.profile!.photoUrl.isNotEmpty) {
-                                    imageProvider = NetworkImage(
-                                        provider.profile!.photoUrl);
-                                  }
+                                  final imageUrl = provider.profile?.photoUrl;
                                   return CircleAvatar(
                                     radius: 50,
                                     backgroundColor: Colors.grey.shade300,
-                                    backgroundImage: imageProvider,
-                                    child: imageProvider == null
-                                        ? const Icon(Icons.person,
-                                            size: 60, color: Colors.white)
-                                        : null,
+                                    child:
+                                        imageUrl != null && imageUrl.isNotEmpty
+                                            ? CachedProfileImage(
+                                                imageUrl: imageUrl,
+                                                radius: 50,
+                                                backgroundColor:
+                                                    Colors.grey.shade300,
+                                                errorWidget: const Icon(
+                                                  Icons.person,
+                                                  size: 60,
+                                                  color: Colors.white,
+                                                ),
+                                              )
+                                            : const Icon(Icons.person,
+                                                size: 60, color: Colors.white),
                                   );
                                 },
                               ),
@@ -173,6 +181,20 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
                           },
                         ),
                         _settingTile(
+                          customIcon: const SupportBrandIcon.facebook(size: 20),
+                          title: "Facebook Page",
+                          onTap: () {
+                            SupportLinks.openFacebookPage(context);
+                          },
+                        ),
+                        _settingTile(
+                          customIcon: const SupportBrandIcon.whatsApp(size: 20),
+                          title: "Join WhatsApp Group",
+                          onTap: () {
+                            SupportLinks.openBarberWhatsAppGroup(context);
+                          },
+                        ),
+                        _settingTile(
                           icon: Icons.logout,
                           title: "Logout",
                           color: Colors.red,
@@ -188,11 +210,13 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
   }
 
   Widget _settingTile({
-    required IconData icon,
+    IconData? icon,
+    Widget? customIcon,
     required String title,
     Color color = Colors.black,
     required VoidCallback onTap,
   }) {
+    assert(icon != null || customIcon != null);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
@@ -205,7 +229,7 @@ class _BarberProfileScreenState extends State<BarberProfileScreen> {
         onTap: onTap,
         child: Row(
           children: [
-            Icon(icon, color: color),
+            customIcon ?? Icon(icon, color: color),
             const SizedBox(width: 14),
             Expanded(
               child: Text(

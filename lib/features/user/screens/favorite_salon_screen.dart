@@ -2,6 +2,7 @@ import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/user/providers/favorite_salon_provider.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
+import 'package:cutline/shared/widgets/web_safe_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -73,14 +74,13 @@ class _FavoriteSalonCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(CutlineDecorations.radius),
       child: Container(
-        decoration: CutlineDecorations.card(solidColor: CutlineColors.background),
+        decoration:
+            CutlineDecorations.card(solidColor: CutlineColors.background),
         clipBehavior: Clip.antiAlias,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _CoverImage(
-                coverImageUrl: salon.coverImageUrl,
-                name: salon.name),
+            _CoverImage(coverImageUrl: salon.coverImageUrl, name: salon.name),
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -110,9 +110,7 @@ class _CoverImage extends StatelessWidget {
   final String? coverImageUrl;
   final String name;
 
-  const _CoverImage(
-      {required this.coverImageUrl,
-      required this.name});
+  const _CoverImage({required this.coverImageUrl, required this.name});
 
   @override
   Widget build(BuildContext context) {
@@ -122,14 +120,15 @@ class _CoverImage extends StatelessWidget {
           height: 200,
           width: double.infinity,
           color: Colors.grey.shade200,
-          child: coverImageUrl == null
+          child: coverImageUrl == null || coverImageUrl!.isEmpty
               ? Center(
                   child: Text('Cover image', style: CutlineTextStyles.subtitle))
-              : Image.network(
-                  coverImageUrl!,
+              : WebSafeImage(
+                  imageUrl: coverImageUrl!,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Center(
-                    child: Text('Cover image', style: CutlineTextStyles.subtitle),
+                  errorWidget: Center(
+                    child:
+                        Text('Cover image', style: CutlineTextStyles.subtitle),
                   ),
                 ),
         ),
@@ -195,7 +194,8 @@ class _WaitTimeRow extends StatelessWidget {
         Icon(
           isTemporarilyUnavailable ? Icons.info_outline : Icons.access_time,
           size: 16,
-          color: isTemporarilyUnavailable ? Colors.orange.shade700 : Colors.grey,
+          color:
+              isTemporarilyUnavailable ? Colors.orange.shade700 : Colors.grey,
         ),
         const SizedBox(width: 4),
         if (isTemporarilyUnavailable)

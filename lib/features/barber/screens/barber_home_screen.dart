@@ -3,6 +3,7 @@ import 'package:cutline/features/barber/providers/barber_home_provider.dart';
 import 'package:cutline/features/owner/screens/booking_requests_screen.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/services/queue_serial_service.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:cutline/shared/widgets/notification_badge_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -55,6 +56,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
       builder: (context, _) {
         final provider = context.watch<BarberHomeProvider>();
         final queue = _filteredQueue(provider.queue);
+        final displaySerials = _buildDisplaySerials(queue);
 
         return Scaffold(
           appBar: _buildAppBar(context, provider),
@@ -174,6 +176,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                         padding: const EdgeInsets.only(bottom: 14),
                         child: _QueueCard(
                           item: item,
+                          displaySerialNo: displaySerials[item.id],
                           onStartServing: isCurrentTurn && provider.canOperate
                               ? () => provider.updateStatus(
                                     item.id,
@@ -282,14 +285,18 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                     child: CircleAvatar(
                       radius: 16,
                       backgroundColor: Colors.grey,
-                      backgroundImage: provider.profile?.photoUrl != null &&
+                      child: provider.profile?.photoUrl != null &&
                               provider.profile!.photoUrl.isNotEmpty
-                          ? NetworkImage(provider.profile!.photoUrl)
-                          : null,
-                      child: provider.profile?.photoUrl == null ||
-                              provider.profile!.photoUrl.isEmpty
-                          ? const Icon(Icons.person, color: Colors.white)
-                          : null,
+                          ? CachedProfileImage(
+                              imageUrl: provider.profile!.photoUrl,
+                              radius: 16,
+                              backgroundColor: Colors.grey,
+                              errorWidget: const Icon(
+                                Icons.person,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.person, color: Colors.white),
                     ),
                   ),
                 ),
@@ -340,6 +347,19 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
       });
     if (selected == null) return sorted;
     return sorted.where((item) => item.status == selected).toList();
+  }
+
+  Map<String, int> _buildDisplaySerials(List<BarberQueueItem> queue) {
+    final serials = <String, int>{};
+    var currentSerial = 0;
+    for (final item in queue) {
+      final displaySerialNo = item.serialNo ?? (currentSerial + 1);
+      serials[item.id] = displaySerialNo;
+      if (displaySerialNo > currentSerial) {
+        currentSerial = displaySerialNo;
+      }
+    }
+    return serials;
   }
 
   Future<void> _openManualEntrySheet(
@@ -827,6 +847,7 @@ enum _QueueActionKind { startServing, cancel, markDone, undoStart }
 
 class _QueueCard extends StatefulWidget {
   final BarberQueueItem item;
+  final int? displaySerialNo;
   final Future<void> Function()? onStartServing;
   final Future<void> Function()? onMarkDone;
   final Future<void> Function()? onCancel;
@@ -834,6 +855,7 @@ class _QueueCard extends StatefulWidget {
 
   const _QueueCard({
     required this.item,
+    this.displaySerialNo,
     this.onStartServing,
     this.onMarkDone,
     this.onCancel,
@@ -967,6 +989,7 @@ class _QueueCardState extends State<_QueueCard> {
     final hasStartActions =
         widget.onStartServing != null && widget.onCancel != null;
     final actions = _buildActions();
+    final serialNo = widget.displaySerialNo ?? widget.item.serialNo;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1001,9 +1024,18 @@ class _QueueCardState extends State<_QueueCard> {
                   ],
                 ),
               ),
-              Text(
-                _getTimeDisplay(),
-                style: TextStyle(color: _getTimeColor(), fontSize: 15),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (serialNo != null) ...[
+                    _QueueSerialBadge(number: serialNo),
+                    const SizedBox(height: 8),
+                  ],
+                  Text(
+                    _getTimeDisplay(),
+                    style: TextStyle(color: _getTimeColor(), fontSize: 15),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1363,16 +1395,26 @@ class _QueueCardState extends State<_QueueCard> {
     return CircleAvatar(
       radius: 22,
       backgroundColor: Colors.blue.shade100,
-      backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-      child: avatarUrl.isEmpty
-          ? Text(
+      child: avatarUrl.isNotEmpty
+          ? CachedProfileImage(
+              imageUrl: avatarUrl,
+              radius: 22,
+              backgroundColor: Colors.blue.shade100,
+              errorWidget: Text(
+                initials,
+                style: const TextStyle(
+                  color: Colors.blueAccent,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            )
+          : Text(
               initials,
               style: const TextStyle(
                 color: Colors.blueAccent,
                 fontWeight: FontWeight.w700,
               ),
-            )
-          : null,
+            ),
     );
   }
 
@@ -1382,6 +1424,45 @@ class _QueueCardState extends State<_QueueCard> {
     }
     if (widget.item.slotLabel.isNotEmpty) return widget.item.slotLabel;
     return 'Schedule not set';
+  }
+}
+
+class _QueueSerialBadge extends StatelessWidget {
+  final int number;
+
+  const _QueueSerialBadge({required this.number});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.blueAccent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const Text(
+            'Serial',
+            style: TextStyle(
+              color: Colors.black54,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Text(
+            '#$number',
+            style: const TextStyle(
+              color: Colors.blueAccent,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

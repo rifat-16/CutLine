@@ -1,10 +1,9 @@
-import 'dart:io';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/services/barber_service.dart';
 import 'package:cutline/features/owner/services/salon_service.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
+import 'package:cutline/shared/services/storage_upload_service.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -339,11 +338,11 @@ class SalonSetupProvider extends ChangeNotifier {
     required String path,
   }) async {
     final ref = _storage.ref().child('salons').child(ownerId).child(path);
-    final uploadTask = ref.putFile(
-      File(file.path),
-      SettableMetadata(contentType: _contentTypeFor(file.name)),
+    final snap = await uploadStorageFile(
+      ref: ref,
+      file: file,
+      metadata: SettableMetadata(contentType: _contentTypeFor(file.name)),
     );
-    final snap = await uploadTask.whenComplete(() {});
     return snap.ref.getDownloadURL();
   }
 

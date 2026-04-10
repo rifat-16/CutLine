@@ -1,10 +1,10 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
 import 'package:cutline/features/admin/models/admin_models.dart';
 import 'package:cutline/features/admin/services/admin_action_service.dart';
 import 'package:cutline/features/admin/services/admin_service.dart';
+import 'package:cutline/shared/widgets/web_safe_image.dart';
 
 class SalonReviewDetailScreen extends StatefulWidget {
   const SalonReviewDetailScreen({
@@ -53,7 +53,7 @@ class _SalonReviewDetailScreenState extends State<SalonReviewDetailScreen> {
               if (salon.coverImageUrl.isNotEmpty)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(20),
-                  child: CachedNetworkImage(
+                  child: WebSafeImage(
                     imageUrl: salon.coverImageUrl,
                     height: 220,
                     fit: BoxFit.cover,
@@ -351,7 +351,7 @@ class _SalonReviewDetailScreenState extends State<SalonReviewDetailScreen> {
                           itemBuilder: (context, index) {
                             return ClipRRect(
                               borderRadius: BorderRadius.circular(16),
-                              child: CachedNetworkImage(
+                              child: WebSafeImage(
                                 imageUrl: detail.galleryUrls[index],
                                 width: 120,
                                 fit: BoxFit.cover,
@@ -594,10 +594,7 @@ class _SalonReviewDetailScreenState extends State<SalonReviewDetailScreen> {
           child: InteractiveViewer(
             minScale: 0.7,
             maxScale: 4,
-            child: CachedNetworkImage(
-              imageUrl: imageUrl,
-              fit: BoxFit.contain,
-            ),
+            child: WebSafeImage(imageUrl: imageUrl, fit: BoxFit.contain),
           ),
         ),
       ),
@@ -812,7 +809,7 @@ class _AdminPaymentCard extends StatelessWidget {
                           Icons.image_not_supported_outlined,
                           color: Color(0xFF64748B),
                         )
-                      : CachedNetworkImage(
+                      : WebSafeImage(
                           imageUrl: item.proofImageUrl,
                           fit: BoxFit.cover,
                         ),

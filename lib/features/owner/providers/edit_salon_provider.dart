@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/shared/services/firestore_cache.dart';
+import 'package:cutline/shared/services/storage_upload_service.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -209,11 +208,11 @@ class EditSalonProvider extends ChangeNotifier {
 
   Future<String> _uploadFile(String ownerId, XFile file, String path) async {
     final ref = _storage.ref().child('owners').child(ownerId).child(path);
-    final uploadTask = ref.putFile(
-      File(file.path),
-      SettableMetadata(contentType: _contentTypeFor(file.name)),
+    final snap = await uploadStorageFile(
+      ref: ref,
+      file: file,
+      metadata: SettableMetadata(contentType: _contentTypeFor(file.name)),
     );
-    final snap = await uploadTask.whenComplete(() {});
     return snap.ref.getDownloadURL();
   }
 

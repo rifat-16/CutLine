@@ -15,8 +15,7 @@ class DirectoryTab extends StatefulWidget {
 class _DirectoryTabState extends State<DirectoryTab> {
   final AdminService _service = AdminService();
   final TextEditingController _searchController = TextEditingController();
-  String _verificationFilter = 'all';
-  String _restrictionFilter = 'all';
+  String _verificationFilter = 'pending';
 
   @override
   void dispose() {
@@ -27,107 +26,46 @@ class _DirectoryTabState extends State<DirectoryTab> {
   @override
   Widget build(BuildContext context) {
     final query = _searchController.text.trim().toLowerCase();
+    const filters = [
+      ('pending', 'Pending salons'),
+      ('verified', 'Verified salons'),
+      ('rejected', 'Rejected salons'),
+    ];
+
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-          child: AdminPanel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const AdminSectionHeading(
-                  eyebrow: 'Salon Directory',
-                  title: 'Search and monitor salons',
-                  subtitle:
-                      'Open a salon to view its finance summary, outstanding due, and restriction controls.',
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: filters.map((filter) {
+                  return _DirectoryStatusFilter(
+                    label: filter.$2,
+                    selected: _verificationFilter == filter.$1,
+                    onTap: () {
+                      if (_verificationFilter == filter.$1) return;
+                      setState(() {
+                        _verificationFilter = filter.$1;
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search),
+                  hintText: 'Search salon by name or id',
+                  isDense: true,
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _searchController,
-                  onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search),
-                    hintText: 'Search salon by name or id',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final wide = constraints.maxWidth >= 460;
-                    return Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        SizedBox(
-                          width: wide
-                              ? (constraints.maxWidth - 12) / 2
-                              : constraints.maxWidth,
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _verificationFilter,
-                            decoration: const InputDecoration(
-                                labelText: 'Verification'),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'all',
-                                child: Text('All statuses'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'pending',
-                                child: Text('Pending'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'verified',
-                                child: Text('Verified'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'rejected',
-                                child: Text('Rejected'),
-                              ),
-                            ],
-                            onChanged: (value) {
-                              if (value == null) return;
-                              setState(() {
-                                _verificationFilter = value;
-                              });
-                            },
-                          ),
-                        ),
-                        SizedBox(
-                          width: wide
-                              ? (constraints.maxWidth - 12) / 2
-                              : constraints.maxWidth,
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _restrictionFilter,
-                            decoration:
-                                const InputDecoration(labelText: 'Restriction'),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'all',
-                                child: Text('All salons'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'restricted',
-                                child: Text('Restricted'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'active',
-                                child: Text('Not restricted'),
-                              ),
-                            ],
-                            onChanged: (value) {
-                              if (value == null) return;
-                              setState(() {
-                                _restrictionFilter = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -163,14 +101,7 @@ class _DirectoryTabState extends State<DirectoryTab> {
               }
               final salons = (snapshot.data ?? const <AdminDirectorySalon>[])
                   .where((salon) {
-                    final verificationMatches = _verificationFilter == 'all' ||
-                        salon.verificationStatus == _verificationFilter;
-                    final restrictionMatches = switch (_restrictionFilter) {
-                      'restricted' => salon.isRestricted,
-                      'active' => !salon.isRestricted,
-                      _ => true,
-                    };
-                    return verificationMatches && restrictionMatches;
+                    return salon.verificationStatus == _verificationFilter;
                   })
                   .where(
                     (item) =>
@@ -183,12 +114,13 @@ class _DirectoryTabState extends State<DirectoryTab> {
                 return ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
-                  children: const [
+                  children: [
                     AdminEmptyState(
                       icon: Icons.storefront_outlined,
-                      title: 'No salons found',
+                      title:
+                          'No ${adminTitleCase(_verificationFilter).toLowerCase()} salons found',
                       message:
-                          'Try another filter or search term to find a salon.',
+                          'Try another search term or switch to a different status.',
                     ),
                   ],
                 );
@@ -356,6 +288,40 @@ class _DirectoryTabState extends State<DirectoryTab> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _DirectoryStatusFilter extends StatelessWidget {
+  const _DirectoryStatusFilter({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: onTap == null ? null : (_) => onTap!(),
+      labelStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: selected ? const Color(0xFF0C5C51) : const Color(0xFF536761),
+          ),
+      backgroundColor: Colors.white.withValues(alpha: 0.96),
+      selectedColor: const Color(0xFFE6F2EE),
+      side: BorderSide(
+        color: selected ? const Color(0xFFB7D9CF) : const Color(0xFFDDE6E0),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+      ),
     );
   }
 }

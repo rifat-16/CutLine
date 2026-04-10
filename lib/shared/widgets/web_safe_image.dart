@@ -1,5 +1,4 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// A widget that handles image loading on web with CORS issues.
@@ -26,36 +25,21 @@ class WebSafeImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb) {
-      // On web, try Image.network first as it sometimes handles CORS better
-      // when CORS isn't fully configured
-      return Image.network(
-        imageUrl,
-        fit: fit,
-        width: width,
-        height: height,
-        headers: httpHeaders,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return placeholder ??
-              Container(
-                width: width,
-                height: height,
-                color: Colors.grey[300],
-                child: const Center(
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              );
-        },
-        errorBuilder: (context, error, stackTrace) {
-          // Fallback to CachedNetworkImage if Image.network fails
-          return _buildCachedNetworkImage();
-        },
-      );
-    } else {
-      // On mobile, use CachedNetworkImage
-      return _buildCachedNetworkImage();
-    }
+    return Image.network(
+      imageUrl,
+      fit: fit,
+      width: width,
+      height: height,
+      headers: httpHeaders,
+      webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return placeholder ?? _defaultPlaceholder();
+      },
+      errorBuilder: (context, error, stackTrace) {
+        return _buildCachedNetworkImage();
+      },
+    );
   }
 
   Widget _buildCachedNetworkImage() {
@@ -66,15 +50,7 @@ class WebSafeImage extends StatelessWidget {
       height: height,
       httpHeaders: httpHeaders,
       placeholder: (context, url) {
-        return placeholder ??
-            Container(
-              width: width,
-              height: height,
-              color: Colors.grey[300],
-              child: const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            );
+        return placeholder ?? _defaultPlaceholder();
       },
       errorWidget: (context, url, error) {
         return errorWidget ??
@@ -85,6 +61,17 @@ class WebSafeImage extends StatelessWidget {
               child: const Icon(Icons.broken_image, color: Colors.grey),
             );
       },
+    );
+  }
+
+  Widget _defaultPlaceholder() {
+    return Container(
+      width: width,
+      height: height,
+      color: Colors.grey[300],
+      child: const Center(
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
     );
   }
 }

@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
@@ -7,6 +6,7 @@ import 'package:cutline/features/admin/services/admin_action_service.dart';
 import 'package:cutline/features/admin/services/admin_service.dart';
 import 'package:cutline/features/admin/widgets/admin_ui.dart';
 import 'package:cutline/routes/admin_router.dart';
+import 'package:cutline/shared/widgets/web_safe_image.dart';
 
 class PlatformFeePaymentsTab extends StatefulWidget {
   const PlatformFeePaymentsTab({super.key});
@@ -234,10 +234,7 @@ class _PlatformFeePaymentsTabState extends State<PlatformFeePaymentsTab> {
           child: InteractiveViewer(
             minScale: 0.7,
             maxScale: 4,
-            child: CachedNetworkImage(
-              imageUrl: imageUrl,
-              fit: BoxFit.contain,
-            ),
+            child: WebSafeImage(imageUrl: imageUrl, fit: BoxFit.contain),
           ),
         ),
       ),

@@ -2,6 +2,8 @@ import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/user/providers/booking_provider.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
+import 'package:cutline/shared/widgets/web_safe_image.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -448,12 +450,12 @@ class _SalonInfoCard extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              imageUrl,
+            child: WebSafeImage(
+              imageUrl: imageUrl,
               width: 60,
               height: 60,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
+              errorWidget: Container(
                 width: 60,
                 height: 60,
                 color: Colors.grey.shade200,
@@ -749,32 +751,20 @@ class _BarberGrid extends StatelessWidget {
                     width: 56,
                     height: 56,
                     color: Colors.grey.shade200,
-                    child: barber.avatarUrl != null &&
-                            barber.avatarUrl!.isNotEmpty
-                        ? Image.network(
-                            barber.avatarUrl!,
-                            fit: BoxFit.cover,
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return Center(
-                                child: CircularProgressIndicator(
-                                  value: loadingProgress.expectedTotalBytes !=
-                                          null
-                                      ? loadingProgress.cumulativeBytesLoaded /
-                                          loadingProgress.expectedTotalBytes!
-                                      : null,
-                                  strokeWidth: 2,
+                    child:
+                        barber.avatarUrl != null && barber.avatarUrl!.isNotEmpty
+                            ? CachedProfileImage(
+                                imageUrl: barber.avatarUrl!,
+                                radius: 28,
+                                backgroundColor: Colors.grey.shade200,
+                                errorWidget: const Icon(
+                                  Icons.person,
+                                  color: Colors.grey,
+                                  size: 28,
                                 ),
-                              );
-                            },
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.person,
-                              color: Colors.grey,
-                              size: 28,
-                            ),
-                          )
-                        : const Icon(Icons.person,
-                            color: Colors.grey, size: 28),
+                              )
+                            : const Icon(Icons.person,
+                                color: Colors.grey, size: 28),
                   ),
                 ),
                 const SizedBox(height: 6),

@@ -87,9 +87,6 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
                 children: [
                   _OverviewHero(
                     stats: data.stats,
-                    onPaymentsTap: () => widget.onNavigate(1),
-                    onPendingTap: () => widget.onNavigate(2),
-                    onSalonTap: () => widget.onNavigate(3),
                   ),
                   const SizedBox(height: 24),
                   const AdminSectionHeading(
@@ -259,15 +256,9 @@ class _DashboardData {
 class _OverviewHero extends StatelessWidget {
   const _OverviewHero({
     required this.stats,
-    required this.onPaymentsTap,
-    required this.onPendingTap,
-    required this.onSalonTap,
   });
 
   final AdminDashboardStats stats;
-  final VoidCallback onPaymentsTap;
-  final VoidCallback onPendingTap;
-  final VoidCallback onSalonTap;
 
   @override
   Widget build(BuildContext context) {
@@ -373,42 +364,6 @@ class _OverviewHero extends StatelessWidget {
                   label:
                       '${formatAdminCurrency(stats.totalOutstandingFee)} due',
                   icon: Icons.account_balance_wallet_outlined,
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF0F4F49),
-                  ),
-                  onPressed: onPaymentsTap,
-                  icon: const Icon(Icons.payments_rounded),
-                  label: const Text('Review payments'),
-                ),
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white.withValues(alpha: 0.14),
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: onPendingTap,
-                  icon: const Icon(Icons.fact_check_rounded),
-                  label: const Text('Review pending'),
-                ),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.28),
-                    ),
-                  ),
-                  onPressed: onSalonTap,
-                  icon: const Icon(Icons.storefront_rounded),
-                  label: const Text('Open salons'),
                 ),
               ],
             ),

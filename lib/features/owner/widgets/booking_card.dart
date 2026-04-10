@@ -1,5 +1,6 @@
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:cutline/features/owner/utils/cutline_theme.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -33,10 +34,19 @@ class OwnerBookingCard extends StatelessWidget {
                   backgroundColor: hasAvatar
                       ? OwnerTheme.primary.withValues(alpha: 0.12)
                       : OwnerTheme.primary,
-                  backgroundImage:
-                      hasAvatar ? NetworkImage(booking.customerAvatar) : null,
                   child: hasAvatar
-                      ? null
+                      ? CachedProfileImage(
+                          imageUrl: booking.customerAvatar,
+                          radius: 26,
+                          backgroundColor:
+                              OwnerTheme.primary.withValues(alpha: 0.12),
+                          errorWidget: Text(
+                            _initials(booking.customerName),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        )
                       : Text(
                           _initials(booking.customerName),
                           style: const TextStyle(
@@ -112,8 +122,7 @@ class OwnerBookingCard extends StatelessWidget {
     final list = parts.toList();
     if (list.isEmpty) return '';
     final first = list[0].substring(0, 1).toUpperCase();
-    final second =
-        list.length > 1 ? list[1].substring(0, 1).toUpperCase() : '';
+    final second = list.length > 1 ? list[1].substring(0, 1).toUpperCase() : '';
     return '$first$second';
   }
 }

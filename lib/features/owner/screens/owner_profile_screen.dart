@@ -2,6 +2,7 @@ import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/providers/edit_salon_provider.dart';
 import 'package:cutline/features/owner/screens/owner_profile_edit_screen.dart';
 import 'package:cutline/routes/app_router.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -166,24 +167,28 @@ class _ProfileCard extends StatelessWidget {
                     CircleAvatar(
                       radius: 36,
                       backgroundColor: Colors.white,
-                      backgroundImage: isUploading
-                          ? null
-                          : (photoUrl != null && photoUrl!.isNotEmpty
-                              ? NetworkImage(photoUrl!)
-                              : null),
                       child: isUploading
                           ? const CircularProgressIndicator(
                               strokeWidth: 3,
                               valueColor: AlwaysStoppedAnimation<Color>(
                                   Color(0xFF2563EB)),
                             )
-                          : (photoUrl == null || photoUrl!.isEmpty
-                              ? const Icon(
+                          : (photoUrl != null && photoUrl!.isNotEmpty
+                              ? CachedProfileImage(
+                                  imageUrl: photoUrl,
+                                  radius: 36,
+                                  backgroundColor: Colors.white,
+                                  errorWidget: const Icon(
+                                    Icons.person,
+                                    color: Color(0xFF2563EB),
+                                    size: 28,
+                                  ),
+                                )
+                              : const Icon(
                                   Icons.person,
                                   color: Color(0xFF2563EB),
                                   size: 28,
-                                )
-                              : null),
+                                )),
                     ),
                     if (!isUploading)
                       Positioned(
