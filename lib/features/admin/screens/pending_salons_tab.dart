@@ -1,10 +1,10 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import 'package:cutline/features/admin/models/admin_models.dart';
 import 'package:cutline/features/admin/services/admin_service.dart';
 import 'package:cutline/features/admin/widgets/admin_ui.dart';
 import 'package:cutline/routes/admin_router.dart';
+import 'package:cutline/shared/widgets/web_safe_image.dart';
 
 class PendingSalonsTab extends StatelessWidget {
   const PendingSalonsTab({super.key});
@@ -256,7 +256,7 @@ class _SalonThumb extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
-      child: CachedNetworkImage(
+      child: WebSafeImage(
         imageUrl: url,
         width: 68,
         height: 68,

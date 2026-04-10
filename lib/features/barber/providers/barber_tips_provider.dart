@@ -57,16 +57,28 @@ class BarberTipsProvider extends ChangeNotifier {
 
       final totalTips =
           _ledger.fold<int>(0, (acc, item) => acc + item.tipAmount);
-      final paidTips = _payouts
+      final receivedTips = _payouts
           .where((item) => item.isConfirmed)
           .fold<int>(0, (acc, item) => acc + item.amount);
-      final dueTips = totalTips - paidTips;
+      final outstandingTips =
+          (totalTips - receivedTips).clamp(0, totalTips).toInt();
+      final pendingConfirmationRaw = _payouts
+          .where((item) => !item.isConfirmed)
+          .fold<int>(0, (acc, item) => acc + item.amount);
+      final pendingConfirmationTips = pendingConfirmationRaw > outstandingTips
+          ? outstandingTips
+          : pendingConfirmationRaw;
+      final notYetSentTips = outstandingTips - pendingConfirmationTips;
 
       _summary = BarberTipSummary(
         totalTips: totalTips,
-        paidTips: paidTips,
-        dueTips: dueTips < 0 ? 0 : dueTips,
+        receivedTips: receivedTips,
+        pendingConfirmationTips: pendingConfirmationTips,
+        notYetSentTips: notYetSentTips < 0 ? 0 : notYetSentTips,
+        outstandingTips: outstandingTips,
       );
+    } on FirebaseException catch (error) {
+      _setError(_mapLoadError(error));
     } catch (_) {
       _setError('Failed to load tips.');
     } finally {
@@ -102,10 +114,8 @@ class BarberTipsProvider extends ChangeNotifier {
         return true;
       }
 
-      final ledgerSnap = await _firestore
-          .collection('barber_tip_ledger')
-          .where('payoutId', isEqualTo: payoutId)
-          .get();
+      final linkedLedgerItems =
+          _ledger.where((item) => item.payoutId == payoutId).toList();
 
       final batch = _firestore.batch();
       batch.update(payoutRef, {
@@ -113,16 +123,15 @@ class BarberTipsProvider extends ChangeNotifier {
         'confirmedAt': FieldValue.serverTimestamp(),
       });
 
-      for (final doc in ledgerSnap.docs) {
-        final data = doc.data();
-        final tipAmount = (data['tipAmount'] as num?)?.toInt() ?? 0;
-        final paidAmount = (data['paidAmount'] as num?)?.toInt() ?? 0;
+      for (final item in linkedLedgerItems) {
+        final tipAmount = item.tipAmount;
+        final paidAmount = item.paidAmount;
         final statusLabel = paidAmount >= tipAmount
             ? 'paid'
             : paidAmount > 0
                 ? 'partial'
                 : 'unpaid';
-        batch.update(doc.reference, {
+        batch.update(_firestore.collection('barber_tip_ledger').doc(item.id), {
           'status': statusLabel,
           'confirmedAt': FieldValue.serverTimestamp(),
         });
@@ -131,11 +140,38 @@ class BarberTipsProvider extends ChangeNotifier {
       await batch.commit();
       await load();
       return true;
+    } on FirebaseException catch (error) {
+      _setError(_mapConfirmError(error));
+      return false;
     } catch (_) {
       _setError('Failed to confirm payout.');
       return false;
     } finally {
       _setSubmitting(false);
+    }
+  }
+
+  String _mapLoadError(FirebaseException error) {
+    switch (error.code) {
+      case 'permission-denied':
+        return 'You do not have access to these tip records.';
+      case 'unavailable':
+        return 'Connection issue. Check your internet and try again.';
+      default:
+        return 'Failed to load tips.';
+    }
+  }
+
+  String _mapConfirmError(FirebaseException error) {
+    switch (error.code) {
+      case 'permission-denied':
+        return 'This payout could not be confirmed from your account.';
+      case 'not-found':
+        return 'This payout is no longer available.';
+      case 'unavailable':
+        return 'Connection issue. Check your internet and try again.';
+      default:
+        return 'Failed to confirm payout.';
     }
   }
 
@@ -157,17 +193,23 @@ class BarberTipsProvider extends ChangeNotifier {
 
 class BarberTipSummary {
   final int totalTips;
-  final int paidTips;
-  final int dueTips;
+  final int receivedTips;
+  final int pendingConfirmationTips;
+  final int notYetSentTips;
+  final int outstandingTips;
 
   const BarberTipSummary({
     required this.totalTips,
-    required this.paidTips,
-    required this.dueTips,
+    required this.receivedTips,
+    required this.pendingConfirmationTips,
+    required this.notYetSentTips,
+    required this.outstandingTips,
   });
 
   const BarberTipSummary.empty()
       : totalTips = 0,
-        paidTips = 0,
-        dueTips = 0;
+        receivedTips = 0,
+        pendingConfirmationTips = 0,
+        notYetSentTips = 0,
+        outstandingTips = 0;
 }

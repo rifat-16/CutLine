@@ -1,11 +1,13 @@
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:cutline/features/owner/utils/cutline_theme.dart';
 import 'package:cutline/features/owner/utils/queue_actions.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class OwnerQueueCard extends StatelessWidget {
   final OwnerQueueItem item;
+  final int? displaySerialNo;
   final bool showActions;
   final Future<void> Function(OwnerQueueStatus status)? onStatusChange;
   final VoidCallback? onTap;
@@ -13,6 +15,7 @@ class OwnerQueueCard extends StatelessWidget {
   const OwnerQueueCard({
     super.key,
     required this.item,
+    this.displaySerialNo,
     this.showActions = true,
     this.onStatusChange,
     this.onTap,
@@ -24,6 +27,7 @@ class OwnerQueueCard extends StatelessWidget {
     final String durationLabel =
         '${item.waitMinutes} min${item.waitMinutes == 1 ? '' : 's'}';
     final String scheduleLabel = _scheduleLabel(item);
+    final int? serialNumber = displaySerialNo ?? item.serialNo;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       child: Material(
@@ -52,17 +56,25 @@ class OwnerQueueCard extends StatelessWidget {
                             radius: 28,
                             backgroundColor:
                                 OwnerTheme.primary.withValues(alpha: 0.1),
-                            backgroundImage: item.customerAvatar.isNotEmpty
-                                ? NetworkImage(item.customerAvatar)
-                                : null,
-                            child: item.customerAvatar.isEmpty
-                                ? Text(
+                            child: item.customerAvatar.isNotEmpty
+                                ? CachedProfileImage(
+                                    imageUrl: item.customerAvatar,
+                                    radius: 28,
+                                    backgroundColor: OwnerTheme.primary
+                                        .withValues(alpha: 0.1),
+                                    errorWidget: Text(
+                                      _initials(item.customerName),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: OwnerTheme.primary),
+                                    ),
+                                  )
+                                : Text(
                                     _initials(item.customerName),
                                     style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                         color: OwnerTheme.primary),
-                                  )
-                                : null,
+                                  ),
                           ),
                           const SizedBox(width: 14),
                           Expanded(
@@ -107,24 +119,16 @@ class OwnerQueueCard extends StatelessWidget {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.end,
                                       children: [
+                                        if (serialNumber != null) ...[
+                                          _QueueOrdinalBadge(
+                                            number: serialNumber,
+                                          ),
+                                          const SizedBox(height: 8),
+                                        ],
                                         _StatusChip(
                                           label: _statusLabel(item.status),
                                           color: statusColor,
                                         ),
-                                        if (item.serialNo != null)
-                                          Padding(
-                                            padding:
-                                                const EdgeInsets.only(top: 6),
-                                            child: Text(
-                                              'Serial #${item.serialNo}',
-                                              style: OwnerTextStyles.subtitle
-                                                  .copyWith(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w700,
-                                                color: Colors.black54,
-                                              ),
-                                            ),
-                                          ),
                                       ],
                                     ),
                                   ],
@@ -231,6 +235,45 @@ class OwnerQueueCard extends StatelessWidget {
       return DateFormat('d MMM, h:mm a').format(scheduledAt);
     }
     return item.slotLabel.isNotEmpty ? item.slotLabel : 'Not scheduled';
+  }
+}
+
+class _QueueOrdinalBadge extends StatelessWidget {
+  final int number;
+
+  const _QueueOrdinalBadge({required this.number});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: OwnerTheme.accent.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            'Serial',
+            style: OwnerTextStyles.subtitle.copyWith(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Colors.black54,
+            ),
+          ),
+          Text(
+            '#$number',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Colors.black87,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

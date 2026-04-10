@@ -6,6 +6,8 @@ import 'package:cutline/features/owner/screens/manage_gallery_screen.dart';
 import 'package:cutline/features/owner/screens/manage_services_screen.dart';
 import 'package:cutline/features/owner/screens/platform_fee_report_screen.dart';
 import 'package:cutline/features/owner/screens/working_hours_screen.dart';
+import 'package:cutline/shared/config/support_links.dart';
+import 'package:cutline/shared/widgets/support_brand_icon.dart';
 import 'package:flutter/material.dart';
 
 class OwnerSettingsScreen extends StatefulWidget {
@@ -83,6 +85,18 @@ class _OwnerSettingsScreenState extends State<OwnerSettingsScreen> {
             subtitle: 'We usually reply within a few hours',
             onTap: () => _open(const ContactSupportScreen()),
           ),
+          _SettingTile(
+            customIcon: const SupportBrandIcon.facebook(size: 22),
+            title: 'Facebook Page',
+            subtitle: 'Follow the official CutLine page',
+            onTap: () => SupportLinks.openFacebookPage(context),
+          ),
+          _SettingTile(
+            customIcon: const SupportBrandIcon.whatsApp(size: 22),
+            title: 'Join WhatsApp Group',
+            subtitle: 'Open the salon owner WhatsApp group',
+            onTap: () => SupportLinks.openOwnerWhatsAppGroup(context),
+          ),
           const SizedBox(height: 24),
         ],
       ),
@@ -95,17 +109,19 @@ class _OwnerSettingsScreenState extends State<OwnerSettingsScreen> {
 }
 
 class _SettingTile extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? customIcon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
 
   const _SettingTile({
-    required this.icon,
+    this.icon,
+    this.customIcon,
     required this.title,
     required this.subtitle,
     required this.onTap,
-  });
+  }) : assert(icon != null || customIcon != null);
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +137,9 @@ class _SettingTile extends StatelessWidget {
             color: const Color(0xFFF1F5F9),
             borderRadius: BorderRadius.circular(14),
           ),
-          child: Icon(icon, color: const Color(0xFF2563EB)),
+          child: Center(
+            child: customIcon ?? Icon(icon, color: const Color(0xFF2563EB)),
+          ),
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(subtitle),

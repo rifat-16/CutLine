@@ -68,7 +68,7 @@ class _AddBarberFormState extends State<AddBarberForm> {
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Share these credentials with your barbers. They will use this email and password to log into their dashboards.',
+                  'Share these credentials with your barbers. The temporary password will stay visible in owner info until the barber signs in and changes it.',
                   style: TextStyle(color: Colors.blueAccent, fontSize: 13),
                 ),
               ),

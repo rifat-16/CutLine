@@ -592,6 +592,9 @@ class OwnerBarber {
   final String photoUrl;
   final String uid;
   final bool isAvailable;
+  final bool mustChangePassword;
+  final bool passwordVisibleToOwner;
+  final DateTime? passwordChangedAt;
 
   OwnerBarber({
     required this.id,
@@ -607,7 +610,55 @@ class OwnerBarber {
     this.photoUrl = '',
     this.uid = '',
     this.isAvailable = true,
+    this.mustChangePassword = false,
+    this.passwordVisibleToOwner = false,
+    this.passwordChangedAt,
   });
+
+  bool get canShowPasswordToOwner =>
+      passwordVisibleToOwner && password.trim().isNotEmpty;
+
+  OwnerBarber copyWith({
+    String? id,
+    String? name,
+    String? email,
+    String? phone,
+    String? password,
+    String? specialization,
+    double? rating,
+    int? servedToday,
+    OwnerBarberStatus? status,
+    String? nextClient,
+    String? photoUrl,
+    String? uid,
+    bool? isAvailable,
+    bool? mustChangePassword,
+    bool? passwordVisibleToOwner,
+    DateTime? passwordChangedAt,
+    bool clearPasswordChangedAt = false,
+  }) {
+    return OwnerBarber(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      password: password ?? this.password,
+      specialization: specialization ?? this.specialization,
+      rating: rating ?? this.rating,
+      servedToday: servedToday ?? this.servedToday,
+      status: status ?? this.status,
+      nextClient: nextClient ?? this.nextClient,
+      photoUrl: photoUrl ?? this.photoUrl,
+      uid: uid ?? this.uid,
+      isAvailable: isAvailable ?? this.isAvailable,
+      mustChangePassword: mustChangePassword ?? this.mustChangePassword,
+      passwordVisibleToOwner:
+          passwordVisibleToOwner ?? this.passwordVisibleToOwner,
+      passwordChangedAt: clearPasswordChangedAt
+          ? null
+          : (passwordChangedAt ?? this.passwordChangedAt),
+    );
+  }
 }
 
 final List<OwnerBarber> kOwnerBarbers = [

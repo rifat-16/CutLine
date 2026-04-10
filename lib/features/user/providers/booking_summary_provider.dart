@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cutline/shared/services/firestore_cache.dart';
-import 'package:cutline/shared/services/local_ttl_cache.dart';
+import 'package:cutline/shared/services/platform_fee_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class BookingSummaryProvider extends ChangeNotifier {
@@ -23,7 +23,9 @@ class BookingSummaryProvider extends ChangeNotifier {
     this.predictedSerialNo,
     this.predictedStartAt,
     FirebaseFirestore? firestore,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance;
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _platformFeeService = PlatformFeeService(
+            firestore: firestore ?? FirebaseFirestore.instance);
 
   final String salonId;
   final String salonName;
@@ -41,6 +43,7 @@ class BookingSummaryProvider extends ChangeNotifier {
   final int? predictedSerialNo;
   final DateTime? predictedStartAt;
   final FirebaseFirestore _firestore;
+  final PlatformFeeService _platformFeeService;
 
   bool _isLoading = false;
   bool _isSaving = false;
@@ -226,24 +229,15 @@ class BookingSummaryProvider extends ChangeNotifier {
     required String resolvedCustomerUid,
   }) async {
     final placement = await _computeNextFreePlacement();
-    final now = DateTime.now();
     final estimatedStart = placement.estimatedStart;
     final date = DateFormat('yyyy-MM-dd').format(estimatedStart);
     final time = DateFormat('h:mm a').format(estimatedStart);
-    final serialDate = DateFormat('yyyy-MM-dd').format(now);
-    final serialBarberKey = _serialBarberKey();
     final totalWithTip = total + tipAmount;
-    final serviceLabel = _serviceLabel();
     final bookingRef = _firestore
         .collection('salons')
         .doc(salonId)
         .collection('bookings')
         .doc();
-    final queueRef = _firestore
-        .collection('salons')
-        .doc(salonId)
-        .collection('queue')
-        .doc(bookingRef.id);
 
     final bookingPayload = {
       ..._baseBookingPayload(
@@ -255,58 +249,18 @@ class BookingSummaryProvider extends ChangeNotifier {
       'date': date,
       'time': time,
       'dateTime': Timestamp.fromDate(estimatedStart),
-      'status': 'waiting',
+      'status': 'pending',
       'waitMinutes': totalDurationMinutes,
       'entrySource': 'app',
       'bookingMode': 'next_free',
       'createdByUid': resolvedCustomerUid,
       'createdByRole': 'customer',
-      'serialNo': placement.nextSerial,
-      'serialDate': serialDate,
-      'serialBarberKey': serialBarberKey,
-      'slotLabel': '#${placement.nextSerial}',
-    };
-
-    final queuePayload = {
-      'salonId': salonId,
-      'customerUid': resolvedCustomerUid,
-      'customerName': customerName,
-      'customerPhone': customerPhone,
-      'customerEmail': customerEmail,
-      if (_customerAvatar != null && _customerAvatar!.isNotEmpty)
-        'customerAvatar': _customerAvatar,
-      'barberName': selectedBarber,
-      if (selectedBarberId.trim().isNotEmpty) 'barberId': selectedBarberId,
-      if (selectedBarberAvatar != null &&
-          selectedBarberAvatar!.trim().isNotEmpty)
-        'barberAvatar': selectedBarberAvatar,
-      'services': _serviceEntries(),
-      'service': serviceLabel,
-      'price': serviceTotal,
-      'total': totalWithTip,
-      'tipAmount': tipAmount,
-      'serviceCharge': serviceCharge,
-      'waitMinutes': totalDurationMinutes,
-      'durationMinutes': totalDurationMinutes,
-      'date': date,
-      'time': time,
-      'dateTime': Timestamp.fromDate(estimatedStart),
-      'slotLabel': '#${placement.nextSerial}',
-      'status': 'waiting',
-      'entrySource': 'app',
-      'bookingMode': 'next_free',
-      'createdByUid': resolvedCustomerUid,
-      'createdByRole': 'customer',
-      'serialNo': placement.nextSerial,
-      'serialDate': serialDate,
-      'serialBarberKey': serialBarberKey,
-      'updatedAt': FieldValue.serverTimestamp(),
-      'createdAt': FieldValue.serverTimestamp(),
+      'predictedSerialNo': placement.nextSerial,
+      'predictedStartAt': Timestamp.fromDate(estimatedStart),
     };
 
     final batch = _firestore.batch();
     batch.set(bookingRef, bookingPayload, SetOptions(merge: true));
-    batch.set(queueRef, queuePayload, SetOptions(merge: true));
     if (resolvedCustomerUid.isNotEmpty) {
       final userRef = _firestore.collection('users').doc(resolvedCustomerUid);
       batch.set(
@@ -332,12 +286,11 @@ class BookingSummaryProvider extends ChangeNotifier {
           'date': date,
           'time': time,
           'dateTime': Timestamp.fromDate(estimatedStart),
-          'status': 'waiting',
+          'status': 'pending',
           'bookingMode': 'next_free',
           'entrySource': 'app',
-          'serialNo': placement.nextSerial,
-          'serialDate': serialDate,
-          'serialBarberKey': serialBarberKey,
+          'predictedSerialNo': placement.nextSerial,
+          'predictedStartAt': Timestamp.fromDate(estimatedStart),
           'customerUid': resolvedCustomerUid,
           'customerEmail': customerEmail,
           'customerPhone': customerPhone,
@@ -352,7 +305,7 @@ class BookingSummaryProvider extends ChangeNotifier {
       );
     }
     await batch.commit();
-    _lastCreatedSerialNo = placement.nextSerial;
+    _lastCreatedSerialNo = null;
     return true;
   }
 
@@ -410,12 +363,6 @@ class BookingSummaryProvider extends ChangeNotifier {
         .map((s) => s.name.trim())
         .where((name) => name.isNotEmpty)
         .toList();
-  }
-
-  String _serviceLabel() {
-    final names = _serviceNames();
-    if (names.isEmpty) return 'Service';
-    return names.join(', ');
   }
 
   Future<void> _writeUserBookingMirror({
@@ -532,18 +479,6 @@ class BookingSummaryProvider extends ChangeNotifier {
     return targetBarberName.isNotEmpty && bookingBarberName == targetBarberName;
   }
 
-  String _serialBarberKey() {
-    final raw =
-        selectedBarberId.trim().isNotEmpty ? selectedBarberId : selectedBarber;
-    final normalized = raw
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
-        .replaceAll(RegExp(r'_+'), '_')
-        .replaceAll(RegExp(r'^_|_$'), '');
-    return normalized.isNotEmpty ? normalized : 'unassigned';
-  }
-
   Future<bool> _bookingExists() async {
     try {
       final snap = await FirestoreCache.getQuery(_firestore
@@ -614,72 +549,7 @@ class BookingSummaryProvider extends ChangeNotifier {
 
   Future<int> _loadPlatformFee() async {
     try {
-      final cached = await LocalTtlCache.get<int>('platform_fee_v1');
-      if (cached != null) return cached;
-      final snap = await FirestoreCache.getQueryCacheFirst(
-        _firestore.collection('platform_fee').limit(1),
-      );
-      if (snap.docs.isEmpty) {
-        await LocalTtlCache.set(
-          'platform_fee_v1',
-          0,
-          const Duration(hours: 24),
-        );
-        return 0;
-      }
-      final data = snap.docs.first.data();
-      final raw = data['fee'];
-      if (raw == null) {
-        await LocalTtlCache.set(
-          'platform_fee_v1',
-          0,
-          const Duration(hours: 24),
-        );
-        return 0;
-      }
-      if (raw is num) {
-        final fee = raw.toInt();
-        await LocalTtlCache.set(
-          'platform_fee_v1',
-          fee,
-          const Duration(hours: 24),
-        );
-        return fee;
-      }
-      if (raw is String) {
-        final normalized = raw.trim().toLowerCase();
-        if (normalized.isEmpty || normalized == 'free') {
-          await LocalTtlCache.set(
-            'platform_fee_v1',
-            0,
-            const Duration(hours: 24),
-          );
-          return 0;
-        }
-        final parsed = int.tryParse(normalized);
-        if (parsed != null) {
-          await LocalTtlCache.set(
-            'platform_fee_v1',
-            parsed,
-            const Duration(hours: 24),
-          );
-          return parsed;
-        }
-        final digits = RegExp(r'\d+').stringMatch(normalized);
-        final parsedDigits = digits != null ? int.tryParse(digits) ?? 0 : 0;
-        await LocalTtlCache.set(
-          'platform_fee_v1',
-          parsedDigits,
-          const Duration(hours: 24),
-        );
-        return parsedDigits;
-      }
-      await LocalTtlCache.set(
-        'platform_fee_v1',
-        0,
-        const Duration(hours: 24),
-      );
-      return 0;
+      return await _platformFeeService.loadEffectiveAmount();
     } catch (_) {
       return 0;
     }

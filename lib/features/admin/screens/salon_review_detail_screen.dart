@@ -1,9 +1,10 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
 import 'package:cutline/features/admin/models/admin_models.dart';
 import 'package:cutline/features/admin/services/admin_action_service.dart';
 import 'package:cutline/features/admin/services/admin_service.dart';
+import 'package:cutline/shared/widgets/web_safe_image.dart';
 
 class SalonReviewDetailScreen extends StatefulWidget {
   const SalonReviewDetailScreen({
@@ -52,7 +53,7 @@ class _SalonReviewDetailScreenState extends State<SalonReviewDetailScreen> {
               if (salon.coverImageUrl.isNotEmpty)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(20),
-                  child: CachedNetworkImage(
+                  child: WebSafeImage(
                     imageUrl: salon.coverImageUrl,
                     height: 220,
                     fit: BoxFit.cover,
@@ -291,20 +292,22 @@ class _SalonReviewDetailScreenState extends State<SalonReviewDetailScreen> {
                     : Column(
                         children: detail.platformFeePayments
                             .map(
-                              (item) => ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(
-                                  '৳${item.amount} • ${item.paymentMethod}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                              (item) => Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: _AdminPaymentCard(
+                                  item: item,
+                                  submitting: _submitting,
+                                  onOpenProof: item.proofImageUrl.isEmpty
+                                      ? null
+                                      : () => _showPlatformFeeProof(
+                                          item.proofImageUrl),
+                                  onConfirm: item.isPending
+                                      ? () => _confirmPlatformFeePayment(item)
+                                      : null,
+                                  onReject: item.isPending
+                                      ? () => _rejectPlatformFeePayment(item)
+                                      : null,
                                 ),
-                                subtitle: Text(
-                                  item.note.isEmpty
-                                      ? item.status
-                                      : '${item.status} • ${item.note}',
-                                ),
-                                trailing: Text(_formatDate(item.date)),
                               ),
                             )
                             .toList(),
@@ -348,7 +351,7 @@ class _SalonReviewDetailScreenState extends State<SalonReviewDetailScreen> {
                           itemBuilder: (context, index) {
                             return ClipRRect(
                               borderRadius: BorderRadius.circular(16),
-                              child: CachedNetworkImage(
+                              child: WebSafeImage(
                                 imageUrl: detail.galleryUrls[index],
                                 width: 120,
                                 fit: BoxFit.cover,
@@ -486,6 +489,118 @@ class _SalonReviewDetailScreenState extends State<SalonReviewDetailScreen> {
     await _submitRestriction(restricted: true, reason: reason);
   }
 
+  Future<void> _confirmPlatformFeePayment(AdminPaymentItem item) async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Confirm payment'),
+            content: Text(
+              'Confirm ৳${item.amount} from ${item.salonName.isEmpty ? item.salonId : item.salonName}?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Confirm'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+    await _submitPlatformFeeReview(item: item, decision: 'confirmed');
+  }
+
+  Future<void> _rejectPlatformFeePayment(AdminPaymentItem item) async {
+    final controller = TextEditingController();
+    final note = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reject payment'),
+        content: TextField(
+          controller: controller,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: 'Why is this payment being rejected?',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || note == null) return;
+    if (note.trim().isEmpty) {
+      _showMessage('A rejection note is required.');
+      return;
+    }
+    await _submitPlatformFeeReview(
+      item: item,
+      decision: 'rejected',
+      reviewNote: note,
+    );
+  }
+
+  Future<void> _submitPlatformFeeReview({
+    required AdminPaymentItem item,
+    required String decision,
+    String reviewNote = '',
+  }) async {
+    setState(() => _submitting = true);
+    try {
+      await _actionService.reviewPlatformFeePayment(
+        paymentId: item.id,
+        decision: decision,
+        reviewNote: reviewNote,
+      );
+      if (!mounted) return;
+      _showMessage(
+        decision == 'confirmed'
+            ? 'Platform fee payment confirmed.'
+            : 'Platform fee payment rejected.',
+      );
+      _reload();
+    } catch (e) {
+      if (!mounted) return;
+      if (e is FirebaseFunctionsException) {
+        _showMessage(_mapPlatformFeeReviewError(e));
+      } else {
+        _showMessage('Could not review the platform fee payment.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
+
+  Future<void> _showPlatformFeeProof(String imageUrl) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: InteractiveViewer(
+            minScale: 0.7,
+            maxScale: 4,
+            child: WebSafeImage(imageUrl: imageUrl, fit: BoxFit.contain),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _submitReview({
     required String decision,
     String reviewNote = '',
@@ -552,6 +667,20 @@ class _SalonReviewDetailScreenState extends State<SalonReviewDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  String _mapPlatformFeeReviewError(FirebaseFunctionsException error) {
+    return switch (error.code) {
+      'not-found' =>
+        'This admin app is connected to a Firebase project where the payment review function is not deployed yet. Deploy Cloud Functions and try again.',
+      'unauthenticated' => 'Please sign in again and retry.',
+      'permission-denied' => 'Your account does not have superadmin access.',
+      'invalid-argument' =>
+        error.message ?? 'The payment review request is invalid.',
+      'internal' =>
+        'The server hit an internal error while reviewing this payment. Please try again.',
+      _ => error.message ?? 'Could not review the platform fee payment.',
+    };
   }
 }
 
@@ -624,6 +753,168 @@ class _SummaryTile extends StatelessWidget {
               color: color,
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminPaymentCard extends StatelessWidget {
+  const _AdminPaymentCard({
+    required this.item,
+    required this.submitting,
+    this.onOpenProof,
+    this.onConfirm,
+    this.onReject,
+  });
+
+  final AdminPaymentItem item;
+  final bool submitting;
+  final VoidCallback? onOpenProof;
+  final VoidCallback? onConfirm;
+  final VoidCallback? onReject;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _paymentStatusStyle(item.status);
+    final rangeLabel = (item.rangeStart != null && item.rangeEnd != null)
+        ? '${_formatDate(item.rangeStart)} to ${_formatDate(item.rangeEnd)}'
+        : 'Range unavailable';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GestureDetector(
+                onTap: onOpenProof,
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: item.proofImageUrl.isEmpty
+                      ? const Icon(
+                          Icons.image_not_supported_outlined,
+                          color: Color(0xFF64748B),
+                        )
+                      : WebSafeImage(
+                          imageUrl: item.proofImageUrl,
+                          fit: BoxFit.cover,
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '৳${item.amount} • ${item.paymentMethod}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        _StatusChip(
+                          label: status.label,
+                          foreground: status.foreground,
+                          background: status.background,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Submitted: ${_formatDate(item.date)}',
+                      style: const TextStyle(
+                        color: Color(0xFF475569),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Txn ID: ${item.transactionId.isEmpty ? 'Unavailable' : item.transactionId}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      rangeLabel,
+                      style: const TextStyle(color: Color(0xFF64748B)),
+                    ),
+                    if (item.note.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        item.note,
+                        style: const TextStyle(color: Color(0xFF475569)),
+                      ),
+                    ],
+                    if (item.reviewNote.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Review note: ${item.reviewNote}',
+                        style: const TextStyle(
+                          color: Color(0xFF9A3412),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                    if (item.reviewedAt != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Reviewed: ${_formatDate(item.reviewedAt)}',
+                        style: const TextStyle(color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (onOpenProof != null) ...[
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: onOpenProof,
+              icon: const Icon(Icons.open_in_full_rounded),
+              label: const Text('Open proof screenshot'),
+            ),
+          ],
+          if (item.isPending) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: submitting ? null : onReject,
+                    icon: const Icon(Icons.close_rounded),
+                    label: const Text('Reject'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: submitting ? null : onConfirm,
+                    icon: const Icon(Icons.check_rounded),
+                    label: Text(submitting ? 'Submitting...' : 'Confirm'),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -733,6 +1024,42 @@ class _StatusChip extends StatelessWidget {
       ),
     );
   }
+}
+
+_PaymentStatusStyle _paymentStatusStyle(String status) {
+  switch (status) {
+    case 'confirmed':
+    case 'paid':
+      return const _PaymentStatusStyle(
+        label: 'confirmed',
+        foreground: Color(0xFF166534),
+        background: Color(0xFFDCFCE7),
+      );
+    case 'rejected':
+      return const _PaymentStatusStyle(
+        label: 'rejected',
+        foreground: Color(0xFF991B1B),
+        background: Color(0xFFFEE2E2),
+      );
+    default:
+      return const _PaymentStatusStyle(
+        label: 'pending',
+        foreground: Color(0xFF854D0E),
+        background: Color(0xFFFEF3C7),
+      );
+  }
+}
+
+class _PaymentStatusStyle {
+  const _PaymentStatusStyle({
+    required this.label,
+    required this.foreground,
+    required this.background,
+  });
+
+  final String label;
+  final Color foreground;
+  final Color background;
 }
 
 String _formatDate(DateTime? value) {

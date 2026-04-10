@@ -2,6 +2,7 @@ import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/providers/booking_requests_provider.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:cutline/features/owner/widgets/customer_detail_sheet.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -134,10 +135,18 @@ class _BookingRequestCard extends StatelessWidget {
                   backgroundColor: hasAvatar
                       ? const Color(0xFFE8ECF6)
                       : const Color(0xFF2563EB),
-                  backgroundImage:
-                      hasAvatar ? NetworkImage(request.customerAvatar) : null,
                   child: hasAvatar
-                      ? null
+                      ? CachedProfileImage(
+                          imageUrl: request.customerAvatar,
+                          radius: 28,
+                          backgroundColor: const Color(0xFFE8ECF6),
+                          errorWidget: Text(
+                            _initials(request.customerName),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white),
+                          ),
+                        )
                       : Text(
                           _initials(request.customerName),
                           style: const TextStyle(
@@ -474,16 +483,16 @@ class _DecisionButton extends StatelessWidget {
                         child: CircularProgressIndicator(
                           strokeWidth: 2.2,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            isPrimary
-                                ? Colors.white
-                                : const Color(0xFFE53935),
+                            isPrimary ? Colors.white : const Color(0xFFE53935),
                           ),
                         ),
                       )
                     : Text(
                         label,
                         style: TextStyle(
-                          color: isPrimary ? Colors.white : const Color(0xFFE53935),
+                          color: isPrimary
+                              ? Colors.white
+                              : const Color(0xFFE53935),
                           fontWeight: FontWeight.w700,
                         ),
                       ),

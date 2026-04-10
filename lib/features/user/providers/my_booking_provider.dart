@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cutline/shared/services/booking_reminder_service.dart';
 import 'package:cutline/shared/services/firestore_cache.dart';
+import 'package:cutline/shared/services/user_booking_mirror_service.dart';
 
 class MyBookingProvider extends ChangeNotifier {
   MyBookingProvider({
@@ -11,9 +12,13 @@ class MyBookingProvider extends ChangeNotifier {
     this.userEmail = '',
     this.userPhone = '',
     FirebaseFirestore? firestore,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance;
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _mirrorService = UserBookingMirrorService(
+          firestore: firestore ?? FirebaseFirestore.instance,
+        );
 
   final FirebaseFirestore _firestore;
+  final UserBookingMirrorService _mirrorService;
   final String userId;
   final String userEmail;
   final String userPhone;
@@ -58,26 +63,18 @@ class MyBookingProvider extends ChangeNotifier {
           .doc(booking.salonId)
           .collection('bookings')
           .doc(booking.id)
-          .set({'status': 'cancelled'}, SetOptions(merge: true));
+          .set({
+        'status': 'cancelled',
+        'cancelledAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       if (userId.isNotEmpty) {
-        await _firestore.collection('users').doc(userId).set(
-          {
-            'activeBookingIds': FieldValue.arrayRemove([booking.id]),
-            'updatedAt': FieldValue.serverTimestamp(),
+        await _mirrorService.updateStatus(
+          userId: userId,
+          bookingId: booking.id,
+          status: 'cancelled',
+          extraFields: {
+            'cancelledAt': FieldValue.serverTimestamp(),
           },
-          SetOptions(merge: true),
-        );
-        await _firestore
-            .collection('users')
-            .doc(userId)
-            .collection('bookings')
-            .doc(booking.id)
-            .set(
-          {
-            'status': 'cancelled',
-            'updatedAt': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
         );
       }
 
@@ -95,7 +92,6 @@ class MyBookingProvider extends ChangeNotifier {
       final parent = snapshot.reference.parent.parent;
       final salonId = parent?.id ?? '';
 
-
       // Try multiple field names for customer UID
       final customerUid = (data['customerUid'] as String?)?.trim() ??
           (data['userId'] as String?)?.trim() ??
@@ -104,7 +100,6 @@ class MyBookingProvider extends ChangeNotifier {
 
       final dateStr = (data['date'] as String?)?.trim() ?? '';
       final timeStr = (data['time'] as String?)?.trim() ?? '';
-
 
       if (dateStr.isEmpty || timeStr.isEmpty) {
         return null;
@@ -144,7 +139,9 @@ class MyBookingProvider extends ChangeNotifier {
             const [],
         barberName: (data['barberName'] as String?)?.trim() ?? '',
         dateTime: dateTime,
-        status: (data['status'] as String?)?.trim() ?? 'upcoming',
+        status: UserBookingMirrorService.normalizeStatus(
+          data['status'] as String?,
+        ),
       );
 
       return booking;
@@ -194,7 +191,9 @@ class MyBookingProvider extends ChangeNotifier {
             const [],
         barberName: (data['barberName'] as String?)?.trim() ?? '',
         dateTime: dateTime,
-        status: (data['status'] as String?)?.trim() ?? 'upcoming',
+        status: UserBookingMirrorService.normalizeStatus(
+          data['status'] as String?,
+        ),
       );
     } catch (_) {
       return null;
@@ -242,7 +241,9 @@ class MyBookingProvider extends ChangeNotifier {
           'date': (data['date'] as String?)?.trim() ?? '',
           'time': (data['time'] as String?)?.trim() ?? '',
           if (data['dateTime'] is Timestamp) 'dateTime': data['dateTime'],
-          'status': (data['status'] as String?)?.trim() ?? 'upcoming',
+          'status': UserBookingMirrorService.normalizeStatus(
+            data['status'] as String?,
+          ),
           'customerUid': (data['customerUid'] as String?)?.trim() ??
               (data['userId'] as String?)?.trim() ??
               userId,
@@ -252,12 +253,14 @@ class MyBookingProvider extends ChangeNotifier {
           'customerPhone': (data['customerPhone'] as String?)?.trim() ??
               (data['phone'] as String?)?.trim() ??
               '',
-          if (data['coverImageUrl'] is String) 'coverImageUrl': data['coverImageUrl'],
+          if (data['coverImageUrl'] is String)
+            'coverImageUrl': data['coverImageUrl'],
           if (data['coverPhoto'] is String) 'coverPhoto': data['coverPhoto'],
           if (data['customerAvatar'] is String)
             'customerAvatar': data['customerAvatar'],
           if (data['barberId'] is String) 'barberId': data['barberId'],
-          if (data['barberAvatar'] is String) 'barberAvatar': data['barberAvatar'],
+          if (data['barberAvatar'] is String)
+            'barberAvatar': data['barberAvatar'],
           'updatedAt': FieldValue.serverTimestamp(),
         };
 
@@ -281,13 +284,13 @@ class MyBookingProvider extends ChangeNotifier {
     final completed = <UserBooking>[];
     final cancelled = <UserBooking>[];
     for (final item in items) {
-      final status = item.status.toLowerCase();
-      if (status == 'cancelled' || status == 'no_show' || status == 'rejected') {
+      final status = UserBookingMirrorService.normalizeStatus(item.status);
+      if (UserBookingMirrorService.isCancelledStatus(status)) {
         cancelled.add(item.copyWith(status: 'cancelled'));
-      } else if (status == 'completed') {
+      } else if (UserBookingMirrorService.isCompletedStatus(status)) {
         completed.add(item.copyWith(status: 'completed'));
       } else {
-        upcoming.add(item.copyWith(status: 'upcoming'));
+        upcoming.add(item.copyWith(status: status));
       }
     }
     _upcoming = upcoming..sort((a, b) => a.dateTime.compareTo(b.dateTime));
@@ -345,7 +348,8 @@ class MyBookingProvider extends ChangeNotifier {
             .map((doc) => _mapUserBooking(doc))
             .whereType<UserBooking>()
             .toList();
-        _categorize(items);
+        final reconciled = await _reconcileStatuses(items);
+        _categorize(reconciled);
       } else {
         _setError('No bookings found for this account.');
         _upcoming = [];
@@ -359,6 +363,81 @@ class MyBookingProvider extends ChangeNotifier {
       _cancelled = [];
     }
   }
+
+  Future<List<UserBooking>> _reconcileStatuses(List<UserBooking> items) async {
+    if (items.isEmpty) return items;
+
+    final latestStatuses = <String, String>{};
+    await Future.wait(
+      items
+          .where((item) =>
+              UserBookingMirrorService.shouldReconcileFromSource(item.status))
+          .map((item) async {
+        final latest = await _loadLatestStatus(item);
+        if (latest != null && latest.isNotEmpty) {
+          latestStatuses[_bookingKey(item)] = latest;
+        }
+      }),
+    );
+
+    final writes = <Future<void>>[];
+    final reconciled = items.map((item) {
+      final normalizedLocal =
+          UserBookingMirrorService.normalizeStatus(item.status);
+      final latest = latestStatuses[_bookingKey(item)] ?? normalizedLocal;
+      if (latest != normalizedLocal) {
+        writes.add(_persistReconciledStatus(item.id, latest));
+      }
+      return item.copyWith(status: latest);
+    }).toList();
+
+    if (writes.isNotEmpty) {
+      await Future.wait(writes);
+    }
+
+    return reconciled;
+  }
+
+  Future<String?> _loadLatestStatus(UserBooking booking) async {
+    final salonId = booking.salonId.trim();
+    final bookingId = booking.id.trim();
+    if (salonId.isEmpty || bookingId.isEmpty) return null;
+
+    try {
+      final snap = await FirestoreCache.getDoc(
+        _firestore
+            .collection('salons')
+            .doc(salonId)
+            .collection('bookings')
+            .doc(bookingId),
+      );
+      if (!snap.exists) return null;
+      final data = snap.data();
+      if (data == null) return null;
+      return UserBookingMirrorService.normalizeStatus(
+          data['status'] as String?);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _persistReconciledStatus(
+    String bookingId,
+    String status,
+  ) async {
+    try {
+      await _mirrorService.updateStatus(
+        userId: userId,
+        bookingId: bookingId,
+        status: status,
+      );
+    } catch (_) {
+      // Ignore best-effort mirror repairs.
+    }
+  }
+
+  String _bookingKey(UserBooking booking) =>
+      '${booking.salonId}::${booking.id}';
 
   bool _isCurrentUser(UserBooking booking) {
     if (booking.customerUid == userId) return true;
@@ -442,7 +521,7 @@ class UserBooking {
       services: services,
       barberName: barberName,
       dateTime: dateTime,
-      status: status ?? this.status,
+      status: UserBookingMirrorService.normalizeStatus(status ?? this.status),
     );
   }
 }

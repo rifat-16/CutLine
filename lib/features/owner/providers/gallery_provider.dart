@@ -1,7 +1,7 @@
-import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/shared/services/firestore_cache.dart';
+import 'package:cutline/shared/services/storage_upload_service.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -48,8 +48,8 @@ class GalleryProvider extends ChangeNotifier {
     _setLoading(true);
     _setError(null);
     try {
-      final doc =
-          await FirestoreCache.getDoc(_firestore.collection('salons').doc(ownerId));
+      final doc = await FirestoreCache.getDoc(
+          _firestore.collection('salons').doc(ownerId));
       if (doc.exists) {
         final data = doc.data() ?? {};
         _coverPhotoUrl = (data['coverImageUrl'] as String?) ??
@@ -87,11 +87,12 @@ class GalleryProvider extends ChangeNotifier {
       if (previousUrl != null && previousUrl.isNotEmpty) {
         await _deleteOldPhoto(previousUrl);
       }
-      
+
       final url = await _uploadFile(
         ownerId: ownerId,
         file: file,
-        path: 'cover/cover_${DateTime.now().millisecondsSinceEpoch}.${_ext(file.name)}',
+        path:
+            'cover/cover_${DateTime.now().millisecondsSinceEpoch}.${_ext(file.name)}',
       );
       _coverPhotoUrl = url;
       await _firestore.collection('salons').doc(ownerId).set(
@@ -140,11 +141,12 @@ class GalleryProvider extends ChangeNotifier {
       if (previousUrl != null && previousUrl.isNotEmpty) {
         await _deleteOldPhoto(previousUrl);
       }
-      
+
       final url = await _uploadFile(
         ownerId: ownerId,
         file: file,
-        path: 'cover/cover_${DateTime.now().millisecondsSinceEpoch}.${_ext(file.name)}',
+        path:
+            'cover/cover_${DateTime.now().millisecondsSinceEpoch}.${_ext(file.name)}',
       );
       _coverPhotoUrl = url;
       await _firestore.collection('salons').doc(ownerId).set(
@@ -194,7 +196,7 @@ class GalleryProvider extends ChangeNotifier {
       if (previousUrl.isNotEmpty) {
         await _deleteOldPhoto(previousUrl);
       }
-      
+
       final url = await _uploadFile(
         ownerId: ownerId,
         file: file,
@@ -325,11 +327,11 @@ class GalleryProvider extends ChangeNotifier {
     required String path,
   }) async {
     final ref = _storage.ref().child('salons').child(ownerId).child(path);
-    final uploadTask = ref.putFile(
-      File(file.path),
-      SettableMetadata(contentType: _contentTypeFor(file.name)),
+    final snap = await uploadStorageFile(
+      ref: ref,
+      file: file,
+      metadata: SettableMetadata(contentType: _contentTypeFor(file.name)),
     );
-    final snap = await uploadTask.whenComplete(() {});
     return snap.ref.getDownloadURL();
   }
 
@@ -390,10 +392,8 @@ class GalleryProvider extends ChangeNotifier {
         ..addAll(urls);
     } catch (_) {
       try {
-        final snap = await FirestoreCache.getQuery(_firestore
-            .collection('salons')
-            .doc(ownerId)
-            .collection('photos'));
+        final snap = await FirestoreCache.getQuery(
+            _firestore.collection('salons').doc(ownerId).collection('photos'));
         final urls = snap.docs
             .map((doc) => (doc.data()['url'] as String?)?.trim() ?? '')
             .where((url) => url.isNotEmpty)

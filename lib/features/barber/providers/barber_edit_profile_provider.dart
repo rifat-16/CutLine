@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/barber/providers/barber_profile_provider.dart';
+import 'package:cutline/shared/services/storage_upload_service.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 
 class BarberEditProfileProvider extends ChangeNotifier {
   BarberEditProfileProvider({
@@ -152,7 +153,7 @@ class BarberEditProfileProvider extends ChangeNotifier {
     }
   }
 
-  Future<String?> uploadProfilePhoto(File file) async {
+  Future<String?> uploadProfilePhoto(XFile file) async {
     final uid = _authProvider.currentUser?.uid;
     if (uid == null) {
       _setError('Please log in again.');
@@ -162,11 +163,11 @@ class BarberEditProfileProvider extends ChangeNotifier {
     _isUploadingPhoto = true;
     notifyListeners();
     try {
-      final ext = _ext(file.path);
+      final ext = _ext(file.name);
       final path =
           'barbers/$uid/profile/profile_${DateTime.now().millisecondsSinceEpoch}.$ext';
       final ref = _storage.ref().child(path);
-      final snap = await ref.putFile(file).whenComplete(() {});
+      final snap = await uploadStorageFile(ref: ref, file: file);
       final url = await snap.ref.getDownloadURL();
       await _firestore.collection('users').doc(uid).set(
         {
@@ -202,9 +203,9 @@ class BarberEditProfileProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  String _ext(String path) {
-    final dot = path.lastIndexOf('.');
-    if (dot == -1 || dot == path.length - 1) return 'jpg';
-    return path.substring(dot + 1);
+  String _ext(String name) {
+    final dot = name.lastIndexOf('.');
+    if (dot == -1 || dot == name.length - 1) return 'jpg';
+    return name.substring(dot + 1);
   }
 }

@@ -7,7 +7,8 @@ class OwnerQueueListSection extends StatelessWidget {
   final List<String> filters;
   final String selectedFilter;
   final ValueChanged<String> onFilterChange;
-  final Future<void> Function(String id, OwnerQueueStatus status) onStatusChange;
+  final Future<void> Function(String id, OwnerQueueStatus status)
+      onStatusChange;
   final VoidCallback onViewAll;
   final ValueChanged<OwnerQueueItem>? onOpenCustomer;
 
@@ -24,6 +25,7 @@ class OwnerQueueListSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final displaySerials = _buildDisplaySerials(queue);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -62,8 +64,8 @@ class OwnerQueueListSection extends StatelessWidget {
                         onSelected: (_) => onFilterChange(filter),
                         selectedColor:
                             const Color(0xFF2563EB).withValues(alpha: 0.12),
-                        labelPadding:
-                            const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                        labelPadding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 2),
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         visualDensity:
                             const VisualDensity(horizontal: -3, vertical: -3),
@@ -109,6 +111,7 @@ class OwnerQueueListSection extends StatelessWidget {
                 final item = queue[index];
                 return OwnerQueueCard(
                   item: item,
+                  displaySerialNo: displaySerials[item.id],
                   onStatusChange: (status) => onStatusChange(item.id, status),
                   onTap: onOpenCustomer == null
                       ? null
@@ -120,4 +123,24 @@ class OwnerQueueListSection extends StatelessWidget {
       ),
     );
   }
+}
+
+Map<String, int> _buildDisplaySerials(List<OwnerQueueItem> queue) {
+  final serials = <String, int>{};
+  final visibleSerials = <String, int>{};
+  for (final item in queue) {
+    final barberKey = _barberSortKey(item);
+    final previousSerial = visibleSerials[barberKey] ?? 0;
+    final displaySerialNo = item.serialNo ?? (previousSerial + 1);
+    serials[item.id] = displaySerialNo;
+    visibleSerials[barberKey] =
+        displaySerialNo > previousSerial ? displaySerialNo : previousSerial;
+  }
+  return serials;
+}
+
+String _barberSortKey(OwnerQueueItem item) {
+  final serialKey = item.serialBarberKey?.trim().toLowerCase() ?? '';
+  if (serialKey.isNotEmpty) return serialKey;
+  return item.barberName.trim().toLowerCase();
 }

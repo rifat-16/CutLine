@@ -228,7 +228,8 @@ class _SalonSetupScreenState extends State<SalonSetupScreen> {
     return _CardSection(
       icon: Icons.people_alt_outlined,
       title: 'Add Barbers',
-      subtitle: 'Barbers use these credentials to access their dashboards.',
+      subtitle:
+          'Barbers use these credentials to access their dashboards, then change the temporary password after first login.',
       child: AddBarberForm(onChanged: provider.updateBarbers),
     );
   }
@@ -343,8 +344,8 @@ class _SalonSetupScreenState extends State<SalonSetupScreen> {
   Future<void> _openAddressPicker() async {
     final current = _pickedLocation;
     final result = await Navigator.of(context).push<PickedLocation>(
-      MaterialPageRoute(
-        builder: (_) => AddressPickerScreen(
+      buildAddressPickerRoute(
+        AddressPickerScreen(
           initialAddress: _addressController.text.trim(),
           initialLocation: current == null
               ? null

@@ -66,13 +66,17 @@ class OwnerBarberPayoutsProvider extends ChangeNotifier {
           .toList();
 
       final totalByBarber = <String, int>{};
-      final paidByBarber = <String, int>{};
+      final confirmedPaidByBarber = <String, int>{};
+      final pendingByBarber = <String, int>{};
+      final readyToPayByBarber = <String, int>{};
       final fallbackNameById = <String, String>{};
 
       for (final item in ledgerItems) {
         if (item.barberId.isEmpty) continue;
         totalByBarber[item.barberId] =
             (totalByBarber[item.barberId] ?? 0) + item.tipAmount;
+        readyToPayByBarber[item.barberId] =
+            (readyToPayByBarber[item.barberId] ?? 0) + item.remainingAmount;
         if (item.barberName.isNotEmpty) {
           fallbackNameById[item.barberId] = item.barberName;
         }
@@ -80,31 +84,49 @@ class OwnerBarberPayoutsProvider extends ChangeNotifier {
 
       for (final item in payoutItems) {
         if (item.barberId.isEmpty) continue;
-        if (!item.isConfirmed) continue;
-        paidByBarber[item.barberId] =
-            (paidByBarber[item.barberId] ?? 0) + item.amount;
+        if (item.isConfirmed) {
+          confirmedPaidByBarber[item.barberId] =
+              (confirmedPaidByBarber[item.barberId] ?? 0) + item.amount;
+        } else {
+          pendingByBarber[item.barberId] =
+              (pendingByBarber[item.barberId] ?? 0) + item.amount;
+        }
       }
 
       final idsFromData = <String>{
         ...totalByBarber.keys,
-        ...paidByBarber.keys,
+        ...confirmedPaidByBarber.keys,
+        ...pendingByBarber.keys,
+        ...readyToPayByBarber.keys,
       };
       final ids = idsFromData.isNotEmpty ? idsFromData : nameById.keys;
 
       _barbers = ids.map((id) {
         final totalTips = totalByBarber[id] ?? 0;
-        final paidTips = paidByBarber[id] ?? 0;
-        final dueTips = totalTips - paidTips;
+        final paidTips = confirmedPaidByBarber[id] ?? 0;
+        final pendingTips = pendingByBarber[id] ?? 0;
+        final readyToPayTips = readyToPayByBarber[id] ?? 0;
+        final dueTips = pendingTips + readyToPayTips;
         final name = nameById[id] ?? fallbackNameById[id] ?? 'Barber';
         return BarberPayoutOverview(
           barberId: id,
           barberName: name,
           totalTips: totalTips,
           paidTips: paidTips,
+          pendingTips: pendingTips,
+          readyToPayTips: readyToPayTips,
           dueTips: dueTips < 0 ? 0 : dueTips,
         );
       }).toList()
-        ..sort((a, b) => b.dueTips.compareTo(a.dueTips));
+        ..sort((a, b) {
+          final readyCompare = b.readyToPayTips.compareTo(a.readyToPayTips);
+          if (readyCompare != 0) return readyCompare;
+          final dueCompare = b.dueTips.compareTo(a.dueTips);
+          if (dueCompare != 0) return dueCompare;
+          return a.barberName
+              .toLowerCase()
+              .compareTo(b.barberName.toLowerCase());
+        });
     } catch (_) {
       _setError('Failed to load barber payouts.');
     } finally {
@@ -128,6 +150,8 @@ class BarberPayoutOverview {
   final String barberName;
   final int totalTips;
   final int paidTips;
+  final int pendingTips;
+  final int readyToPayTips;
   final int dueTips;
 
   const BarberPayoutOverview({
@@ -135,6 +159,11 @@ class BarberPayoutOverview {
     required this.barberName,
     required this.totalTips,
     required this.paidTips,
+    required this.pendingTips,
+    required this.readyToPayTips,
     required this.dueTips,
   });
+
+  bool get hasReadyToPay => readyToPayTips > 0;
+  bool get hasPending => pendingTips > 0;
 }

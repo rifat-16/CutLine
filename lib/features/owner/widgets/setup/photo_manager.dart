@@ -1,4 +1,5 @@
 import 'package:cutline/features/owner/providers/salon_setup_provider.dart';
+import 'package:cutline/shared/widgets/web_safe_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -71,9 +72,10 @@ class _CoverUploadCard extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 if (coverUrl != null)
-                  Image.network(coverUrl, fit: BoxFit.cover)
+                  WebSafeImage(imageUrl: coverUrl, fit: BoxFit.cover)
                 else
-                  const Icon(Icons.image_outlined, color: Colors.white, size: 36),
+                  const Icon(Icons.image_outlined,
+                      color: Colors.white, size: 36),
                 if (isUploading)
                   Container(
                     color: Colors.black.withValues(alpha: 0.35),
@@ -105,7 +107,8 @@ class _CoverUploadCard extends StatelessWidget {
               SizedBox(
                 width: compact ? double.infinity : null,
                 child: ElevatedButton.icon(
-                  onPressed: isUploading ? null : () => provider.uploadCoverPhoto(),
+                  onPressed:
+                      isUploading ? null : () => provider.uploadCoverPhoto(),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.blueAccent,
@@ -204,8 +207,12 @@ class _GalleryUploadField extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   child: Stack(
                     children: [
-                      Image.network(url,
-                          width: 80, height: 80, fit: BoxFit.cover),
+                      WebSafeImage(
+                        imageUrl: url,
+                        width: 80,
+                        height: 80,
+                        fit: BoxFit.cover,
+                      ),
                     ],
                   ),
                 ),
@@ -214,8 +221,7 @@ class _GalleryUploadField extends StatelessWidget {
                   onPressed:
                       isUploading ? null : () => provider.uploadGalleryPhotos(),
                   icon: const Icon(Icons.add_photo_alternate_outlined),
-                  label:
-                      Text(isUploading ? 'Uploading...' : 'Upload gallery'),
+                  label: Text(isUploading ? 'Uploading...' : 'Upload gallery'),
                 ),
               if (isUploading)
                 const Padding(

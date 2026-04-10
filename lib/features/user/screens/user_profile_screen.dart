@@ -1,10 +1,12 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/routes/app_router.dart';
+import 'package:cutline/shared/config/support_links.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
+import 'package:cutline/shared/widgets/support_brand_icon.dart';
 import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:cutline/features/owner/screens/contact_support_screen.dart';
+import 'package:provider/provider.dart';
 
 class UserProfileScreen extends StatelessWidget {
   const UserProfileScreen({super.key});
@@ -82,7 +84,9 @@ class UserProfileScreen extends StatelessWidget {
                       builder: (_) => const ContactSupportScreen(),
                     ),
                   ),
+                  onFacebook: () => SupportLinks.openFacebookPage(context),
                   onPrivacy: () => _showPrivacySheet(context),
+                  onWhatsApp: () => SupportLinks.openUserWhatsAppGroup(context),
                 ),
                 const SizedBox(height: CutlineSpacing.lg),
                 _LogoutButton(onPressed: () => _confirmLogout(context)),
@@ -192,20 +196,22 @@ class _ProfileHeaderCard extends StatelessWidget {
                     ? CachedProfileImage(
                         imageUrl: photoUrl,
                         radius: 32,
-                        backgroundColor: CutlineColors.primary.withValues(alpha: 0.15),
+                        backgroundColor:
+                            CutlineColors.primary.withValues(alpha: 0.15),
                         errorWidget: Text(
                           _initials,
-                          style: CutlineTextStyles.title
-                              .copyWith(fontSize: 22, color: CutlineColors.primary),
+                          style: CutlineTextStyles.title.copyWith(
+                              fontSize: 22, color: CutlineColors.primary),
                         ),
                       )
                     : CircleAvatar(
                         radius: 32,
-                        backgroundColor: CutlineColors.primary.withValues(alpha: 0.15),
+                        backgroundColor:
+                            CutlineColors.primary.withValues(alpha: 0.15),
                         child: Text(
                           _initials,
-                          style: CutlineTextStyles.title
-                              .copyWith(fontSize: 22, color: CutlineColors.primary),
+                          style: CutlineTextStyles.title.copyWith(
+                              fontSize: 22, color: CutlineColors.primary),
                         ),
                       ),
               ),
@@ -222,7 +228,8 @@ class _ProfileHeaderCard extends StatelessWidget {
                         height: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(CutlineColors.primary),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                              CutlineColors.primary),
                         ),
                       ),
                     ),
@@ -312,11 +319,10 @@ class _LoyaltyCardComingSoon extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Loyalty Points',
-                    style: CutlineTextStyles.subtitleBold
-                        .copyWith(fontSize: 16)),
+                    style:
+                        CutlineTextStyles.subtitleBold.copyWith(fontSize: 16)),
                 const SizedBox(height: 4),
-                const Text('Coming soon',
-                    style: CutlineTextStyles.body),
+                const Text('Coming soon', style: CutlineTextStyles.body),
               ],
             ),
           ),
@@ -344,8 +350,7 @@ class _InfoCard extends StatelessWidget {
           const SizedBox(height: CutlineSpacing.sm),
           ...rows.expand((row) => [
                 row,
-                if (row != rows.last)
-                  const Divider(height: 16, thickness: 0.6)
+                if (row != rows.last) const Divider(height: 16, thickness: 0.6)
               ]),
         ],
       ),
@@ -397,10 +402,17 @@ class _InfoRow extends StatelessWidget {
 }
 
 class _SupportCard extends StatelessWidget {
+  final VoidCallback onFacebook;
   final VoidCallback onSupport;
   final VoidCallback onPrivacy;
+  final VoidCallback onWhatsApp;
 
-  const _SupportCard({required this.onSupport, required this.onPrivacy});
+  const _SupportCard({
+    required this.onFacebook,
+    required this.onSupport,
+    required this.onPrivacy,
+    required this.onWhatsApp,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -423,6 +435,24 @@ class _SupportCard extends StatelessWidget {
           ),
           const Divider(height: 16, thickness: 0.6),
           GestureDetector(
+            onTap: onFacebook,
+            child: const _SupportTile(
+              customIcon: SupportBrandIcon.facebook(),
+              title: 'Facebook Page',
+              subtitle: 'Follow the official CutLine page',
+            ),
+          ),
+          const Divider(height: 16, thickness: 0.6),
+          GestureDetector(
+            onTap: onWhatsApp,
+            child: const _SupportTile(
+              customIcon: SupportBrandIcon.whatsApp(),
+              title: 'Join WhatsApp Group',
+              subtitle: 'Get updates in the community group',
+            ),
+          ),
+          const Divider(height: 16, thickness: 0.6),
+          GestureDetector(
             onTap: onPrivacy,
             child: const _SupportTile(
               icon: Icons.privacy_tip_outlined,
@@ -437,12 +467,17 @@ class _SupportCard extends StatelessWidget {
 }
 
 class _SupportTile extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? customIcon;
   final String title;
   final String subtitle;
 
-  const _SupportTile(
-      {required this.icon, required this.title, required this.subtitle});
+  const _SupportTile({
+    this.icon,
+    this.customIcon,
+    required this.title,
+    required this.subtitle,
+  }) : assert(icon != null || customIcon != null);
 
   @override
   Widget build(BuildContext context) {
@@ -454,7 +489,10 @@ class _SupportTile extends StatelessWidget {
             color: CutlineColors.primary.withValues(alpha: 0.08),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, color: CutlineColors.primary, size: 20),
+          child: Center(
+            child: customIcon ??
+                Icon(icon, color: CutlineColors.primary, size: 20),
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(

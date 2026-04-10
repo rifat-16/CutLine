@@ -1,7 +1,9 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/user/providers/my_booking_provider.dart';
 import 'package:cutline/routes/app_router.dart';
+import 'package:cutline/shared/services/user_booking_mirror_service.dart';
 import 'package:cutline/shared/theme/cutline_theme.dart';
+import 'package:cutline/shared/widgets/web_safe_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -24,14 +26,14 @@ class MyBookingScreen extends StatelessWidget {
       )..load(),
       builder: (context, _) {
         final provider = context.watch<MyBookingProvider>();
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) {
-          _goHome(context);
-        }
-      },
-      child: DefaultTabController(
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) {
+              _goHome(context);
+            }
+          },
+          child: DefaultTabController(
             length: 3,
             child: Scaffold(
               backgroundColor: CutlineColors.secondaryBackground,
@@ -119,11 +121,14 @@ class MyBookingScreen extends StatelessWidget {
               context.read<MyBookingProvider>().cancelBooking(booking);
               _showCancelSuccessDialog(context);
             },
-            child: const Text('Yes, Cancel Booking', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            child: const Text('Yes, Cancel Booking',
+                style:
+                    TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Keep Appointment', style: CutlineTextStyles.link),
+            child:
+                const Text('Keep Appointment', style: CutlineTextStyles.link),
           ),
         ],
       ),
@@ -144,11 +149,13 @@ class MyBookingScreen extends StatelessWidget {
             Text('Booking Canceled', style: CutlineTextStyles.title),
           ],
         ),
-        content: const Text('Your appointment has been successfully canceled.', style: CutlineTextStyles.body),
+        content: const Text('Your appointment has been successfully canceled.',
+            style: CutlineTextStyles.body),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Back to Bookings', style: CutlineTextStyles.link),
+            child:
+                const Text('Back to Bookings', style: CutlineTextStyles.link),
           ),
         ],
       ),
@@ -229,15 +236,20 @@ class _BookingCard extends StatelessWidget {
             children: [
               Text('${booking.dateLabel} • ${booking.timeLabel}',
                   style: CutlineTextStyles.subtitleBold),
-              if (isCancelled)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text('Cancelled', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _statusColor(booking.status).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                child: Text(
+                  UserBookingMirrorService.displayLabel(booking.status),
+                  style: TextStyle(
+                    color: _statusColor(booking.status),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: CutlineSpacing.sm),
@@ -248,12 +260,12 @@ class _BookingCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 child: booking.coverImageUrl != null &&
                         booking.coverImageUrl!.isNotEmpty
-                    ? Image.network(
-                        booking.coverImageUrl!,
+                    ? WebSafeImage(
+                        imageUrl: booking.coverImageUrl!,
                         width: 70,
                         height: 70,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _placeholder(),
+                        errorWidget: _placeholder(),
                       )
                     : _placeholder(),
               ),
@@ -262,11 +274,15 @@ class _BookingCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(booking.salonName, style: CutlineTextStyles.subtitleBold.copyWith(fontSize: 16)),
+                    Text(booking.salonName,
+                        style: CutlineTextStyles.subtitleBold
+                            .copyWith(fontSize: 16)),
                     const SizedBox(height: 4),
-                    Text('Barber: ${booking.barberName}', style: CutlineTextStyles.subtitle),
+                    Text('Barber: ${booking.barberName}',
+                        style: CutlineTextStyles.subtitle),
                     const SizedBox(height: 6),
-                    Text('Services: ${booking.services.join(', ')}', style: CutlineTextStyles.body),
+                    Text('Services: ${booking.services.join(', ')}',
+                        style: CutlineTextStyles.body),
                   ],
                 ),
               ),
@@ -280,17 +296,22 @@ class _BookingCard extends StatelessWidget {
                   child: OutlinedButton(
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: CutlineColors.primary),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                     onPressed: onCancel,
-                    child: const Text('Cancel Booking', style: TextStyle(color: CutlineColors.primary, fontWeight: FontWeight.w600)),
+                    child: const Text('Cancel Booking',
+                        style: TextStyle(
+                            color: CutlineColors.primary,
+                            fontWeight: FontWeight.w600)),
                   ),
                 ),
               if (showCancel) const SizedBox(width: CutlineSpacing.sm),
               if (showReceipt)
                 Expanded(
                   child: ElevatedButton(
-                    style: CutlineButtons.primary(padding: const EdgeInsets.symmetric(vertical: 12)),
+                    style: CutlineButtons.primary(
+                        padding: const EdgeInsets.symmetric(vertical: 12)),
                     onPressed: () => Navigator.pushNamed(
                       context,
                       AppRoutes.bookingReceipt,
@@ -299,7 +320,8 @@ class _BookingCard extends StatelessWidget {
                         bookingId: booking.id,
                       ),
                     ),
-                    child: const Text('View Receipt', style: TextStyle(fontWeight: FontWeight.w600)),
+                    child: const Text('View Receipt',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
                   ),
                 ),
             ],
@@ -307,6 +329,25 @@ class _BookingCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Color _statusColor(String status) {
+    switch (UserBookingMirrorService.normalizeStatus(status)) {
+      case 'completed':
+        return Colors.green;
+      case 'cancelled':
+      case 'no_show':
+      case 'rejected':
+        return Colors.red;
+      case 'pending':
+        return Colors.orange;
+      case 'waiting':
+      case 'arrived':
+      case 'serving':
+        return Colors.blue;
+      default:
+        return CutlineColors.primary;
+    }
   }
 }
 

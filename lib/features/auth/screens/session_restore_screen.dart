@@ -133,7 +133,8 @@ class _SessionRestoreScreenState extends State<SessionRestoreScreen>
           _lastError =
               'Could not load your account data. Check your connection and try again.';
         });
-        SessionDebug.snack(context, 'Profile load failed; user is still signed in.');
+        SessionDebug.snack(
+            context, 'Profile load failed; user is still signed in.');
         return;
       }
 
@@ -141,6 +142,7 @@ class _SessionRestoreScreenState extends State<SessionRestoreScreen>
       final role =
           roleKey != null ? UserRoleKey.fromKey(roleKey) : UserRole.customer;
       final profileComplete = profile['profileComplete'] == true;
+      final mustChangePassword = profile['mustChangePassword'] == true;
 
       final hasSalon = await SalonLookupService()
           .salonExists(user.uid)
@@ -155,7 +157,9 @@ class _SessionRestoreScreenState extends State<SessionRestoreScreen>
               : AppRoutes.ownerSalonSetup;
           break;
         case UserRole.barber:
-          target = AppRoutes.barberHome;
+          target = mustChangePassword
+              ? AppRoutes.barberPasswordSetup
+              : AppRoutes.barberHome;
           break;
         default:
           target = AppRoutes.userHome;

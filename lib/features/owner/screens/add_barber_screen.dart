@@ -34,7 +34,7 @@ class _AddBarberScreenState extends State<AddBarberScreen> {
               _FormSection(
                 title: 'Barber account',
                 helper:
-                    'Share these credentials with your barbers. They will use this email and password to log into their dashboards.',
+                    'Share this email and temporary password with the barber. It will remain visible in owner info until the barber changes it after first login.',
                 children: [
                   AddBarberForm(
                     onChanged: (list) => setState(() => _barbers = list),

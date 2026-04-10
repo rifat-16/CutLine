@@ -17,16 +17,46 @@ class MapsReverseGeocoder {
 
   static String _formatPlacemark(List<Placemark> placemarks) {
     if (placemarks.isEmpty) return '';
-    final p = placemarks.first;
-    final parts = <String>[
-      if ((p.name ?? '').trim().isNotEmpty) p.name!.trim(),
-      if ((p.subLocality ?? '').trim().isNotEmpty) p.subLocality!.trim(),
-      if ((p.locality ?? '').trim().isNotEmpty) p.locality!.trim(),
-      if ((p.administrativeArea ?? '').trim().isNotEmpty)
-        p.administrativeArea!.trim(),
-      if ((p.postalCode ?? '').trim().isNotEmpty) p.postalCode!.trim(),
-      if ((p.country ?? '').trim().isNotEmpty) p.country!.trim(),
-    ];
-    return parts.join(', ');
+    for (final placemark in placemarks) {
+      final label = _buildPlacemarkLabel(placemark);
+      if (label.isNotEmpty) return label;
+    }
+    return '';
+  }
+
+  static String _buildPlacemarkLabel(Placemark place) {
+    final primary = _joinUnique([
+      place.street,
+      place.thoroughfare,
+      place.subThoroughfare,
+      place.name,
+    ], maxParts: 2);
+    final area = _joinUnique([
+      place.subLocality,
+      place.locality,
+      place.subAdministrativeArea,
+      place.administrativeArea,
+    ], maxParts: 3);
+
+    if (primary.isNotEmpty && area.isNotEmpty) {
+      return '$primary, $area';
+    }
+    if (primary.isNotEmpty) return primary;
+    return area;
+  }
+
+  static String _joinUnique(List<String?> parts, {required int maxParts}) {
+    final unique = <String>[];
+    for (final part in parts) {
+      final normalized = part?.trim() ?? '';
+      if (normalized.isEmpty) continue;
+      final lower = normalized.toLowerCase();
+      if (unique.any((existing) => existing.toLowerCase() == lower)) {
+        continue;
+      }
+      unique.add(normalized);
+      if (unique.length >= maxParts) break;
+    }
+    return unique.join(', ');
   }
 }

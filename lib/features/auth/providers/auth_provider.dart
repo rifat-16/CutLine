@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:cutline/features/auth/models/user_model.dart';
 import 'package:cutline/features/auth/models/user_role.dart';
@@ -9,6 +8,7 @@ import 'package:cutline/shared/services/auth_session_storage.dart';
 import 'package:cutline/shared/services/fcm_token_service.dart';
 import 'package:cutline/shared/services/notification_service.dart';
 import 'package:cutline/shared/services/session_debug.dart';
+import 'package:cutline/shared/services/storage_upload_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -58,7 +58,8 @@ class AuthProvider extends ChangeNotifier {
   String? get lastAuthErrorCode => _lastAuthErrorCode;
   bool get isUploadingPhoto => _uploadingPhoto;
 
-  Future<void> waitForAuthReady({Duration timeout = const Duration(seconds: 6)}) {
+  Future<void> waitForAuthReady(
+      {Duration timeout = const Duration(seconds: 6)}) {
     if (_authReady.isCompleted) return Future<void>.value();
     return _authReady.future.timeout(timeout);
   }
@@ -295,7 +296,8 @@ class AuthProvider extends ChangeNotifier {
       final url = await _uploadFile(
         uid: uid,
         file: picked,
-        path: 'users/$uid/profile/profile_${DateTime.now().millisecondsSinceEpoch}.${_ext(picked.name)}',
+        path:
+            'users/$uid/profile/profile_${DateTime.now().millisecondsSinceEpoch}.${_ext(picked.name)}',
       );
       await updateProfile(photoUrl: url);
       if (previousUrl != null && previousUrl != url) {
@@ -315,8 +317,7 @@ class AuthProvider extends ChangeNotifier {
     required String path,
   }) async {
     final ref = _storage.ref().child(path);
-    final uploadTask = ref.putFile(File(file.path));
-    final snap = await uploadTask.whenComplete(() {});
+    final snap = await uploadStorageFile(ref: ref, file: file);
     return snap.ref.getDownloadURL();
   }
 

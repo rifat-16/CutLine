@@ -622,22 +622,11 @@ class _BarberCard extends StatelessWidget {
                 height: 64,
                 color: Colors.grey.shade200,
                 child: barber.avatarUrl != null && barber.avatarUrl!.isNotEmpty
-                    ? Image.network(
-                        barber.avatarUrl!,
-                        fit: BoxFit.cover,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Center(
-                            child: CircularProgressIndicator(
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
-                              strokeWidth: 2,
-                            ),
-                          );
-                        },
-                        errorBuilder: (_, __, ___) => const Icon(
+                    ? CachedProfileImage(
+                        imageUrl: barber.avatarUrl!,
+                        radius: 32,
+                        backgroundColor: Colors.grey.shade200,
+                        errorWidget: const Icon(
                           Icons.person,
                           color: Colors.grey,
                           size: 40,
@@ -724,27 +713,11 @@ class _BarberProfileSheet extends StatelessWidget {
                           color: Colors.grey.shade200,
                           child: barber.avatarUrl != null &&
                                   barber.avatarUrl!.isNotEmpty
-                              ? Image.network(
-                                  barber.avatarUrl!,
-                                  fit: BoxFit.cover,
-                                  loadingBuilder:
-                                      (context, child, loadingProgress) {
-                                    if (loadingProgress == null) return child;
-                                    return Center(
-                                      child: CircularProgressIndicator(
-                                        value: loadingProgress
-                                                    .expectedTotalBytes !=
-                                                null
-                                            ? loadingProgress
-                                                    .cumulativeBytesLoaded /
-                                                loadingProgress
-                                                    .expectedTotalBytes!
-                                            : null,
-                                        strokeWidth: 2,
-                                      ),
-                                    );
-                                  },
-                                  errorBuilder: (_, __, ___) => const Icon(
+                              ? CachedProfileImage(
+                                  imageUrl: barber.avatarUrl!,
+                                  radius: 50,
+                                  backgroundColor: Colors.grey.shade200,
+                                  errorWidget: const Icon(
                                     Icons.person,
                                     color: Colors.grey,
                                     size: 60,
@@ -904,25 +877,10 @@ class SalonGallerySection extends StatelessWidget {
                 final url = display[index];
                 return ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: Image.network(
-                    url,
+                  child: WebSafeImage(
+                    imageUrl: url,
                     fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        color: Colors.grey.shade200,
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                    loadingProgress.expectedTotalBytes!
-                                : null,
-                            strokeWidth: 2,
-                          ),
-                        ),
-                      );
-                    },
-                    errorBuilder: (_, __, ___) => Container(
+                    errorWidget: Container(
                       color: Colors.grey.shade300,
                       child: const Icon(Icons.broken_image, color: Colors.grey),
                     ),
@@ -1352,6 +1310,8 @@ class _LiveQueueContentState extends State<_LiveQueueContent> {
 
   @override
   Widget build(BuildContext context) {
+    final currentUserId = context
+        .select<AuthProvider, String>((auth) => auth.currentUser?.uid ?? '');
     final waitLabel =
         widget.waitMinutes <= 0 ? 'No wait' : '≈ ${widget.waitMinutes} mins';
     final hasQueue = widget.queue.isNotEmpty;
@@ -1368,6 +1328,7 @@ class _LiveQueueContentState extends State<_LiveQueueContent> {
     );
     final waiting = widget.queue.where((e) => e.isWaiting).toList()
       ..sort(_compareQueueEntries);
+    final displaySerials = _buildQueueDisplaySerials(waiting);
     return Padding(
       padding: CutlineSpacing.section,
       child: Column(
@@ -1509,7 +1470,13 @@ class _LiveQueueContentState extends State<_LiveQueueContent> {
               child: Row(
                 children: List.generate(waiting.length, (index) {
                   final entry = waiting[index];
-                  return _QueueCard(entry: entry)
+                  final isOwnSpot = currentUserId.isNotEmpty &&
+                      entry.customerUid == currentUserId;
+                  return _QueueCard(
+                    entry: entry,
+                    displaySerialNo: displaySerials[entry.id],
+                    isOwnSpot: isOwnSpot,
+                  )
                       .animate()
                       .fadeIn(duration: 400.ms, delay: (index * 100).ms)
                       .slideX(begin: 0.3, end: 0);
@@ -1594,10 +1561,30 @@ DateTime? _scheduleKey(SalonQueueEntry entry) {
   return null;
 }
 
+Map<String, int> _buildQueueDisplaySerials(List<SalonQueueEntry> entries) {
+  final serials = <String, int>{};
+  final visibleSerials = <String, int>{};
+  for (final entry in entries) {
+    final barberKey = _barberSortKey(entry);
+    final previousSerial = visibleSerials[barberKey] ?? 0;
+    final displaySerialNo = entry.serialNo ?? (previousSerial + 1);
+    serials[entry.id] = displaySerialNo;
+    visibleSerials[barberKey] =
+        displaySerialNo > previousSerial ? displaySerialNo : previousSerial;
+  }
+  return serials;
+}
+
 class _QueueCard extends StatelessWidget {
   final SalonQueueEntry entry;
+  final int? displaySerialNo;
+  final bool isOwnSpot;
 
-  const _QueueCard({required this.entry});
+  const _QueueCard({
+    required this.entry,
+    this.displaySerialNo,
+    this.isOwnSpot = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1605,11 +1592,29 @@ class _QueueCard extends StatelessWidget {
       width: 190,
       margin: const EdgeInsets.only(right: 12),
       padding: const EdgeInsets.all(12),
-      decoration: CutlineDecorations.card(solidColor: Colors.white),
+      decoration: BoxDecoration(
+        color: isOwnSpot
+            ? CutlineColors.primary.withValues(alpha: 0.06)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(CutlineDecorations.radius),
+        border: Border.all(
+          color: isOwnSpot
+              ? CutlineColors.primary.withValues(alpha: 0.3)
+              : Colors.transparent,
+          width: isOwnSpot ? 1.4 : 1,
+        ),
+        boxShadow: CutlineDecorations.shadow
+            .map((shadow) => shadow.copyWith(
+                  color:
+                      shadow.color.withValues(alpha: isOwnSpot ? 0.12 : 0.08),
+                ))
+            .toList(),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CachedProfileImage(
                 imageUrl: entry.avatarUrl,
@@ -1626,17 +1631,20 @@ class _QueueCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (displaySerialNo != null) ...[
+                const SizedBox(width: 8),
+                _QueueSerialBadge(number: displaySerialNo!),
+              ],
             ],
           ),
+          if (isOwnSpot) ...[
+            const SizedBox(height: 8),
+            const _QueueOwnerChip(label: 'Your spot'),
+          ],
           const SizedBox(height: 6),
           Text('Barber: ${entry.barberName}', style: CutlineTextStyles.caption),
           const SizedBox(height: 4),
           Text('Service: ${entry.service}', style: CutlineTextStyles.caption),
-          if (entry.serialNo != null) ...[
-            const SizedBox(height: 4),
-            Text('Serial: #${entry.serialNo}',
-                style: CutlineTextStyles.caption),
-          ],
           const SizedBox(height: 4),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1689,6 +1697,70 @@ class _QueueCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _QueueSerialBadge extends StatelessWidget {
+  final int number;
+
+  const _QueueSerialBadge({required this.number});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: CutlineColors.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const Text(
+            'Serial',
+            style: TextStyle(
+              color: Colors.black54,
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Text(
+            '#$number',
+            style: const TextStyle(
+              color: CutlineColors.primary,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QueueOwnerChip extends StatelessWidget {
+  final String label;
+
+  const _QueueOwnerChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: CutlineColors.primary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: CutlineColors.primary,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

@@ -1,7 +1,9 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/barber/providers/barber_home_provider.dart';
 import 'package:cutline/features/owner/screens/booking_requests_screen.dart';
+import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/shared/services/queue_serial_service.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:cutline/shared/widgets/notification_badge_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -10,6 +12,7 @@ import 'dart:async';
 
 import 'barber_notification_screen.dart';
 import 'barber_profile_screen.dart';
+import 'barber_tips_screen.dart';
 
 class BarberHomeScreen extends StatefulWidget {
   const BarberHomeScreen({super.key});
@@ -20,6 +23,26 @@ class BarberHomeScreen extends StatefulWidget {
 
 class _BarberHomeScreenState extends State<BarberHomeScreen> {
   BarberQueueStatus? _selectedStatus = BarberQueueStatus.waiting;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _enforcePasswordSetup();
+    });
+  }
+
+  Future<void> _enforcePasswordSetup() async {
+    final auth = context.read<AuthProvider>();
+    final uid = auth.currentUser?.uid;
+    if (uid == null) return;
+
+    final profile = await auth.fetchUserProfile(uid);
+    if (!mounted) return;
+    if (profile?['mustChangePassword'] == true) {
+      Navigator.pushReplacementNamed(context, AppRoutes.barberPasswordSetup);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +56,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
       builder: (context, _) {
         final provider = context.watch<BarberHomeProvider>();
         final queue = _filteredQueue(provider.queue);
+        final displaySerials = _buildDisplaySerials(queue);
 
         return Scaffold(
           appBar: _buildAppBar(context, provider),
@@ -73,7 +97,17 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 10),
-                _TipSummary(amount: provider.todayTips),
+                _TipSummary(
+                  amount: provider.todayTips,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const BarberTipsScreen(),
+                      ),
+                    );
+                  },
+                ),
                 const SizedBox(height: 12),
                 _buildQueueTabs(),
                 const SizedBox(height: 16),
@@ -142,6 +176,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                         padding: const EdgeInsets.only(bottom: 14),
                         child: _QueueCard(
                           item: item,
+                          displaySerialNo: displaySerials[item.id],
                           onStartServing: isCurrentTurn && provider.canOperate
                               ? () => provider.updateStatus(
                                     item.id,
@@ -188,60 +223,88 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
     return AppBar(
       titleSpacing: 0,
       centerTitle: false,
+      toolbarHeight: 66,
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
+      elevation: 0,
       title: Padding(
-        padding: const EdgeInsets.only(left: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              salonName?.isNotEmpty == true ? salonName! : 'Salon',
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-            ),
-          ],
+        padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+        child: Align(
+          alignment: Alignment.bottomLeft,
+          child: Text(
+            salonName?.isNotEmpty == true ? salonName! : 'Salon',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+          ),
         ),
       ),
-      actions: [
-        _AvailabilityToggle(provider: provider),
-        _BookingRequestIconButton(pendingCount: provider.pendingRequestCount),
-        NotificationBadgeIcon(
-          userId: userId,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => const BarberNotificationScreen()),
-            );
-          },
-        ),
-        Padding(
-          padding: const EdgeInsets.only(right: 12.0),
-          child: InkWell(
-            onTap: () async {
-              final updated = await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => const BarberProfileScreen()),
-              );
-              if (!mounted) return;
-              if (updated == true) {
-                context.read<BarberHomeProvider>().load();
-              }
-            },
-            child: CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.grey,
-              backgroundImage: provider.profile?.photoUrl != null &&
-                      provider.profile!.photoUrl.isNotEmpty
-                  ? NetworkImage(provider.profile!.photoUrl)
-                  : null,
-              child: provider.profile?.photoUrl == null ||
-                      provider.profile!.photoUrl.isEmpty
-                  ? const Icon(Icons.person, color: Colors.white)
-                  : null,
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(50),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _AvailabilityToggle(provider: provider),
+                const SizedBox(width: 8),
+                _BookingRequestIconButton(
+                  pendingCount: provider.pendingRequestCount,
+                ),
+                const SizedBox(width: 4),
+                NotificationBadgeIcon(
+                  userId: userId,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const BarberNotificationScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () async {
+                    final homeProvider = context.read<BarberHomeProvider>();
+                    final updated = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const BarberProfileScreen(),
+                      ),
+                    );
+                    if (!mounted) return;
+                    if (updated == true) {
+                      homeProvider.load();
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: Colors.grey,
+                      child: provider.profile?.photoUrl != null &&
+                              provider.profile!.photoUrl.isNotEmpty
+                          ? CachedProfileImage(
+                              imageUrl: provider.profile!.photoUrl,
+                              radius: 16,
+                              backgroundColor: Colors.grey,
+                              errorWidget: const Icon(
+                                Icons.person,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.person, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -286,16 +349,30 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
     return sorted.where((item) => item.status == selected).toList();
   }
 
+  Map<String, int> _buildDisplaySerials(List<BarberQueueItem> queue) {
+    final serials = <String, int>{};
+    var currentSerial = 0;
+    for (final item in queue) {
+      final displaySerialNo = item.serialNo ?? (currentSerial + 1);
+      serials[item.id] = displaySerialNo;
+      if (displaySerialNo > currentSerial) {
+        currentSerial = displaySerialNo;
+      }
+    }
+    return serials;
+  }
+
   Future<void> _openManualEntrySheet(
     BuildContext context,
     BarberHomeProvider provider,
   ) async {
+    final messenger = ScaffoldMessenger.of(context);
     if (provider.services.isEmpty) {
       await provider.load();
-      if (!mounted) return;
+      if (!context.mounted) return;
     }
     if (provider.services.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(content: Text('No services found for this salon.')),
       );
       return;
@@ -390,8 +467,9 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                                 );
                                 if (!mounted) return;
                                 if (ok) {
+                                  if (!sheetContext.mounted) return;
                                   Navigator.of(sheetContext).pop();
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                  messenger.showSnackBar(
                                     const SnackBar(
                                       content: Text('Manual customer added.'),
                                     ),
@@ -399,7 +477,7 @@ class _BarberHomeScreenState extends State<BarberHomeScreen> {
                                   return;
                                 }
                                 setModalState(() => isSubmitting = false);
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                messenger.showSnackBar(
                                   SnackBar(
                                     content: Text(
                                       provider.error ??
@@ -659,34 +737,88 @@ class _QueueNoticeCard extends StatelessWidget {
 
 class _TipSummary extends StatelessWidget {
   final int amount;
+  final VoidCallback onTap;
 
-  const _TipSummary({required this.amount});
+  const _TipSummary({
+    required this.amount,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.green.shade50,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.green.shade100),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            "Today's Tips",
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.green.shade50,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.green.shade100),
           ),
-          Text(
-            '৳$amount',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.green,
-            ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: Colors.green,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Today's tips",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Tap to open My Tips',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '৳$amount',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 18,
+                    color: Colors.green,
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -715,6 +847,7 @@ enum _QueueActionKind { startServing, cancel, markDone, undoStart }
 
 class _QueueCard extends StatefulWidget {
   final BarberQueueItem item;
+  final int? displaySerialNo;
   final Future<void> Function()? onStartServing;
   final Future<void> Function()? onMarkDone;
   final Future<void> Function()? onCancel;
@@ -722,6 +855,7 @@ class _QueueCard extends StatefulWidget {
 
   const _QueueCard({
     required this.item,
+    this.displaySerialNo,
     this.onStartServing,
     this.onMarkDone,
     this.onCancel,
@@ -855,6 +989,7 @@ class _QueueCardState extends State<_QueueCard> {
     final hasStartActions =
         widget.onStartServing != null && widget.onCancel != null;
     final actions = _buildActions();
+    final serialNo = widget.displaySerialNo ?? widget.item.serialNo;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -889,9 +1024,18 @@ class _QueueCardState extends State<_QueueCard> {
                   ],
                 ),
               ),
-              Text(
-                _getTimeDisplay(),
-                style: TextStyle(color: _getTimeColor(), fontSize: 15),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (serialNo != null) ...[
+                    _QueueSerialBadge(number: serialNo),
+                    const SizedBox(height: 8),
+                  ],
+                  Text(
+                    _getTimeDisplay(),
+                    style: TextStyle(color: _getTimeColor(), fontSize: 15),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1251,16 +1395,26 @@ class _QueueCardState extends State<_QueueCard> {
     return CircleAvatar(
       radius: 22,
       backgroundColor: Colors.blue.shade100,
-      backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-      child: avatarUrl.isEmpty
-          ? Text(
+      child: avatarUrl.isNotEmpty
+          ? CachedProfileImage(
+              imageUrl: avatarUrl,
+              radius: 22,
+              backgroundColor: Colors.blue.shade100,
+              errorWidget: Text(
+                initials,
+                style: const TextStyle(
+                  color: Colors.blueAccent,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            )
+          : Text(
               initials,
               style: const TextStyle(
                 color: Colors.blueAccent,
                 fontWeight: FontWeight.w700,
               ),
-            )
-          : null,
+            ),
     );
   }
 
@@ -1270,6 +1424,45 @@ class _QueueCardState extends State<_QueueCard> {
     }
     if (widget.item.slotLabel.isNotEmpty) return widget.item.slotLabel;
     return 'Schedule not set';
+  }
+}
+
+class _QueueSerialBadge extends StatelessWidget {
+  final int number;
+
+  const _QueueSerialBadge({required this.number});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.blueAccent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const Text(
+            'Serial',
+            style: TextStyle(
+              color: Colors.black54,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Text(
+            '#$number',
+            style: const TextStyle(
+              color: Colors.blueAccent,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

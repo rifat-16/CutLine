@@ -1,10 +1,10 @@
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/features/owner/providers/add_barber_provider.dart';
 import 'package:cutline/features/owner/providers/barbers_provider.dart';
-import 'package:cutline/features/owner/providers/salon_setup_provider.dart';
 import 'package:cutline/features/owner/services/barber_service.dart';
 import 'package:cutline/features/owner/utils/constants.dart';
 import 'package:cutline/features/owner/screens/add_barber_screen.dart';
+import 'package:cutline/shared/widgets/cached_profile_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -131,11 +131,24 @@ class _BarberCard extends StatelessWidget {
               CircleAvatar(
                 radius: 28,
                 backgroundColor: statusColor.withValues(alpha: 0.12),
-                backgroundImage: barber.photoUrl.isNotEmpty
-                    ? NetworkImage(barber.photoUrl)
-                    : null,
-                child: barber.photoUrl.isEmpty
-                    ? Text(
+                child: barber.photoUrl.isNotEmpty
+                    ? CachedProfileImage(
+                        imageUrl: barber.photoUrl,
+                        radius: 28,
+                        backgroundColor: statusColor.withValues(alpha: 0.12),
+                        errorWidget: Text(
+                          barber.name
+                              .split(' ')
+                              .where((part) => part.isNotEmpty)
+                              .map((part) => part[0])
+                              .take(2)
+                              .join()
+                              .toUpperCase(),
+                          style: TextStyle(
+                              color: statusColor, fontWeight: FontWeight.bold),
+                        ),
+                      )
+                    : Text(
                         barber.name
                             .split(' ')
                             .where((part) => part.isNotEmpty)
@@ -145,8 +158,7 @@ class _BarberCard extends StatelessWidget {
                             .toUpperCase(),
                         style: TextStyle(
                             color: statusColor, fontWeight: FontWeight.bold),
-                      )
-                    : null,
+                      ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -280,11 +292,24 @@ class _BarberDetailSheet extends StatelessWidget {
                 child: CircleAvatar(
                   radius: 40,
                   backgroundColor: Colors.grey.shade200,
-                  backgroundImage: barber.photoUrl.isNotEmpty
-                      ? NetworkImage(barber.photoUrl)
-                      : null,
-                  child: barber.photoUrl.isEmpty
-                      ? Text(
+                  child: barber.photoUrl.isNotEmpty
+                      ? CachedProfileImage(
+                          imageUrl: barber.photoUrl,
+                          radius: 40,
+                          backgroundColor: Colors.grey.shade200,
+                          errorWidget: Text(
+                            barber.name
+                                .split(' ')
+                                .where((part) => part.isNotEmpty)
+                                .map((part) => part[0])
+                                .take(2)
+                                .join()
+                                .toUpperCase(),
+                            style: const TextStyle(
+                                fontSize: 24, fontWeight: FontWeight.bold),
+                          ),
+                        )
+                      : Text(
                           barber.name
                               .split(' ')
                               .where((part) => part.isNotEmpty)
@@ -294,8 +319,7 @@ class _BarberDetailSheet extends StatelessWidget {
                               .toUpperCase(),
                           style: const TextStyle(
                               fontSize: 24, fontWeight: FontWeight.bold),
-                        )
-                      : null,
+                        ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -316,13 +340,57 @@ class _BarberDetailSheet extends StatelessWidget {
                   label: 'Phone',
                   value: barber.phone),
               const SizedBox(height: 12),
+              if (barber.canShowPasswordToOwner) ...[
+                _DetailInfoRow(
+                    icon: Icons.lock_outline,
+                    label: 'Temporary password',
+                    value: barber.password),
+                const SizedBox(height: 8),
+                Text(
+                  barber.mustChangePassword
+                      ? 'Share this email and temporary password with the barber. After first login, the barber must change it.'
+                      : 'This temporary password is still visible to the owner.',
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ] else if (barber.passwordChangedAt != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.lock_clock_outlined,
+                          color: Colors.blueGrey, size: 18),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Password is hidden because the barber already changed the temporary password.',
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               _DetailInfoRow(
                   icon: Icons.flag_outlined,
                   label: 'Status',
                   value: _barberStatusLabel(barber.status)),
               const SizedBox(height: 18),
-              Text(
-                  'Served today • ${barber.servedToday}',
+              Text('Served today • ${barber.servedToday}',
                   style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 24),
               SizedBox(

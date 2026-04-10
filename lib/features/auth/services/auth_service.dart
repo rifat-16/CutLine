@@ -54,6 +54,36 @@ class AuthService {
     return _firebaseAuth.sendPasswordResetEmail(email: email);
   }
 
+  Future<void> reauthenticateWithPassword({
+    required String email,
+    required String password,
+  }) async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'user-not-found',
+        message: 'No signed-in user found.',
+      );
+    }
+
+    final credential = EmailAuthProvider.credential(
+      email: email,
+      password: password,
+    );
+    await user.reauthenticateWithCredential(credential);
+  }
+
+  Future<void> updateCurrentPassword(String newPassword) async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'user-not-found',
+        message: 'No signed-in user found.',
+      );
+    }
+    await user.updatePassword(newPassword);
+  }
+
   Future<void> signOut() {
     return _firebaseAuth.signOut();
   }

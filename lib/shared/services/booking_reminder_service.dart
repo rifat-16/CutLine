@@ -40,6 +40,8 @@ class BookingReminderService {
     required String time,
     required String salonId,
   }) async {
+    if (kIsWeb) return false;
+
     try {
       // Parse the booking date and time
       final bookingDateTime = _parseBookingDateTime(date, time);
@@ -113,6 +115,8 @@ class BookingReminderService {
 
   /// Cancel a scheduled reminder for a booking
   Future<void> cancelReminder(String bookingId) async {
+    if (kIsWeb) return;
+
     try {
       await _localNotifications.cancel(_getNotificationId(bookingId));
     } catch (e) {
@@ -121,6 +125,8 @@ class BookingReminderService {
 
   /// Cancel all scheduled reminders
   Future<void> cancelAllReminders() async {
+    if (kIsWeb) return;
+
     try {
       await _localNotifications.cancelAll();
     } catch (e) {
@@ -157,4 +163,3 @@ class BookingReminderService {
     return bookingId.hashCode.abs() % 2147483647; // Max int32 value
   }
 }
-

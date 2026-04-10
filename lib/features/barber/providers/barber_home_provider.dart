@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cutline/features/auth/providers/auth_provider.dart';
 import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:cutline/shared/services/queue_serial_service.dart';
+import 'package:cutline/shared/services/user_booking_mirror_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
@@ -14,11 +15,15 @@ class BarberHomeProvider extends ChangeNotifier {
     QueueSerialService? serialService,
   })  : _authProvider = authProvider,
         _firestore = firestore ?? FirebaseFirestore.instance,
+        _mirrorService = UserBookingMirrorService(
+          firestore: firestore ?? FirebaseFirestore.instance,
+        ),
         _serialService =
             serialService ?? QueueSerialService(firestore: firestore);
 
   final AuthProvider _authProvider;
   final FirebaseFirestore _firestore;
+  final UserBookingMirrorService _mirrorService;
   final QueueSerialService _serialService;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _queueSubscription;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
@@ -537,21 +542,42 @@ class BarberHomeProvider extends ChangeNotifier {
     final profile = _profile;
     if (profile == null) return;
     try {
+      final bookingRef = _firestore
+          .collection('salons')
+          .doc(profile.ownerId)
+          .collection('bookings')
+          .doc(id);
+      Map<String, dynamic> bookingData = <String, dynamic>{};
+      try {
+        final bookingSnap = await bookingRef.get();
+        final data = bookingSnap.data();
+        if (data != null) {
+          bookingData = Map<String, dynamic>.from(data);
+        }
+      } catch (_) {
+        // Ignore read failures and continue with best-effort updates.
+      }
+
       final statusString = status == BarberQueueStatus.done
           ? 'completed'
           : (status == BarberQueueStatus.cancelled ? 'cancelled' : status.name);
       final updateData = <String, dynamic>{'status': status.name};
+      final bookingUpdateData = <String, dynamic>{'status': statusString};
 
       if (status == BarberQueueStatus.serving) {
         updateData['startedAt'] = FieldValue.serverTimestamp();
       } else if (status == BarberQueueStatus.done) {
         updateData['completedAt'] = FieldValue.serverTimestamp();
+        bookingUpdateData['completedAt'] = FieldValue.serverTimestamp();
       } else if (status == BarberQueueStatus.cancelled) {
         updateData['cancelledAt'] = FieldValue.serverTimestamp();
+        bookingUpdateData['cancelledAt'] = FieldValue.serverTimestamp();
       } else if (status == BarberQueueStatus.waiting) {
         updateData['startedAt'] = FieldValue.delete();
         updateData['completedAt'] = FieldValue.delete();
         updateData['cancelledAt'] = FieldValue.delete();
+        bookingUpdateData['completedAt'] = FieldValue.delete();
+        bookingUpdateData['cancelledAt'] = FieldValue.delete();
       }
 
       await _firestore
@@ -560,12 +586,23 @@ class BarberHomeProvider extends ChangeNotifier {
           .collection('queue')
           .doc(id)
           .set(updateData, SetOptions(merge: true));
-      await _firestore
-          .collection('salons')
-          .doc(profile.ownerId)
-          .collection('bookings')
-          .doc(id)
-          .set({'status': statusString}, SetOptions(merge: true));
+      await bookingRef.set(bookingUpdateData, SetOptions(merge: true));
+      await _syncUserMirrorStatus(
+        ownerId: profile.ownerId,
+        bookingId: id,
+        bookingData: {...bookingData, ...bookingUpdateData},
+        status: statusString,
+        extraFields: status == BarberQueueStatus.done
+            ? {'completedAt': FieldValue.serverTimestamp()}
+            : status == BarberQueueStatus.cancelled
+                ? {'cancelledAt': FieldValue.serverTimestamp()}
+                : status == BarberQueueStatus.waiting
+                    ? {
+                        'completedAt': FieldValue.delete(),
+                        'cancelledAt': FieldValue.delete(),
+                      }
+                    : null,
+      );
       if (status == BarberQueueStatus.done) {
         await _createLedgersForBooking(profile, id);
       }
@@ -590,6 +627,44 @@ class BarberHomeProvider extends ChangeNotifier {
       );
       notifyListeners();
     }
+  }
+
+  Future<void> _syncUserMirrorStatus({
+    required String ownerId,
+    required String bookingId,
+    required Map<String, dynamic> bookingData,
+    required String status,
+    Map<String, dynamic>? extraFields,
+  }) async {
+    try {
+      var userId = _resolveBookingUserId(bookingData);
+      if (userId.isEmpty) {
+        final latestBooking = await _firestore
+            .collection('salons')
+            .doc(ownerId)
+            .collection('bookings')
+            .doc(bookingId)
+            .get();
+        userId = _resolveBookingUserId(latestBooking.data() ?? bookingData);
+      }
+      if (userId.isEmpty) return;
+
+      await _mirrorService.updateStatus(
+        userId: userId,
+        bookingId: bookingId,
+        status: status,
+        extraFields: extraFields,
+      );
+    } catch (_) {
+      // Ignore mirror sync failures.
+    }
+  }
+
+  String _resolveBookingUserId(Map<String, dynamic> bookingData) {
+    return (bookingData['customerUid'] as String?)?.trim() ??
+        (bookingData['userId'] as String?)?.trim() ??
+        (bookingData['customerId'] as String?)?.trim() ??
+        '';
   }
 
   Future<void> _createLedgersForBooking(

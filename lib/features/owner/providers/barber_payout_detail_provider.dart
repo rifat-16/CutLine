@@ -68,11 +68,16 @@ class BarberPayoutDetailProvider extends ChangeNotifier {
       final paidTips = _payouts
           .where((item) => item.isConfirmed)
           .fold<int>(0, (acc, item) => acc + item.amount);
+      final readyToPayTips =
+          _ledger.fold<int>(0, (acc, item) => acc + item.remainingAmount);
       final dueTips = totalTips - paidTips;
+      final pendingTips = dueTips - readyToPayTips;
 
       _summary = BarberTipSummary(
         totalTips: totalTips,
         paidTips: paidTips,
+        pendingTips: pendingTips < 0 ? 0 : pendingTips,
+        readyToPayTips: readyToPayTips < 0 ? 0 : readyToPayTips,
         dueTips: dueTips < 0 ? 0 : dueTips,
       );
     } catch (_) {
@@ -94,13 +99,13 @@ class BarberPayoutDetailProvider extends ChangeNotifier {
       return false;
     }
 
-    final dueAmount = _summary.dueTips;
+    final dueAmount = _summary.readyToPayTips;
     if (amount <= 0) {
       _setError('Enter a valid amount.');
       return false;
     }
     if (amount > dueAmount) {
-      _setError('Amount exceeds due.');
+      _setError('Amount exceeds the ready payout balance.');
       return false;
     }
 
@@ -160,6 +165,11 @@ class BarberPayoutDetailProvider extends ChangeNotifier {
         });
       }
 
+      if (remaining > 0) {
+        _setError('Amount exceeds the ready payout balance.');
+        return false;
+      }
+
       batch.set(payoutRef, {
         'barberId': barberId,
         'barberName': barberName,
@@ -208,16 +218,22 @@ class BarberPayoutDetailProvider extends ChangeNotifier {
 class BarberTipSummary {
   final int totalTips;
   final int paidTips;
+  final int pendingTips;
+  final int readyToPayTips;
   final int dueTips;
 
   const BarberTipSummary({
     required this.totalTips,
     required this.paidTips,
+    required this.pendingTips,
+    required this.readyToPayTips,
     required this.dueTips,
   });
 
   const BarberTipSummary.empty()
       : totalTips = 0,
         paidTips = 0,
+        pendingTips = 0,
+        readyToPayTips = 0,
         dueTips = 0;
 }

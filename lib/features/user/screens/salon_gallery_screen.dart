@@ -1,4 +1,5 @@
 import 'package:cutline/shared/theme/cutline_theme.dart';
+import 'package:cutline/shared/widgets/web_safe_image.dart';
 import 'package:flutter/material.dart';
 
 class SalonGalleryScreen extends StatelessWidget {
@@ -29,13 +30,16 @@ class SalonGalleryScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(
-              child: Text('$uploadedCount / $totalLimit', style: CutlineTextStyles.subtitleBold.copyWith(color: CutlineColors.primary)),
+              child: Text('$uploadedCount / $totalLimit',
+                  style: CutlineTextStyles.subtitleBold
+                      .copyWith(color: CutlineColors.primary)),
             ),
           ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async => Future<void>.delayed(const Duration(milliseconds: 500)),
+        onRefresh: () async =>
+            Future<void>.delayed(const Duration(milliseconds: 500)),
         child: photos.isEmpty
             ? ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -44,17 +48,22 @@ class SalonGalleryScreen extends StatelessWidget {
                   Container(
                     height: 220,
                     decoration: CutlineDecorations.card(
-                      colors: [CutlineColors.primary.withValues(alpha: 0.08), Colors.white],
+                      colors: [
+                        CutlineColors.primary.withValues(alpha: 0.08),
+                        Colors.white
+                      ],
                     ),
                     child: Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.photo_library_outlined, size: 48, color: CutlineColors.primary),
+                          Icon(Icons.photo_library_outlined,
+                              size: 48, color: CutlineColors.primary),
                           const SizedBox(height: 12),
                           Text(
                             'No gallery photos yet',
-                            style: CutlineTextStyles.title.copyWith(fontSize: 18),
+                            style:
+                                CutlineTextStyles.title.copyWith(fontSize: 18),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 6),
@@ -80,28 +89,15 @@ class SalonGalleryScreen extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final url = photos[index];
                   return ClipRRect(
-                    borderRadius: BorderRadius.circular(CutlineDecorations.radius),
-                    child: Image.network(
-                      url,
+                    borderRadius:
+                        BorderRadius.circular(CutlineDecorations.radius),
+                    child: WebSafeImage(
+                      imageUrl: url,
                       fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Container(
-                          color: Colors.grey.shade200,
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
-                              strokeWidth: 2,
-                            ),
-                          ),
-                        );
-                      },
-                      errorBuilder: (_, __, ___) => Container(
+                      errorWidget: Container(
                         color: Colors.grey.shade300,
-                        child: const Icon(Icons.broken_image, color: Colors.grey),
+                        child:
+                            const Icon(Icons.broken_image, color: Colors.grey),
                       ),
                     ),
                   );

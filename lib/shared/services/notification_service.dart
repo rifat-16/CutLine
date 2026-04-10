@@ -7,6 +7,7 @@ import 'package:cutline/shared/services/booking_reminder_service.dart';
 import 'package:cutline/routes/app_router.dart';
 import 'package:cutline/features/auth/models/user_role.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// Top-level background message handler
@@ -21,7 +22,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 /// Service for handling FCM notifications
 class NotificationService {
   NotificationService() {
-    _initializeLocalNotifications();
+    if (!kIsWeb) {
+      unawaited(_initializeLocalNotifications());
+    }
   }
 
   final FlutterLocalNotificationsPlugin _localNotifications =
@@ -92,6 +95,12 @@ class NotificationService {
   }) async {
     _currentUserRole = userRole;
     _onNotificationTapped = onNotificationTapped;
+
+    // Web push/local notification support is inconsistent across browsers,
+    // especially on iPhone Safari. Never block app startup here.
+    if (kIsWeb) {
+      return;
+    }
 
     // Set up background message handler
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
@@ -264,6 +273,8 @@ class NotificationService {
     required String body,
     required Map<String, dynamic> data,
   }) async {
+    if (kIsWeb) return;
+
     const androidDetails = AndroidNotificationDetails(
       'cutline_notifications',
       'CutLine Notifications',

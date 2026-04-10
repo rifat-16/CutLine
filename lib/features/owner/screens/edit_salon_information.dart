@@ -288,8 +288,8 @@ class _EditSalonInfoScreenState extends State<EditSalonInfoScreen> {
   Future<void> _openAddressPicker(EditSalonProvider provider) async {
     final existing = provider.location;
     final result = await Navigator.of(context).push<PickedLocation>(
-      MaterialPageRoute(
-        builder: (_) => AddressPickerScreen(
+      buildAddressPickerRoute(
+        AddressPickerScreen(
           initialAddress: _mapAddressController.text.trim(),
           initialLocation: existing == null
               ? null
