@@ -18,6 +18,8 @@ admin.initializeApp();
 // Set global options for all functions
 setGlobalOptions({maxInstances: 10});
 
+const OWNER_REQUEST_BOOKING_STATUSES = new Set(["pending", "upcoming"]);
+
 /**
  * Ensure the caller has the superadmin claim.
  * @param {?Object} auth
@@ -29,6 +31,54 @@ function assertSuperadmin(auth) {
   if (auth.token.superadmin !== true) {
     throw new HttpsError("permission-denied", "Super admin access required.");
   }
+}
+
+/**
+ * Whether the booking is still in the owner decision stage.
+ * Both custom bookings (`upcoming`) and next-free bookings (`pending`)
+ * should trigger the request notification flow.
+ * @param {*} status
+ * @return {boolean}
+ */
+function isOwnerRequestBookingStatus(status) {
+  return OWNER_REQUEST_BOOKING_STATUSES.has(
+      (status || "").toString().trim().toLowerCase(),
+  );
+}
+
+/**
+ * Normalize a string-ish value.
+ * @param {*} value
+ * @return {string}
+ */
+function normalizeString(value) {
+  return (value || "").toString().trim();
+}
+
+/**
+ * Extract the assigned barber info from a booking payload.
+ * @param {Object} bookingData
+ * @return {{barberId: string, barberName: string}}
+ */
+function getAssignedBarber(bookingData) {
+  const data = bookingData || {};
+  return {
+    barberId: normalizeString(data.barberId || data.barberUid),
+    barberName: normalizeString(data.barberName || data.barber),
+  };
+}
+
+/**
+ * Whether a booking targets a specific barber.
+ * @param {{barberId: string, barberName: string}} assignedBarber
+ * @return {boolean}
+ */
+function hasSpecificAssignedBarber(assignedBarber) {
+  const normalizedName = assignedBarber.barberName.toLowerCase();
+  return assignedBarber.barberId.length > 0 ||
+    (normalizedName.length > 0 &&
+      normalizedName !== "any" &&
+      normalizedName !== "barber");
 }
 
 /**
@@ -261,7 +311,7 @@ exports.onUserFcmTokenWrite = onDocumentWritten(
 /**
  * Triggered when a new booking is created.
  * Path: salons/{salonId}/bookings/{bookingId}
- * Sends notification to the salon owner
+ * Sends notification to the salon owner and assigned barber
  */
 exports.onBookingCreate = onDocumentCreated(
     "salons/{salonId}/bookings/{bookingId}",
@@ -281,10 +331,15 @@ exports.onBookingCreate = onDocumentCreated(
         return null;
       }
 
-      // Only notify for bookings with status "upcoming"
-      if (bookingData.status !== "upcoming") {
+      const bookingStatus = (bookingData.status || "")
+          .toString()
+          .trim()
+          .toLowerCase();
+
+      // Notify for any booking that still needs owner action.
+      if (!isOwnerRequestBookingStatus(bookingStatus)) {
         logger.log(
-            `Booking ${bookingId} has status ${bookingData.status}, ` +
+            `Booking ${bookingId} has status ${bookingStatus || "unknown"}, ` +
             "skipping notification",
         );
         return null;
@@ -366,86 +421,62 @@ exports.onBookingCreate = onDocumentCreated(
           });
         }
 
-        const customerName = bookingData.customerName || "A customer";
-        const title = "New Booking Request";
-        const body = `${customerName} has requested a booking`;
-        const dataPayload = {
-          type: "booking_request",
-          bookingId: bookingId,
+        const customerName = normalizeString(bookingData.customerName) ||
+          "A customer";
+        const recipientTargets = ownerDocs.map((doc) => ({
+          doc,
+          recipientRoleLabel: "owner",
+        }));
+        const ownerIdForBarberRouting = ownerDocs.length > 0 ?
+          ownerDocs[0].id :
+          resolvedOwnerId;
+        const assignedBarberDoc = await resolveAssignedBarberDoc({
+          firestore,
+          ownerId: ownerIdForBarberRouting,
+          bookingData,
           salonId: bookingSalonId,
-          customerName: customerName || "",
-        };
+          bookingId,
+        });
+        if (
+          assignedBarberDoc &&
+          !recipientTargets.some(
+              (target) => target.doc.id === assignedBarberDoc.id,
+          )
+        ) {
+          recipientTargets.push({
+            doc: assignedBarberDoc,
+            recipientRoleLabel: "barber",
+          });
+        }
 
-        // Send to each owner doc separately so token cleanup stays correct per
-        // owner.
+        // Send to each recipient doc separately so token cleanup stays correct
+        // per user.
         const results = [];
         logger.log(
-            `Resolved booking owners for salonId=${bookingSalonId}:`,
-            ownerDocs.map((d) => d.id),
+            "Resolved booking request recipients for " +
+            `salonId=${bookingSalonId}:`,
+            recipientTargets.map((target) =>
+              `${target.recipientRoleLabel}:${target.doc.id}`,
+            ),
         );
-        for (const doc of ownerDocs) {
-          const ownerId = doc.id;
-          const ownerData = doc.data() || {};
-          const fcmTokens = ownerData.fcmTokens ||
-            (ownerData.fcmToken ? [ownerData.fcmToken] : []);
-
-          const validTokens = Array.isArray(fcmTokens) ?
-            fcmTokens.filter(
-                (token) =>
-                  token &&
-                  typeof token === "string" &&
-                  token.length > 0,
-            ) :
-            [];
-
-          if (validTokens.length === 0) {
-            logger.log(
-                `No valid FCM tokens for owner ${ownerId} ` +
-                `(salonId=${bookingSalonId})`,
-            );
-            continue;
-          }
-
-          // Save notification to Firestore (per owner).
-          await firestore.collection("notifications").add({
-            userId: ownerId,
-            type: "booking_request",
-            title,
-            body,
-            bookingId: bookingId,
+        for (const target of recipientTargets) {
+          const delivery = await sendBookingRequestNotification({
+            firestore,
+            recipientDoc: target.doc,
+            recipientRoleLabel: target.recipientRoleLabel,
+            bookingId,
             salonId: bookingSalonId,
-            customerName: customerName || "",
-            isRead: false,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            customerName,
           });
-
-          const message = {
-            notification: {title, body},
-            data: dataPayload,
-            tokens: validTokens,
-          };
-
-          const response = await admin.messaging()
-              .sendEachForMulticast(message);
-          results.push({ownerId, response, validTokens});
-
-          if (response.failureCount > 0) {
-            const invalidTokens = [];
-            response.responses.forEach((resp, idx) => {
-              if (!resp.success) {
-                invalidTokens.push(validTokens[idx]);
-              }
-            });
-            if (invalidTokens.length > 0) {
-              await cleanupInvalidTokens(ownerId, invalidTokens);
-            }
+          if (delivery) {
+            results.push(delivery);
           }
         }
 
         if (results.length === 0) {
           logger.log(
-              `No owners with tokens to notify for salonId=${bookingSalonId} ` +
-              `(bookingId=${bookingId})`,
+              `No booking request recipients with tokens for ` +
+              `salonId=${bookingSalonId} (bookingId=${bookingId})`,
           );
           return null;
         }
@@ -477,7 +508,7 @@ exports.onBookingCreate = onDocumentCreated(
  * Triggered when a booking is updated.
  * Path: salons/{salonId}/bookings/{bookingId}
  * Sends notifications to user and barber when status changes
- * from "upcoming" to "waiting"
+ * from a request state ("pending"/"upcoming") to "waiting"
  */
 exports.onBookingUpdate = onDocumentUpdated(
     "salons/{salonId}/bookings/{bookingId}",
@@ -503,8 +534,9 @@ exports.onBookingUpdate = onDocumentUpdated(
       const beforeStatus = (beforeData.status || "").toString().toLowerCase();
       const afterStatus = (afterData.status || "").toString().toLowerCase();
 
-      // Only notify when status changes from "upcoming" to "waiting"
-      if (beforeStatus !== "upcoming" || afterStatus !== "waiting") {
+      // Notify when a request booking is accepted into the live queue.
+      if (!isOwnerRequestBookingStatus(beforeStatus) ||
+          afterStatus !== "waiting") {
         logger.log(
             `Booking ${bookingId} status change: ` +
             `${beforeStatus} -> ${afterStatus}, skipping notification`,
@@ -1247,6 +1279,166 @@ async function notifyUser(customerUid, bookingId, salonId) {
   } catch (error) {
     logger.error(`Error notifying user ${customerUid}:`, error);
   }
+}
+
+/**
+ * Send the booking request notification to one recipient.
+ * @param {Object} params
+ * @param {FirebaseFirestore.Firestore} params.firestore
+ * @param {FirebaseFirestore.QueryDocumentSnapshot|
+ * FirebaseFirestore.DocumentSnapshot} params.recipientDoc
+ * @param {string} params.recipientRoleLabel
+ * @param {string} params.bookingId
+ * @param {string} params.salonId
+ * @param {string} params.customerName
+ * @return {Promise<?Object>}
+ */
+async function sendBookingRequestNotification({
+  firestore,
+  recipientDoc,
+  recipientRoleLabel,
+  bookingId,
+  salonId,
+  customerName,
+}) {
+  const recipientId = recipientDoc.id;
+  const recipientData = recipientDoc.data() || {};
+  const fcmTokens = recipientData.fcmTokens ||
+    (recipientData.fcmToken ? [recipientData.fcmToken] : []);
+  const validTokens = Array.isArray(fcmTokens) ?
+    fcmTokens.filter(
+        (token) =>
+          token &&
+          typeof token === "string" &&
+          token.length > 0,
+    ) :
+    [];
+
+  if (validTokens.length === 0) {
+    logger.log(
+        `No valid FCM tokens for ${recipientRoleLabel} ${recipientId} ` +
+        `(salonId=${salonId})`,
+    );
+    return null;
+  }
+
+  const title = "New Booking Request";
+  const body = `${customerName} has requested a booking`;
+  const dataPayload = {
+    type: "booking_request",
+    bookingId,
+    salonId,
+    customerName,
+  };
+
+  await firestore.collection("notifications").add({
+    userId: recipientId,
+    type: "booking_request",
+    title,
+    body,
+    bookingId,
+    salonId,
+    customerName,
+    isRead: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  const response = await admin.messaging().sendEachForMulticast({
+    notification: {title, body},
+    data: dataPayload,
+    tokens: validTokens,
+  });
+
+  if (response.failureCount > 0) {
+    const invalidTokens = [];
+    response.responses.forEach((resp, idx) => {
+      if (!resp.success) {
+        invalidTokens.push(validTokens[idx]);
+      }
+    });
+    if (invalidTokens.length > 0) {
+      await cleanupInvalidTokens(recipientId, invalidTokens);
+    }
+  }
+
+  logger.log(
+      `Sent booking_request notification to ${recipientRoleLabel} ` +
+      `${recipientId}: ${response.successCount} successful, ` +
+      `${response.failureCount} failed`,
+  );
+  return {recipientId, recipientRoleLabel, response};
+}
+
+/**
+ * Resolve the assigned barber from booking payload.
+ * @param {Object} params
+ * @param {FirebaseFirestore.Firestore} params.firestore
+ * @param {string} params.ownerId
+ * @param {Object} params.bookingData
+ * @param {string} params.salonId
+ * @param {string} params.bookingId
+ * @return {Promise<?FirebaseFirestore.DocumentSnapshot>}
+ */
+async function resolveAssignedBarberDoc({
+  firestore,
+  ownerId,
+  bookingData,
+  salonId,
+  bookingId,
+}) {
+  const assignedBarber = getAssignedBarber(bookingData);
+  if (!hasSpecificAssignedBarber(assignedBarber)) {
+    return null;
+  }
+
+  if (assignedBarber.barberId) {
+    const barberDoc = await firestore.collection("users")
+        .doc(assignedBarber.barberId)
+        .get();
+    if (barberDoc.exists) {
+      const barberData = barberDoc.data() || {};
+      const barberRole = normalizeString(barberData.role).toLowerCase();
+      const barberOwnerId = normalizeString(barberData.ownerId);
+      if (barberRole === "barber" &&
+          (!ownerId || !barberOwnerId || barberOwnerId === ownerId)) {
+        return barberDoc;
+      }
+
+      logger.warn(
+          `Assigned barberId=${assignedBarber.barberId} is invalid for ` +
+          `bookingId=${bookingId} salonId=${salonId} ` +
+          `(role=${barberRole || "unknown"} ownerId=${barberOwnerId || "-"})`,
+      );
+    } else {
+      logger.warn(
+          `Assigned barber doc not found for barberId=` +
+          `${assignedBarber.barberId} bookingId=${bookingId} ` +
+          `salonId=${salonId}`,
+      );
+    }
+  }
+
+  if (!ownerId || !assignedBarber.barberName) {
+    return null;
+  }
+
+  const barbersSnapshot = await firestore.collection("users")
+      .where("role", "==", "barber")
+      .where("ownerId", "==", ownerId)
+      .get();
+  for (const doc of barbersSnapshot.docs) {
+    const barberData = doc.data() || {};
+    const barberName = normalizeString(barberData.name);
+    if (barberName.toLowerCase() === assignedBarber.barberName.toLowerCase()) {
+      return doc;
+    }
+  }
+
+  logger.warn(
+      `Assigned barber "${assignedBarber.barberName}" not found for ` +
+      `bookingId=${bookingId} salonId=${salonId}`,
+  );
+  return null;
 }
 
 /**

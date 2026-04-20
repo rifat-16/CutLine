@@ -76,6 +76,23 @@ val requestedFlavors = buildSet {
         }
     }
 }
+val explicitlyRequestedFlavors = requestedFlavors.takeIf { it.isNotEmpty() }
+
+androidComponents {
+    beforeVariants(selector().all()) { variantBuilder ->
+        val envFlavor = variantBuilder.productFlavors
+            .firstOrNull { it.first == "env" }
+            ?.second
+
+        // Keep explicit flavor builds isolated so unrelated variants do not join the task graph.
+        if (explicitlyRequestedFlavors != null &&
+            envFlavor != null &&
+            envFlavor !in explicitlyRequestedFlavors
+        ) {
+            variantBuilder.enable = false
+        }
+    }
+}
 
 requestedFlavors.forEach { flavor ->
     val configFile = project.file("src/$flavor/google-services.json")

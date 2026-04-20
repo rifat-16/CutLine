@@ -317,7 +317,11 @@ class AuthProvider extends ChangeNotifier {
     required String path,
   }) async {
     final ref = _storage.ref().child(path);
-    final snap = await uploadStorageFile(ref: ref, file: file);
+    final snap = await uploadStorageFile(
+      ref: ref,
+      file: file,
+      metadata: SettableMetadata(contentType: _contentTypeFor(file.name)),
+    );
     return snap.ref.getDownloadURL();
   }
 
@@ -325,6 +329,21 @@ class AuthProvider extends ChangeNotifier {
     final dot = name.lastIndexOf('.');
     if (dot == -1 || dot == name.length - 1) return 'jpg';
     return name.substring(dot + 1);
+  }
+
+  String _contentTypeFor(String name) {
+    switch (_ext(name).toLowerCase()) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'heic':
+        return 'image/heic';
+      case 'heif':
+        return 'image/heif';
+      default:
+        return 'image/jpeg';
+    }
   }
 
   Future<void> _deleteOldPhoto(String url) async {

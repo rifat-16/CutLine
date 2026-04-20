@@ -75,7 +75,7 @@ class _BarberNotificationContent extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                "You'll see notifications here when customers are waiting for you.",
+                "You'll see booking requests and queue updates here.",
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
                 textAlign: TextAlign.center,
               ),
@@ -159,6 +159,8 @@ class _NotificationTile extends StatelessWidget {
 
   IconData _getIcon() {
     switch (notification.type) {
+      case 'booking_request':
+        return Icons.event_note;
       case 'barber_waiting':
         return Icons.person_add;
       case 'booking_accepted':
@@ -170,6 +172,8 @@ class _NotificationTile extends StatelessWidget {
 
   Color _getIconColor() {
     switch (notification.type) {
+      case 'booking_request':
+        return Colors.blue;
       case 'barber_waiting':
         return Colors.orange;
       case 'booking_accepted':
@@ -202,7 +206,9 @@ class _NotificationTile extends StatelessWidget {
     }
 
     // Navigate based on notification type
-    if (notification.type == 'barber_waiting') {
+    if (notification.type == 'booking_request') {
+      Navigator.of(context).pushNamed(AppRoutes.ownerBookingRequests);
+    } else if (notification.type == 'barber_waiting') {
       Navigator.of(context).pushNamed(AppRoutes.barberHome);
     }
   }
@@ -219,12 +225,18 @@ class _NotificationTile extends StatelessWidget {
           child: Ink(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: notification.isRead ? Colors.white : Colors.orange.shade50,
+              color: notification.isRead
+                  ? Colors.white
+                  : (notification.type == 'booking_request'
+                      ? Colors.blue.shade50
+                      : Colors.orange.shade50),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: notification.isRead
                     ? Colors.grey.shade300
-                    : Colors.orange.shade200,
+                    : (notification.type == 'booking_request'
+                        ? Colors.blue.shade200
+                        : Colors.orange.shade200),
                 width: notification.isRead ? 1 : 1.5,
               ),
               boxShadow: const [

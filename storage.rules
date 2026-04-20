@@ -11,7 +11,7 @@ service firebase.storage {
 
     function isImageUpload() {
       return request.resource != null
-        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
@@ -27,6 +27,20 @@ service firebase.storage {
       allow read: if isSignedIn();
       allow create, update: if isOwner(ownerId) && isImageUpload();
       allow delete: if isOwner(ownerId);
+    }
+
+    // User profile photos
+    match /users/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(userId) && isImageUpload();
+      allow delete: if isOwner(userId);
+    }
+
+    // Barber profile photos
+    match /barbers/{barberId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(barberId) && isImageUpload();
+      allow delete: if isOwner(barberId);
     }
 
     match /{allPaths=**} {

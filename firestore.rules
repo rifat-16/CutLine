@@ -87,6 +87,22 @@ service cloud.firestore {
       return status in ['pending', 'called', 'served', 'cancelled'];
     }
 
+    function userActiveBookingIds(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId))
+        && ('activeBookingIds' in get(/databases/$(database)/documents/users/$(userId)).data)
+          ? get(/databases/$(database)/documents/users/$(userId)).data.activeBookingIds
+          : [];
+    }
+
+    function userHasNoActiveBookings(userId) {
+      return userActiveBookingIds(userId).size() == 0;
+    }
+
+    function isSelfCustomerBookingCreate() {
+      return request.resource.data.userId == request.auth.uid
+        || request.resource.data.customerUid == request.auth.uid;
+    }
+
     function onlyChanges(allowedKeys) {
       return request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedKeys);
     }
@@ -249,6 +265,7 @@ service cloud.firestore {
 
         allow create: if isAuthenticated()
           && isSalonOperational(salonId)
+          && (!isSelfCustomerBookingCreate() || userHasNoActiveBookings(request.auth.uid))
           && (
             salonId == request.auth.uid ||
             request.resource.data.userId == request.auth.uid ||
@@ -415,6 +432,7 @@ service cloud.firestore {
       allow create: if isAuthenticated()
         && isSalonOperational(request.resource.data.salonId)
         && request.resource.data.userId == request.auth.uid
+        && userHasNoActiveBookings(request.auth.uid)
         && isValidStatus(request.resource.data.status);
 
       allow update: if isAuthenticated()

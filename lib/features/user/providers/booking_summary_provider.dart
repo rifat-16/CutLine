@@ -3,9 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cutline/shared/services/firestore_cache.dart';
 import 'package:cutline/shared/services/platform_fee_service.dart';
+import 'package:cutline/shared/services/user_booking_mirror_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class BookingSummaryProvider extends ChangeNotifier {
+  static const List<String> _activeMirrorStatuses = <String>[
+    'pending',
+    'upcoming',
+    'waiting',
+    'arrived',
+    'serving',
+    'called',
+    'accepted',
+  ];
+
   BookingSummaryProvider({
     required this.salonId,
     required this.salonName,
@@ -137,6 +148,7 @@ class BookingSummaryProvider extends ChangeNotifier {
   }
 
   Future<bool> saveBooking(String paymentMethod, {int tipAmount = 0}) async {
+    if (_isSaving) return false;
     _isSaving = true;
     _lastCreatedSerialNo = null;
     _setError(null);
@@ -148,6 +160,14 @@ class BookingSummaryProvider extends ChangeNotifier {
       return false;
     }
     try {
+      final hasActiveBooking = await _hasActiveBooking(resolvedCustomerUid);
+      if (hasActiveBooking) {
+        _isSaving = false;
+        _setError(
+          'You already have an active booking. Complete or cancel it before booking again.',
+        );
+        return false;
+      }
       final success = isNextFreeMode
           ? await _saveNextFreeBooking(
               paymentMethod,
@@ -555,6 +575,95 @@ class BookingSummaryProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> _hasActiveBooking(String resolvedCustomerUid) async {
+    final trimmedUserId = resolvedCustomerUid.trim();
+    if (trimmedUserId.isEmpty) return false;
+
+    final userRef = _firestore.collection('users').doc(trimmedUserId);
+    final userSnap = await FirestoreCache.getDoc(userRef);
+    final activeBookingIds =
+        ((userSnap.data()?['activeBookingIds'] as List?) ?? const <dynamic>[])
+            .whereType<String>()
+            .map((id) => id.trim())
+            .where((id) => id.isNotEmpty)
+            .toSet();
+    final confirmedActiveIds = <String>{};
+
+    if (activeBookingIds.isNotEmpty) {
+      final mirrorSnapshots = await Future.wait(
+        activeBookingIds.map(
+          (bookingId) => FirestoreCache.getDoc(
+              userRef.collection('bookings').doc(bookingId)),
+        ),
+      );
+      for (final snap in mirrorSnapshots) {
+        if (!snap.exists) continue;
+        final status = UserBookingMirrorService.normalizeStatus(
+          snap.data()?['status'] as String?,
+        );
+        if (!UserBookingMirrorService.isTerminalStatus(status)) {
+          confirmedActiveIds.add(snap.id);
+        }
+      }
+    }
+
+    confirmedActiveIds.addAll(await _loadActiveMirrorBookingIds(userRef));
+
+    if (!_sameStringSets(activeBookingIds, confirmedActiveIds)) {
+      await userRef.set(
+        {
+          'activeBookingIds': confirmedActiveIds.toList(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    }
+
+    return confirmedActiveIds.isNotEmpty;
+  }
+
+  Future<Set<String>> _loadActiveMirrorBookingIds(
+    DocumentReference<Map<String, dynamic>> userRef,
+  ) async {
+    QuerySnapshot<Map<String, dynamic>> snapshot;
+    try {
+      snapshot = await FirestoreCache.getQuery(
+        userRef
+            .collection('bookings')
+            .where('status', whereIn: _activeMirrorStatuses)
+            .limit(25),
+      );
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied' || e.code == 'unauthenticated') {
+        rethrow;
+      }
+      snapshot = await FirestoreCache.getQuery(
+        userRef
+            .collection('bookings')
+            .orderBy('updatedAt', descending: true)
+            .limit(200),
+      );
+    } catch (_) {
+      snapshot = await FirestoreCache.getQuery(
+        userRef
+            .collection('bookings')
+            .orderBy('updatedAt', descending: true)
+            .limit(200),
+      );
+    }
+
+    final activeIds = <String>{};
+    for (final doc in snapshot.docs) {
+      final status = UserBookingMirrorService.normalizeStatus(
+        doc.data()['status'] as String?,
+      );
+      if (!UserBookingMirrorService.isTerminalStatus(status)) {
+        activeIds.add(doc.id);
+      }
+    }
+    return activeIds;
+  }
+
   List<BookingSummaryService> _mapServices(
       List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
       List<String> selected) {
@@ -607,6 +716,10 @@ class BookingSummaryProvider extends ChangeNotifier {
       return 'Please sign in and try again.';
     }
     return 'Could not confirm booking. Try again.';
+  }
+
+  bool _sameStringSets(Set<String> left, Set<String> right) {
+    return left.length == right.length && left.containsAll(right);
   }
 }
 

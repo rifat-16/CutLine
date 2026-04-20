@@ -38,7 +38,8 @@ class NotificationService {
 
   /// Initialize local notifications for foreground display
   Future<void> _initializeLocalNotifications() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -72,13 +73,8 @@ class NotificationService {
 
   /// Handle local notification tap
   void _onNotificationTappedLocal(NotificationResponse response) {
-    if (response.payload != null) {
-      try {
-        // Parse payload if it's JSON
-        // For now, we'll handle navigation in the foreground handler
-      } catch (e) {
-      }
-    }
+    if (response.payload == null) return;
+    // Foreground FCM handling owns navigation for now.
   }
 
   /// Set current user role for filtering notifications
@@ -129,8 +125,7 @@ class NotificationService {
     FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
 
     // Handle notification tap when app is terminated
-    final initialMessage =
-        await FirebaseMessaging.instance.getInitialMessage();
+    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
     if (initialMessage != null) {
       _handleNotificationTap(initialMessage);
     }
@@ -138,13 +133,12 @@ class NotificationService {
 
   /// Handle foreground messages (app is open)
   Future<void> _handleForegroundMessage(RemoteMessage message) async {
-
     final notification = message.notification;
     final data = message.data;
 
     if (data.isNotEmpty) {
       final payload = NotificationPayload.fromMap(data);
-      
+
       // Filter notifications based on user role
       if (!_shouldShowNotification(payload)) {
         return;
@@ -160,19 +154,20 @@ class NotificationService {
       }
 
       // You can trigger UI updates here if needed
-      
+
       // Schedule reminder for booking_accepted notifications
       final type = NotificationTypeExtension.fromString(payload.type);
-      if (type == NotificationType.bookingAccepted && 
-          payload.bookingId.isNotEmpty && 
+      if (type == NotificationType.bookingAccepted &&
+          payload.bookingId.isNotEmpty &&
           payload.salonId != null) {
         _scheduleBookingReminder(payload.salonId!, payload.bookingId);
       }
     }
   }
-  
+
   /// Schedule a reminder notification 30 minutes before booking time
-  Future<void> _scheduleBookingReminder(String salonId, String bookingId) async {
+  Future<void> _scheduleBookingReminder(
+      String salonId, String bookingId) async {
     try {
       // Fetch booking details from Firestore
       final bookingDoc = await _firestore
@@ -181,60 +176,57 @@ class NotificationService {
           .collection('bookings')
           .doc(bookingId)
           .get();
-      
+
       if (!bookingDoc.exists) {
         return;
       }
-      
+
       final bookingData = bookingDoc.data();
       if (bookingData == null) {
         return;
       }
-      
+
       final date = (bookingData['date'] as String?)?.trim() ?? '';
       final time = (bookingData['time'] as String?)?.trim() ?? '';
-      final salonName = (bookingData['salonName'] as String?)?.trim() ?? 'Salon';
-      
+      final salonName =
+          (bookingData['salonName'] as String?)?.trim() ?? 'Salon';
+
       if (date.isEmpty || time.isEmpty) {
         return;
       }
-      
+
       // Schedule the reminder
-      final scheduled = await _reminderService.scheduleReminder(
+      await _reminderService.scheduleReminder(
         bookingId: bookingId,
         salonName: salonName,
         date: date,
         time: time,
         salonId: salonId,
       );
-      
-      if (scheduled) {
-      } else {
-      }
     } catch (e) {
+      return;
     }
   }
 
   /// Handle notification tap (background or terminated)
   void _handleNotificationTap(RemoteMessage message) {
-
     final data = message.data;
     if (data.isNotEmpty) {
       final payload = NotificationPayload.fromMap(data);
-      
+
       // Filter notifications based on user role
       if (!_shouldShowNotification(payload)) {
         return;
       }
-      
+
       // Schedule reminder for booking_accepted notifications
       final type = NotificationTypeExtension.fromString(payload.type);
-      if (type == NotificationType.bookingAccepted && 
-          payload.bookingId.isNotEmpty && 
+      if (type == NotificationType.bookingAccepted &&
+          payload.bookingId.isNotEmpty &&
           payload.salonId != null) {
         _scheduleBookingReminder(payload.salonId!, payload.bookingId);
       }
-      
+
       _navigateToScreen(payload);
     }
   }
@@ -242,7 +234,7 @@ class NotificationService {
   /// Check if notification should be shown based on user role
   bool _shouldShowNotification(NotificationPayload payload) {
     final type = NotificationTypeExtension.fromString(payload.type);
-    
+
     // If no user role is set, show all notifications (fallback)
     if (_currentUserRole == null) {
       return true;
@@ -250,17 +242,18 @@ class NotificationService {
 
     switch (type) {
       case NotificationType.bookingRequest:
-        // Only show to owners
-        return _currentUserRole == UserRole.owner;
-      
+        // Show to owners and the assigned barber handling requests.
+        return _currentUserRole == UserRole.owner ||
+            _currentUserRole == UserRole.barber;
+
       case NotificationType.bookingAccepted:
         // Only show to customers/users
         return _currentUserRole == UserRole.customer;
-      
+
       case NotificationType.barberWaiting:
         // Only show to barbers
         return _currentUserRole == UserRole.barber;
-      
+
       case NotificationType.unknown:
         // Show unknown notifications to all
         return true;
@@ -324,7 +317,7 @@ class NotificationService {
 
     switch (type) {
       case NotificationType.bookingRequest:
-        // Navigate to booking requests screen for owner
+        // Navigate to booking requests screen for owner/barber
         Navigator.of(context).pushNamed(AppRoutes.ownerBookingRequests);
         break;
 
